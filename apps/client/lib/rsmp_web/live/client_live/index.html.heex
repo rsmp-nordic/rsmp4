@@ -1,0 +1,74 @@
+<h1 class="text-2xl font-bold py-4">Client <%= @id %></h1>
+<div id="client" phx-update="append"></div>
+
+<div class="overflow-x-auto rounded-md my-4">
+  <table id="statuses" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Status
+    </caption>
+
+    <thead>
+      <tr class="text-base bg-stone-100">
+        <th class="px-1 py-1">Path</th>
+        <th class="px-1 py-1">Value</th>
+        <th class="px-1 py-1"></th>
+      </tr>
+    </thead>
+    <%= for {status,value} <- @statuses do %>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top"><%= status %></td>
+        <td class="px-1 py-1">
+          <%= Poison.encode!(value) %>
+        </td>
+        <td class="px-1 py-1">
+          <%= if is_integer(value) do %>
+            <%= for {event,label} <- [{"increase","+"},{"decrease","-"}] do %>
+              <button
+                class="bg-stone-600 text-white rounded-lg px-2"
+                phx-click={event}
+                value={status}
+              >
+                <%= label %>
+              </button>
+            <% end %>
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </table>
+</div>
+
+<div class="overflow-x-auto rounded-md my-4">
+  <table id="alarms" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Alarms
+    </caption>
+
+    <thead>
+      <tr class="text-base bg-stone-100">
+        <th class="px-1 py-1">Path</th>
+        <%= for flag <- @alarm_flags do %>
+          <th class="px-1 py-1"><%= to_string(flag) %></th>
+        <% end %>
+      </tr>
+    </thead>
+
+    <%= for {path,alarm} <- @alarms do %>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1"><%= path %></td>
+        <%= for flag <- @alarm_flags do %>
+          <td class="px-1 py-1">
+            <button
+              class={"text-white rounded-lg px-2 " <> if alarm[flag], do: "bg-purple-900", else: "bg-stone-600"}
+              phx-click="alarm"
+              phx-value-path={path}
+              value={flag}
+            >
+              <%= if alarm[flag], do: ~c"Yes", else: ~c"No" %>
+            </button>
+          </td>
+        <% end %>
+      </tr>
+    <% end %>
+  </table>
+</div>

@@ -1,0 +1,26 @@
+<h1 class="text-2xl font-bold py-4">Clients</h1>
+
+<div class="overflow-x-auto rounded-md my-4">
+  <table id="statuses" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Clients
+    </caption>
+
+    <thead>
+      <tr class="text-base bg-stone-100">
+        <th class="px-1 py-1 w-1">Online</th>
+        <th class="px-1 py-1">ID</th>
+        <th class="px-1 py-1">Alarms</th>
+      </tr>
+    </thead>
+    <%= for {id,state} <- @clients do %>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1"><%= if state[:online], do: "🟢" %></td>
+        <td class="px-1 py-1"><.link href={~p"/client/#{id}"}><%= id %></.link></td>
+        <td class="px-1 py-1">
+          <%= if state[:num_alarms] > 0, do: "⚠️ " <> to_string(state[:num_alarms]) %>
+        </td>
+      </tr>
+    <% end %>
+  </table>
+</div>

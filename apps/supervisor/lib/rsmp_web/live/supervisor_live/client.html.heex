@@ -1,0 +1,110 @@
+<p><.link href={~p"/"}>&larr; Client List</.link></p>
+
+<h1 class="text-2xl font-bold py-4">Client <%= @client_id %></h1>
+<div id="client" phx-update="append"></div>
+
+<div class="overflow-x-auto rounded-md my-4">
+  <table id="statuses" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Statuses
+    </caption>
+
+    <thead>
+      <tr class="text-base bg-stone-100">
+        <th class="px-1 py-1">Path</th>
+        <th class="px-1 py-1">Value</th>
+      </tr>
+    </thead>
+
+    <%= for {status,value} <- @client.statuses do %>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1"><%= status %></td>
+        <td class="px-1 py-1">
+          <%= {:ok,str} = Poison.encode(value)
+          String.trim(str) %>
+        </td>
+      </tr>
+    <% end %>
+  </table>
+</div>
+
+<div class="overflow-x-auto rounded-md my-4">
+  <table id="alarms" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Alarms
+    </caption>
+
+    <thead>
+      <tr class="text-base bg-stone-100">
+        <th class="px-1 py-1">Path</th>
+        <%= for flag <- @alarm_flags do %>
+          <th class="px-1 py-1"><%= to_string(flag) %></th>
+        <% end %>
+      </tr>
+    </thead>
+
+    <%= for {path,alarm} <- @client.alarms do %>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1"><%= path %></td>
+        <%= for flag <- @alarm_flags do %>
+          <td class="px-1 py-1">
+            <button
+              class={"text-white rounded-lg px-2 " <> if alarm[flag], do: "bg-purple-900", else: "bg-stone-600"}
+              phx-click="alarm"
+              phx-value-path={path}
+              phx-value-flag={flag}
+              value={to_string(alarm[flag])}
+            >
+              <%= if alarm[flag], do: ~c"Yes", else: ~c"No" %>
+            </button>
+          </td>
+        <% end %>
+      </tr>
+    <% end %>
+  </table>
+</div>
+
+<div class="overflow-x-auto rounded-md my-4">
+  <table id="commands" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Commands
+    </caption>
+
+    <thead>
+      <tr class="text-base bg-stone-100">
+        <th class="px-1 py-1">Path</th>
+        <th class="px-1 py-1">Action</th>
+        <th class="px-1 py-1 w-1/3">Response</th>
+      </tr>
+    </thead>
+
+    <%= for {command,path} <- @commands do %>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1"><%= command %>, <%= inspect(path) %></td>
+        <td class="px-1 py-1">
+          <form phx-submit="command">
+            <input
+              type="number"
+              name="value"
+              value={@client.statuses[path]}
+              class="bg-stone-600 text-white rounded-lg px-2 w-20"
+            />
+            <input type="hidden" name="path" value={command} />
+            <input
+              type="submit"
+              name="submit"
+              value="Send"
+              class="bg-stone-600 hover:bg-orange-600 text-white rounded-lg px-2"
+            />
+          </form>
+        </td>
+        <td>
+          <span class={"inline-block h-5 w-5 animate-spin rounded-full border-4 border-solid border-purple-900 border-r-transparent " <> if @responses[command]["phase"] == "waiting", do: "shown", else: "hidden"}>
+          </span>
+          <%= @responses[command]["symbol"] %>
+          <%= @responses[command]["reason"] %>
+        </td>
+      </tr>
+    <% end %>
+  </table>
+</div>

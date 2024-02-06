@@ -1,0 +1,9 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* This file is for your main application CSS */
+
+a {
+   @apply underline text-purple-800 hover:text-orange-600 visited:text-stone-800
+}
