@@ -1,5 +1,5 @@
-defmodule RSMPWeb.SupervisorLive.Client do
-  use RSMPWeb, :live_view
+defmodule RSMP.Supervisor.Web.SupervisorLive.Client do
+  use RSMP.Supervisor.Web, :live_view
   use Phoenix.Component
 
   require Logger

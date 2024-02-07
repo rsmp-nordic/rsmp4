@@ -1,4 +1,4 @@
-defmodule RSMP do
+defmodule RSMP.Client.Context do
   @moduledoc """
   RSMP keeps the contexts that define your domain
   and business logic.

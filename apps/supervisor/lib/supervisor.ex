@@ -1,6 +1,6 @@
-defmodule RSMP do
+defmodule RSMP.Supervisor.Context do
   @moduledoc """
-  RSMP keeps the contexts that define your domain
+  Keeps the contexts that define your domain
   and business logic.
 
   Contexts are also responsible for managing your data, regardless

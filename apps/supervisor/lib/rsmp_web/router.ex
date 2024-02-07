@@ -1,11 +1,11 @@
-defmodule RSMPWeb.Router do
-  use RSMPWeb, :router
+defmodule RSMP.Supervisor.Web.Router do
+  use RSMP.Supervisor.Web, :router
 
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
-    plug :put_root_layout, html: {RSMPWeb.Layouts, :root}
+    plug :put_root_layout, html: {RSMP.Supervisor.Web.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
   end
@@ -14,7 +14,7 @@ defmodule RSMPWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/", RSMPWeb do
+  scope "/", RSMP.Supervisor.Web do
     pipe_through :browser
 
     live "/", SupervisorLive.Index, :list

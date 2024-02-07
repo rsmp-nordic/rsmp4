@@ -42,7 +42,7 @@ defmodule RSMP.Supervisor do
   @impl true
   def init(_rsmp) do
     emqtt_opts = Application.get_env(:rsmp, :emqtt)
-    id = emqtt_opts[:clientid]
+    id = emqtt_opts[:supervisor_id]
     {:ok, pid} = :emqtt.start_link(emqtt_opts)
     {:ok, _} = :emqtt.connect(pid)
 
@@ -260,38 +260,6 @@ defmodule RSMP.Supervisor do
     Logger.info("RSMP: Publish result: #{Kernel.inspect(data)}")
   end
 
-  # Parse topic paths of the form:
-  # class/module/method/id/component/...
-  #
-  # Compont can have 0 (ie. left out), 1 or more levels, so all these are valid:
-  #
-  # command/tlc/plan/tlc_345232
-  # command/tlc/phases/tlc_345232/sg
-  # command/tlc/phase/tlc_345232/sg/1
-  #
-  # We first split by "/".
-  # The first is our id, the next three elements (class, module, method and id) is for matching.
-  # The rest is the component path, which can be have 0, 1 or more elements.
-  #
-  defp parse_topic(%{topic: topic}) do
-    topic = String.split(topic, "/", trim: true)
-    Enum.split(topic, 4)
-  end
-
-  def to_payload(data) do
-    Poison.encode!(data)
-  end
-
-  def from_payload(json) do
-    try do
-      Poison.decode!(json)
-    rescue
-      _e ->
-        # Logger.warning "Could not decode JSON: #{inspect(json)}"
-        nil
-    end
-  end
-
   def set_client_num_alarms(client) do
     num =
       client.alarms
@@ -302,9 +270,4 @@ defmodule RSMP.Supervisor do
     client |> Map.put(:num_alarms, num)
   end
 
-  defp build_path(module, command, component) do
-    [module, command, component]
-    |> List.flatten()
-    |> Enum.join("/")
-  end
 end

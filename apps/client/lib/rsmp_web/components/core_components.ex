@@ -1,4 +1,4 @@
-defmodule RSMPWeb.CoreComponents do
+defmodule RSMP.Client.Web.CoreComponents do
   @moduledoc """
   Provides core UI components.
 
@@ -642,9 +642,9 @@ defmodule RSMPWeb.CoreComponents do
     # uncommenting and adjusting the following code:
 
     # if count = opts[:count] do
-    #   Gettext.dngettext(RSMPWeb.Gettext, "errors", msg, msg, count, opts)
+    #   Gettext.dngettext(RSMP.Client.Web.Gettext, "errors", msg, msg, count, opts)
     # else
-    #   Gettext.dgettext(RSMPWeb.Gettext, "errors", msg, opts)
+    #   Gettext.dgettext(RSMP.Client.Web.Gettext, "errors", msg, opts)
     # end
 
     Enum.reduce(opts, msg, fn {key, value}, acc ->

@@ -1,12 +1,12 @@
-defmodule RSMPWeb do
+defmodule RSMP.Client.Web do
   @moduledoc """
   The entrypoint for defining your web interface, such
   as controllers, components, channels, and so on.
 
   This can be used in your application as:
 
-      use RSMPWeb, :controller
-      use RSMPWeb, :html
+      use RSMP.Client.Web, :controller
+      use RSMP.Client.Web, :html
 
   The definitions below will be executed for every controller,
   component, etc, so keep them short and clean, focused
@@ -40,7 +40,7 @@ defmodule RSMPWeb do
     quote do
       use Phoenix.Controller,
         formats: [:html, :json],
-        layouts: [html: RSMPWeb.Layouts]
+        layouts: [html: RSMP.Client.Web.Layouts]
 
       import Plug.Conn
 
@@ -51,7 +51,7 @@ defmodule RSMPWeb do
   def live_view do
     quote do
       use Phoenix.LiveView,
-        layout: {RSMPWeb.Layouts, :app}
+        layout: {RSMP.Client.Web.Layouts, :app}
 
       unquote(html_helpers())
     end
@@ -83,7 +83,7 @@ defmodule RSMPWeb do
       # HTML escaping functionality
       import Phoenix.HTML
       # Core UI components and translation
-      import RSMPWeb.CoreComponents
+      import RSMP.Client.Web.CoreComponents
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS
@@ -96,9 +96,9 @@ defmodule RSMPWeb do
   def verified_routes do
     quote do
       use Phoenix.VerifiedRoutes,
-        endpoint: RSMPWeb.Endpoint,
-        router: RSMPWeb.Router,
-        statics: RSMPWeb.static_paths()
+        endpoint: RSMP.Client.Web.Endpoint,
+        router: RSMP.Client.Web.Router,
+        statics: RSMP.Client.Web.static_paths()
     end
   end
 

@@ -1,4 +1,4 @@
-defmodule RSMPWeb.ConnCase do
+defmodule RSMP.Client.Web.ConnCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -11,7 +11,7 @@ defmodule RSMPWeb.ConnCase do
   we enable the SQL sandbox, so changes done to the database
   are reverted at the end of every test. If you are using
   PostgreSQL, you can even run database tests asynchronously
-  by setting `use RSMPWeb.ConnCase, async: true`, although
+  by setting `use RSMP.Client.Web.ConnCase, async: true`, although
   this option is not recommended for other databases.
   """
 
@@ -20,14 +20,14 @@ defmodule RSMPWeb.ConnCase do
   using do
     quote do
       # The default endpoint for testing
-      @endpoint RSMPWeb.Endpoint
+      @endpoint RSMP.Client.Web.Endpoint
 
-      use RSMPWeb, :verified_routes
+      use RSMP.Client.Web, :verified_routes
 
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
-      import RSMPWeb.ConnCase
+      import RSMP.Client.Web.ConnCase
     end
   end
 

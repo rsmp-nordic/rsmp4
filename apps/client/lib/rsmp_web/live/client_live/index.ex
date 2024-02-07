@@ -1,5 +1,5 @@
-defmodule RSMPWeb.ClientLive.Index do
-  use RSMPWeb, :live_view
+defmodule RSMP.Client.Web.ClientLive.Index do
+  use RSMP.Client.Web, :live_view
   alias RSMP.Client
   require Logger
 

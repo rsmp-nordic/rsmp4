@@ -1,4 +1,4 @@
-defmodule RSMPWeb.Telemetry do
+defmodule RSMP.Supervisor.Web.Telemetry do
   use Supervisor
   import Telemetry.Metrics
 
@@ -63,7 +63,7 @@ defmodule RSMPWeb.Telemetry do
     [
       # A module, function and arguments to be invoked periodically.
       # This function must call :telemetry.execute/3 and a metric must be added above.
-      # {RSMPWeb, :count_users, []}
+      # {RSMP.Supervisor.Web, :count_users, []}
     ]
   end
 end

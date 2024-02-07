@@ -1,5 +1,5 @@
-defmodule RSMPWeb.ClientLiveTest do
-  use RSMPWeb.ConnCase
+defmodule RSMP.Client.Web.ClientLiveTest do
+  use RSMP.Client.Web.ConnCase
 
   import Phoenix.LiveViewTest
   import RSMP.MeasurementsFixtures

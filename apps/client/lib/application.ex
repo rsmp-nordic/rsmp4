@@ -1,4 +1,4 @@
-defmodule RSMP.Application do
+defmodule RSMP.Client.Application do
   # See https://hexdocs.pm/elixir/Application.html
   # for more information on OTP Applications
   @moduledoc false
@@ -9,22 +9,16 @@ defmodule RSMP.Application do
   def start(_type, _args) do
     children = [
       # Start the Telemetry supervisor
-      RSMPWeb.Telemetry,
-      # Start the PubSub system
-      {Phoenix.PubSub, name: RSMP.PubSub},
+      RSMP.Client.Web.Telemetry,
       # Start Finch
-      {Finch, name: RSMP.Finch},
+      {Finch, name: RSMP.Client.Finch},
       # Start the Endpoint (http/https)
-      RSMPWeb.Endpoint,
-      # Start or registry
-      {Registry, keys: :unique, name: RSMP.Registry},
-      # Start our RSMP supervisor
-      RSMP.Supervisor
+      RSMP.Client.Web.Endpoint
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: RSMP.AppSupervisor]
+    opts = [strategy: :one_for_one, name: RSMP.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
@@ -32,7 +26,7 @@ defmodule RSMP.Application do
   # whenever the application is updated.
   @impl true
   def config_change(changed, _new, removed) do
-    RSMPWeb.Endpoint.config_change(changed, removed)
+    RSMP.Client.Web.Endpoint.config_change(changed, removed)
     :ok
   end
 end
