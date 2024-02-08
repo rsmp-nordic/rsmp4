@@ -1,5 +1,7 @@
 import Config
 
+
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
@@ -7,6 +9,13 @@ import Config
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
 config :client, RSMP.Client.Web.Endpoint,
+  url: [host: "localhost"],
+  render_errors: [
+    formats: [html: RSMP.Client.Web.ErrorHTML, json: RSMP.Client.Web.ErrorJSON],
+    layout: false
+  ],
+  pubsub_server: RSMP.PubSub,
+  live_view: [signing_salt: "+BqAJ3a1"],
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}, port: 3000],
@@ -15,8 +24,8 @@ config :client, RSMP.Client.Web.Endpoint,
   debug_errors: true,
   secret_key_base: "g2CxU92k0dAXUukLWGyznWkH8doFRSrqBbvfRzEKOGIHNxisoDEmJsx2EvzDsEH1",
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]}
+    esbuild: {Esbuild, :install_and_run, [:client, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:client, ~w(--watch)]}
   ],
   # Watch static and templates for browser reloading.
   live_reload: [
@@ -30,6 +39,13 @@ config :client, RSMP.Client.Web.Endpoint,
 
 
 config :supervisor, RSMP.Supervisor.Web.Endpoint,
+  url: [host: "localhost"],
+  render_errors: [
+    formats: [html: RSMP.Supervisor.Web.ErrorHTML, json: RSMP.Supervisor.Web.ErrorJSON],
+    layout: false
+  ],
+  pubsub_server: RSMP.PubSub,
+  live_view: [signing_salt: "+BqAJ3a2"],
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}, port: 4000],
@@ -38,8 +54,8 @@ config :supervisor, RSMP.Supervisor.Web.Endpoint,
   debug_errors: true,
   secret_key_base: "g2CxU92k0dAXUukLWGyznWkH8doFRSrqBbvfRzEKOGIHNxisoDEmJsx2EvzDsEH2",
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]}
+    esbuild: {Esbuild, :install_and_run, [:supervisor, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:supervisor, ~w(--watch)]}
   ],
 # Watch static and templates for browser reloading.
   live_reload: [

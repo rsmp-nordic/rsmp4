@@ -43,10 +43,7 @@ defmodule RSMP.Client.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:plug_cowboy, "~> 2.5"},
-      {:cowlib, "~> 2.12.1", override: true},
-      {:secure_random, "~> 0.5"},
-      {:emqtt, github: "emqx/emqtt", system_env: [{"BUILD_WITHOUT_QUIC", "1"}]},
-      {:poison, "~> 5.0"}
+      {:cowlib, "~> 2.12.1", override: true}
     ]
   end
 

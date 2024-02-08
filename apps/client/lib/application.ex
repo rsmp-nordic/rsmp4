@@ -12,6 +12,8 @@ defmodule RSMP.Client.Application do
       RSMP.Client.Web.Telemetry,
       # Start Finch
       {Finch, name: RSMP.Client.Finch},
+      # Start the PubSub system
+      {Phoenix.PubSub, name: RSMP.PubSub},
       # Start the Endpoint (http/https)
       RSMP.Client.Web.Endpoint
     ]

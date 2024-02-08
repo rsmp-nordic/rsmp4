@@ -7,26 +7,6 @@
 # General application configuration
 import Config
 
-# Configures the endpoint
-config :client, RSMP.Client.Web.Endpoint,
-  url: [host: "localhost"],
-  render_errors: [
-    formats: [html: RSMP.Client.Web.ErrorHTML, json: RSMP.Client.Web.ErrorJSON],
-    layout: false
-  ],
-  pubsub_server: RSMP.PubSub,
-  live_view: [signing_salt: "+BqAJ3a1"]
-
-config :supervisor, RSMP.Supervisor.Web.Endpoint,
-  url: [host: "localhost"],
-  render_errors: [
-    formats: [html: RSMP.Supervisor.Web.ErrorHTML, json: RSMP.Supervisor.Web.ErrorJSON],
-    layout: false
-  ],
-  pubsub_server: RSMP.PubSub,
-  live_view: [signing_salt: "+BqAJ3a2"]
-
-
 # Configures the mailer
 #
 # By default it uses the "Local" adapter which stores the emails
@@ -40,23 +20,38 @@ config :supervisor, RSMP.Supervisor.Mailer, adapter: Swoosh.Adapters.Local
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.17.11",
-  default: [
+  client: [
     args:
       ~w(js/app.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
-    cd: Path.expand("../assets", __DIR__),
+    cd: Path.expand("../apps/client/assets", __DIR__),
+    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ],
+  supervisor: [
+    args:
+      ~w(js/app.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
+    cd: Path.expand("../apps/supervisor/assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ]
+
 
 # Configure tailwind (the version is required)
 config :tailwind,
   version: "3.3.2",
-  default: [
+  client: [
     args: ~w(
       --config=tailwind.config.js
       --input=css/app.css
       --output=../priv/static/assets/app.css
     ),
-    cd: Path.expand("../assets", __DIR__)
+    cd: Path.expand("../apps/client/assets", __DIR__)
+  ],
+  supervisor: [
+    args: ~w(
+      --config=tailwind.config.js
+      --input=css/app.css
+      --output=../priv/static/assets/app.css
+    ),
+    cd: Path.expand("../apps/supervisor/assets", __DIR__)
   ]
 
 # Configures Elixir's Logger
