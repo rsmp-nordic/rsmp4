@@ -19,18 +19,15 @@ defmodule RSMP.Utility do
   # The rest is the component path, which can be have 0, 1 or more elements.
   #
   def parse_topic(topic) do
-    topic = String.split(topic, "/", trim: true)
-    # optionally remove id
-    [_id | topic] = topic
-    Enum.split(topic, 3)
+    topic = String.split(topic, "/")
+    Enum.split(topic, 4)
   end
 
   # Parse topic paths of the form:
   # module/method/component/...
   def parse_path(topic) do
-    topic = String.split(topic, "/", trim: true)
-    # optionally remove id
-    Enum.split(topic, 2)
+    topic = String.split(topic, "/")
+    Enum.split(topic, 3)
   end
 
   def to_payload(data) do

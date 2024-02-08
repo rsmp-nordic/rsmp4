@@ -16,6 +16,8 @@ defmodule RSMP.Supervisor.Application do
       {Phoenix.PubSub, name: RSMP.PubSub},
      # Start the Endpoint (http/https)
       RSMP.Supervisor.Web.Endpoint,
+      # Start our RSMP supervisor
+      RSMP.Supervisor
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

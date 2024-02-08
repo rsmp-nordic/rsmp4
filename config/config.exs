@@ -72,8 +72,6 @@ config :rsmp, :emqtt,
   proto_ver: :v5,
   clean_start: false,
   name: :emqtt,
-  reconnect: :infinity,
-	site_id: "tlc_582a",
-	supervisor_id: "supervisor_742c"
+  reconnect: :infinity
 
 config :logger, level: :debug

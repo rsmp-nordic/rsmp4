@@ -109,7 +109,7 @@ defmodule RSMP.Client.TLC do
 
   # set current time plan
   defp handle_publish(
-         ["command", "tlc", "2"],
+         [_id, "command", "tlc", "2"],
          component,
          %{payload: payload, properties: properties},
          client

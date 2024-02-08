@@ -42,7 +42,9 @@ defmodule RSMP.Supervisor do
   @impl true
   def init(_rsmp) do
     emqtt_opts = Application.get_env(:rsmp, :emqtt)
-    id = emqtt_opts[:supervisor_id]
+    id = "super_#{SecureRandom.hex(4)}"
+    emqtt_opts = emqtt_opts |> Keyword.put(:clientid, id)
+
     {:ok, pid} = :emqtt.start_link(emqtt_opts)
     {:ok, _} = :emqtt.connect(pid)
 
@@ -145,8 +147,8 @@ defmodule RSMP.Supervisor do
 
   @impl true
   def handle_info({:publish, publish}, supervisor) do
-    {topic, component} = parse_topic(publish)
-    handle_publish(topic, component, publish, supervisor)
+    {path, component} = parse_topic(publish.topic)
+    handle_publish(path, component, publish, supervisor)
   end
 
   @impl true
@@ -210,7 +212,7 @@ defmodule RSMP.Supervisor do
   defp handle_publish(
          [id, "status", module, code],
          component,
-         %{payload: payload, properties: _properties},
+         %{payload: payload},
          supervisor
        ) do
     status = from_payload(payload)
@@ -230,7 +232,7 @@ defmodule RSMP.Supervisor do
   defp handle_publish(
          [id, "alarm", module, code],
          component,
-         %{payload: payload, properties: _properties},
+         %{payload: payload},
          supervisor
        ) do
     status = from_payload(payload)
@@ -253,6 +255,7 @@ defmodule RSMP.Supervisor do
       "Unhandled publish, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
     )
 
+    IO.puts publish.payload
     {:noreply, supervisor}
   end
 

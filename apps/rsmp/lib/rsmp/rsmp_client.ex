@@ -210,9 +210,9 @@ defmodule RSMP.Client do
 
       # mqtt
       @impl true
-      def handle_info({:publish, %{topic: topic}} = publish, client) do
-        {topic, component} = parse_topic(topic)
-        handle_publish(topic, component, publish, client)
+      def handle_info({:publish, publish}, client) do
+        {path, component} = parse_topic(publish.topic)
+        handle_publish(path, component, publish, client)
       end
 
       @impl true
@@ -229,9 +229,9 @@ defmodule RSMP.Client do
       end
 
       defp handle_publish(
-             ["react", module, code],
+             [_id, "react", module, code],
              component,
-             %{payload: payload, properties: _properties},
+             %{payload: payload},
              client
            ) do
         flags = from_payload(payload)
