@@ -46,5 +46,4 @@ defmodule RSMP.Client.MixProject do
       {:cowlib, "~> 2.12.1", override: true}
     ]
   end
-
 end

@@ -1,7 +1,5 @@
 import Config
 
-
-
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
@@ -37,7 +35,6 @@ config :client, RSMP.Client.Web.Endpoint,
   # Enable dev routes for dashboard and mailbox
   dev_routes: true
 
-
 config :supervisor, RSMP.Supervisor.Web.Endpoint,
   url: [host: "localhost"],
   render_errors: [
@@ -57,7 +54,7 @@ config :supervisor, RSMP.Supervisor.Web.Endpoint,
     esbuild: {Esbuild, :install_and_run, [:supervisor, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:supervisor, ~w(--watch)]}
   ],
-# Watch static and templates for browser reloading.
+  # Watch static and templates for browser reloading.
   live_reload: [
     patterns: [
       ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
@@ -66,8 +63,6 @@ config :supervisor, RSMP.Supervisor.Web.Endpoint,
   ],
   # Enable dev routes for dashboard and mailbox
   dev_routes: true
-
-
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :console, format: "[$level] $message\n"

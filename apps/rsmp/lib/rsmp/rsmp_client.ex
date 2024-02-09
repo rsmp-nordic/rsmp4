@@ -228,20 +228,56 @@ defmodule RSMP.Client do
         {:noreply, client}
       end
 
-      defp handle_publish(
-             [_id, "react", module, code],
-             component,
-             %{payload: payload},
-             client
-           ) do
+      def handle_publish(
+            [id, "react", module, code],
+            component,
+            publish,
+            client
+          ),
+          do: handle_react([id, module, code], component, publish, client)
+
+      def handle_publish(
+            [id, "status", module, code],
+            component,
+            publish,
+            client
+          ),
+          do: handle_status([id, module, code], component, publish, client)
+
+      def handle_publish(
+            [id, "command", module, code],
+            component,
+            publish,
+            client
+          ),
+          do: handle_comamnd([id, module, code], component, publish, client)
+
+      def handle_status(topic, component, publish, client) do
+        Logger.warning(
+          "Unhandled status, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
+        )
+
+        {:noreply, client}
+      end
+
+      def handle_command(topic, component, publish, client) do
+        Logger.warning(
+          "Unhandled command, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
+        )
+
+        {:noreply, client}
+      end
+
+      def handle_react([id, module, code], component, %{payload: payload}, client) do
         flags = from_payload(payload)
         path = build_path(module, code, component)
 
         Logger.info("RSMP: Received alarm flag #{path}, #{inspect(flags)}")
 
-        alarm = client.alarms[path] |> Map.merge(flags)
+        alarm = client.alarms[path] |> Alarm.update_from_string_map(flags)
         client = put_in(client.alarms[path], alarm)
 
+        Logger.info(inspect(alarm))
         publish_alarm(client, path)
 
         data = %{topic: "alarm", changes: %{path => client.alarms[path]}}
@@ -250,7 +286,7 @@ defmodule RSMP.Client do
         {:noreply, client}
       end
 
-      defp handle_publish(topic, component, publish, client) do
+      def handle_publish(topic, component, publish, client) do
         Logger.warning(
           "Unhandled publish, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
         )
@@ -258,7 +294,9 @@ defmodule RSMP.Client do
         {:noreply, client}
       end
 
-      defoverridable handle_publish: 4
+      defoverridable handle_react: 4
+      defoverridable handle_status: 4
+      defoverridable handle_command: 4
 
       # helpers
 

@@ -85,7 +85,8 @@ defmodule RSMP.Supervisor do
   @impl true
   def handle_cast({:set_plan, client_id, plan}, supervisor) do
     # Send command to device
-    path = "tlc/2" # set current time plan
+    # set current time plan
+    path = "tlc/2"
     topic = "#{client_id}/command/#{path}"
     command_id = SecureRandom.hex(2)
 
@@ -255,7 +256,7 @@ defmodule RSMP.Supervisor do
       "Unhandled publish, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
     )
 
-    IO.puts publish.payload
+    IO.puts(publish.payload)
     {:noreply, supervisor}
   end
 
@@ -272,5 +273,4 @@ defmodule RSMP.Supervisor do
 
     client |> Map.put(:num_alarms, num)
   end
-
 end

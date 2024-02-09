@@ -27,7 +27,7 @@ defmodule RSMP.Utility do
   # module/method/component/...
   def parse_path(topic) do
     topic = String.split(topic, "/")
-    Enum.split(topic, 3)
+    Enum.split(topic, 2)
   end
 
   def to_payload(data) do

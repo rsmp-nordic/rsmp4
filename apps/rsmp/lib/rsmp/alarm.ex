@@ -1,14 +1,14 @@
 defmodule RSMP.Alarm do
   defstruct(
     active: false,
-    acknowledge: false,
+    acknowledged: false,
     blocked: true
   )
 
   def new(options \\ []), do: __struct__(options)
 
   def get_flag_keys() do
-    [:active, :acknowledge, :blocked] |> Enum.sort()
+    [:active, :acknowledged, :blocked] |> Enum.sort()
   end
 
   def flag_atom_from_string(flag) do
@@ -19,6 +19,13 @@ defmodule RSMP.Alarm do
     }
 
     mapping[flag]
+  end
+
+  # update from 
+  def update_from_string_map(alarm, flags) do
+    updates = for {key, value} <- flags, into: %{}, do: {flag_atom_from_string(key), value}
+    updates = updates |> Map.delete(nil)
+    alarm |> Map.merge(updates)
   end
 
   def get_flag(alarm, flag) do

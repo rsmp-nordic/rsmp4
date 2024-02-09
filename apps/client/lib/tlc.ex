@@ -108,12 +108,12 @@ defmodule RSMP.Client.TLC do
   end
 
   # set current time plan
-  defp handle_publish(
-         [_id, "command", "tlc", "2"],
-         component,
-         %{payload: payload, properties: properties},
-         client
-       ) do
+  def handle_comamnd(
+        [_id, "tlc", "2"],
+        component,
+        %{payload: payload, properties: properties},
+        client
+      ) do
     options = %{
       component: component,
       plan: from_payload(payload),
@@ -255,10 +255,16 @@ defmodule RSMP.Client.TLC do
     %{"status" => items}
   end
 
-  def format_rsmp_status("tlc/28", component, data),
-    do: format_rsmp_status("tlc/24", component, data)
+  def format_rsmp_status("tlc/28", _component, data) do
+    items =
+      data
+      |> Enum.map(fn {plan, value} -> "#{plan}-#{value}" end)
+      |> Enum.join(",")
 
-  def format_rsmp_status("traffic/201", ["dl", _dl], data) do
+    %{"status" => items}
+  end
+
+  def format_rsmp_status("traffic/201", _component, data) do
     %{
       "starttime" => data.starttime,
       "vehicles" => data.vehicles

@@ -20,7 +20,7 @@
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
         <td class="px-1 py-1"><%= status %></td>
         <td class="px-1 py-1">
-          <%= {:ok,str} = Poison.encode(value)
+          <%= {:ok, str} = Poison.encode(value)
           String.trim(str) %>
         </td>
       </tr>

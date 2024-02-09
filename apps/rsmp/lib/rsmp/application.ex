@@ -11,7 +11,7 @@ defmodule RSMP.Application do
       # Start the PubSub system
       {Phoenix.PubSub, name: RSMP.PubSub},
       # Start our registry
-      {Registry, keys: :unique, name: RSMP.Registry},
+      {Registry, keys: :unique, name: RSMP.Registry}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
@@ -19,5 +19,4 @@ defmodule RSMP.Application do
     opts = [strategy: :one_for_one, name: RSMP]
     Supervisor.start_link(children, opts)
   end
-
 end

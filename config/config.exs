@@ -33,7 +33,6 @@ config :esbuild,
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ]
 
-
 # Configure tailwind (the version is required)
 config :tailwind,
   version: "3.3.2",

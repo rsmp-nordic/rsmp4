@@ -28,5 +28,4 @@ defmodule RSMP.MixProject do
       {:poison, "~> 5.0"}
     ]
   end
-
 end
