@@ -8,6 +8,10 @@ defmodule RSMP.Site.TLC do
   def init_client(client) do
     client
     |> Map.merge(%{
+      modules: %{
+        "tlc" => RSMP.Site.Module.TLC,
+        "traffic" => RSMP.Site.Module.Traffic
+      },
       statuses: %{
         # signal group status
         "tlc/1" => %{
@@ -83,7 +87,7 @@ defmodule RSMP.Site.TLC do
     phase_string = Map.values(phases) |> Enum.join()
     client = put_in(client, [:statuses, signal_group_status_path, :groups], phase_string)
 
-    publish_status(client, signal_group_status_path)
+    Site.publish_status(client, signal_group_status_path)
 
     data = %{topic: "status", changes: [signal_group_status_path]}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
@@ -99,7 +103,7 @@ defmodule RSMP.Site.TLC do
     client = client |> put_in([:statuses, counts_path, :vehicles], :rand.uniform(3))
     client = client |> put_in([:statuses, counts_path, :starttime], now)
 
-    publish_status(client, counts_path)
+    Site.publish_status(client, counts_path)
 
     data = %{topic: "status", changes: [counts_path]}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
@@ -107,169 +111,6 @@ defmodule RSMP.Site.TLC do
     client
   end
 
-  # set current time plan
-  def handle_comamnd(
-        [_id, "tlc", "2"],
-        component,
-        %{payload: payload, properties: properties},
-        client
-      ) do
-    options = %{
-      component: component,
-      plan: from_payload(payload),
-      response_topic: properties[:"Response-Topic"],
-      command_id: properties[:"Correlation-Data"]
-    }
-
-    {:noreply, set_plan(client, options)}
-  end
-
-  def set_plan(client, %{
-        component: _component,
-        plan: plan,
-        response_topic: response_topic,
-        command_id: command_id
-      }) do
-    current_plan = client.statuses["tlc/14"]["status"]
-    status_path = "tlc/14"
-
-    {response, client} =
-      cond do
-        plan == current_plan ->
-          Logger.info("RSMP: Already using plan: #{plan}")
-
-          {
-            %{status: "already", plan: plan, reason: "Already using plan #{plan}"},
-            client
-          }
-
-        client.plans[plan] != nil ->
-          Logger.info("RSMP: Switching to plan: #{plan}")
-
-          client =
-            client |> put_in([:statuses, status_path], %{"status" => plan, "source" => "forced"})
-
-          {
-            %{status: "ok", plan: plan, reason: ""},
-            client
-          }
-
-        true ->
-          Logger.info("RSMP: Unknown plan: #{plan}")
-
-          {
-            %{status: "unknown", plan: plan, reason: "Plan #{plan} not found"},
-            client
-          }
-      end
-
-    if response_topic do
-      properties = %{
-        "Correlation-Data": command_id
-      }
-
-      # Client, Topic, Properties, Payload, Opts, Timeout, Callback
-      :emqtt.publish_async(
-        client.pid,
-        response_topic,
-        properties,
-        to_payload(response),
-        [retain: true, qos: 1],
-        :infinity,
-        &publish_done/1
-      )
-    end
-
-    if response[:status] == "ok" do
-      publish_status(client, status_path)
-
-      data = %{topic: "status", changes: [status_path]}
-      Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-    end
-
-    client
-  end
-
-  # import status from sxl format to internal format
-
-  def parse_rsmp_status("tlc/1", _component, data) do
-    %{
-      base: data["basecyclecounter"],
-      cycle: data["cyclecounter"],
-      groups: data["signalgroupstatus"],
-      stage: data["stage"]
-    }
-  end
-
-  def parse_rsmp_status("tlc/14", _component, data) do
-    %{
-      plan: data["status"],
-      source: data["source"]
-    }
-  end
-
-  def parse_rsmp_status("tlc/24", _component, data) do
-    items = String.split(data["status"], ",")
-
-    for item <- items, into: %{} do
-      [plan, value] = String.split(item, "-")
-      {String.to_integer(plan), String.to_integer(value)}
-    end
-  end
-
-  def parse_rsmp_status("tlc/28", component, data),
-    do: parse_rsmp_status("tlc/24", component, data)
-
-  # export status from internal format to sxl format
-
-  def format_rsmp_status("tlc/1", _component, data) do
-    %{
-      "basecyclecounter" => data.base,
-      "cyclecounter" => data.cycle,
-      "signalgroupstatus" => data.groups,
-      "stage" => data.stage
-    }
-  end
-
-  def format_rsmp_status("tlc/14", _component, data) do
-    %{
-      "status" => data.plan,
-      "source" => data.source
-    }
-  end
-
-  def format_rsmp_status("tlc/22", _component, data) do
-    items =
-      data
-      |> Enum.join(",")
-
-    %{"status" => items}
-  end
-
-  def format_rsmp_status("tlc/24", _component, data) do
-    items =
-      data
-      |> Enum.map(fn {plan, value} -> "#{plan}-#{value}" end)
-      |> Enum.join(",")
-
-    %{"status" => items}
-  end
-
-  def format_rsmp_status("tlc/28", _component, data) do
-    items =
-      data
-      |> Enum.map(fn {plan, value} -> "#{plan}-#{value}" end)
-      |> Enum.join(",")
-
-    %{"status" => items}
-  end
-
-  def format_rsmp_status("traffic/201", _component, data) do
-    %{
-      "starttime" => data.starttime,
-      "vehicles" => data.vehicles
-    }
-  end
 
   # helpers
 
