@@ -6,10 +6,10 @@ import Config
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :client, RSMP.Client.Web.Endpoint,
+config :site, RSMP.Site.Web.Endpoint,
   url: [host: "localhost"],
   render_errors: [
-    formats: [html: RSMP.Client.Web.ErrorHTML, json: RSMP.Client.Web.ErrorJSON],
+    formats: [html: RSMP.Site.Web.ErrorHTML, json: RSMP.Site.Web.ErrorJSON],
     layout: false
   ],
   pubsub_server: RSMP.PubSub,
@@ -22,8 +22,8 @@ config :client, RSMP.Client.Web.Endpoint,
   debug_errors: true,
   secret_key_base: "g2CxU92k0dAXUukLWGyznWkH8doFRSrqBbvfRzEKOGIHNxisoDEmJsx2EvzDsEH1",
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:client, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:client, ~w(--watch)]}
+    esbuild: {Esbuild, :install_and_run, [:site, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:site, ~w(--watch)]}
   ],
   # Watch static and templates for browser reloading.
   live_reload: [

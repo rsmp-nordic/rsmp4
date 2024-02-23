@@ -52,7 +52,7 @@ iex(7)> [info] RSMP: tlc_7a88044b: Received response to 'plan' command d16a: %{"
  ```
 
 ### Client
-From iex (Interactive Elixir) you can use the RSMP.Client module to interact with RSMP MQTT clients. If you have a supervisor, you should see the client appear online, send status messages, etc:
+From iex (Interactive Elixir) you can use the RSMP.Site module to interact with RSMP MQTT clients. If you have a supervisor, you should see the client appear online, send status messages, etc:
 
 ```sh
 %> iex -S mix
@@ -60,21 +60,21 @@ Erlang/OTP 25 [erts-13.2.2.3] [source] [64-bit] [smp:8:8] [ds:8:8:10] [async-thr
 
 Interactive Elixir (1.15.5) - press Ctrl+C to exit (type h() ENTER for help)
 
-iex(1)> {:ok,pid} = RSMP.Client.start_link()   # start our client, will send state, statuses and alarms
+iex(1)> {:ok,pid} = RSMP.Site.start_link()   # start our client, will send state, statuses and alarms
 [info] RSMP: Starting client with pid #PID<0.342.0>
 {:ok, #PID<0.342.0>}
 
-iex(4)> pid |> RSMP.Client.get_id()  # show our RSMP/MQTT id
+iex(4)> pid |> RSMP.Site.get_id()  # show our RSMP/MQTT id
 "tlc_b2926093"
 
-iex(5)> pid |> RSMP.Client.get_statuses()  # show our local statuses
+iex(5)> pid |> RSMP.Site.get_statuses()  # show our local statuses
 %{
   "./env/humidity" => 48,
   "./tlc/plan" => 1,
   "./env/temperature" => 28
 }
 
-iex(6)> pid |> RSMP.Client.get_alarms()  # show our local alarms
+iex(6)> pid |> RSMP.Site.get_alarms()  # show our local alarms
 %{
   "./env/humidity" => %{
     "acknowledged" => false,
@@ -88,12 +88,12 @@ iex(6)> pid |> RSMP.Client.get_alarms()  # show our local alarms
   }
 }
 
-iex(7)> pid |> RSMP.Client.set_status("./env/humidity",49)  # will publish our status, if changed
+iex(7)> pid |> RSMP.Site.set_status("./env/humidity",49)  # will publish our status, if changed
 :ok
 
-iex(9)> pid |> RSMP.Client.raise_alarm("./env/temperature") # will publish alarm, if chahnged
+iex(9)> pid |> RSMP.Site.raise_alarm("./env/temperature") # will publish alarm, if chahnged
 :ok
 
-iex(11)> pid |> RSMP.Client.clear_alarm("./env/temperature") # will publish alarm, if changed
+iex(11)> pid |> RSMP.Site.clear_alarm("./env/temperature") # will publish alarm, if changed
 :ok
 ```

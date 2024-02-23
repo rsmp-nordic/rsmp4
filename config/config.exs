@@ -14,16 +14,16 @@ import Config
 #
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
-config :client, RSMP.Client.Mailer, adapter: Swoosh.Adapters.Local
+config :site, RSMP.Site.Mailer, adapter: Swoosh.Adapters.Local
 config :supervisor, RSMP.Supervisor.Mailer, adapter: Swoosh.Adapters.Local
 
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.17.11",
-  client: [
+  site: [
     args:
       ~w(js/app.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
-    cd: Path.expand("../apps/client/assets", __DIR__),
+    cd: Path.expand("../apps/site/assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ],
   supervisor: [
@@ -36,13 +36,13 @@ config :esbuild,
 # Configure tailwind (the version is required)
 config :tailwind,
   version: "3.3.2",
-  client: [
+  site: [
     args: ~w(
       --config=tailwind.config.js
       --input=css/app.css
       --output=../priv/static/assets/app.css
     ),
-    cd: Path.expand("../apps/client/assets", __DIR__)
+    cd: Path.expand("../apps/site/assets", __DIR__)
   ],
   supervisor: [
     args: ~w(

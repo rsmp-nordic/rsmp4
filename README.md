@@ -6,7 +6,7 @@ Investigation into how RSMP 4 could be based on MQTT.
 The repo is an Elixir umbrella project, containing three apps:
 
 - apps/rsmp: an RSMP library.
-- client: a Phoenix web app running on port 3000 that acts as a TLC site.
+- site: a Phoenix web app running on port 3000 that acts as a TLC site.
 - supervisor: a Phoenix web app running on port 4000 that acts as a supervisor system.
 
 ## Dependencies
