@@ -69,4 +69,18 @@ defmodule RSMP.Utility do
   def timestamp(time \\ now()) do
     Calendar.strftime(time, "%xT%X.%fZ")
   end
+
+  def from_rsmp_status(client, path, data) do
+    {{module,code}, _component} = RSMP.Utility.parse_path(path)
+    find_module(client,module).from_rsmp_status(code,data)
+  end
+
+  def to_rsmp_status(client, path, data) do
+    {{module,code}, _component} = RSMP.Utility.parse_path(path)
+    find_module(client,module).to_rsmp_status(code,data)
+  end
+
+  def find_module(client, name) do
+    client.modules |> Map.fetch!(name)
+  end
 end

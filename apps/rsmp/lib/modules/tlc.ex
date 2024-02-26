@@ -1,56 +1,20 @@
 defmodule RSMP.Site.TLC do
   use RSMP.Site
 
+  @modules %{
+    "tlc" => RSMP.Module.TLC.new,
+    "traffic" => RSMP.Responder.Traffic.new    
+  }
+
   def client_id do
     "tlc_#{SecureRandom.hex(4)}"
   end
 
+
   def init_client(client) do
     client
     |> Map.merge(%{
-      modules: %{
-        "tlc" => RSMP.Responder.TLC,
-        "traffic" => RSMP.Responder.Traffic
-      },
-      statuses: %{
-        # signal group status
-        "tlc/1" => %{
-          base: 0,
-          cycle: 0,
-          groups: "",
-          stage: 0
-        },
-        # curent signal group plan
-        "tlc/14" => %{plan: 1, source: "startup"},
-        # signal group plans
-        "tlc/22" => [1, 2],
-        # offsets
-        "tlc/24" => %{1 => 1, 2 => 2},
-        # cycle times
-        "tlc/28" => %{1 => 6, 2 => 4},
-        # number of vehicle
-        "traffic/201/dl/1" => %{
-          starttime: timestamp(),
-          vehicles: 0
-        }
-      },
-      alarms: %{
-        # serious hardware error
-        "tlc/201/sg/1" => Alarm.new(),
-        "tlc/201/sg/2" => Alarm.new(),
-        # a301
-        "tlc/201/dl/a1" => Alarm.new()
-      },
-      plans: %{
-        1 => %{
-          1 => "111nbb",
-          2 => "11nbbb"
-        },
-        2 => %{
-          1 => "eeffff",
-          2 => "gggghh"
-        }
-      }
+      modules: 
     })
   end
 

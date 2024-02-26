@@ -15,10 +15,10 @@
     </thead>
     <%= for {id,state} <- @clients do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1"><%= if state[:online], do: "🟢" %></td>
+        <td class="px-1 py-1"><%= if state.online, do: "🟢" %></td>
         <td class="px-1 py-1"><.link href={~p"/site/#{id}"}><%= id %></.link></td>
         <td class="px-1 py-1">
-          <%= if state[:num_alarms] > 0, do: "⚠️ " <> to_string(state[:num_alarms]) %>
+          <%= if state.num_alarms > 0, do: "⚠️ " <> to_string(state.num_alarms) %>
         </td>
       </tr>
     <% end %>

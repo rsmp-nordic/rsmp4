@@ -2,6 +2,7 @@
 defmodule RSMP.Site do
   @moduledoc false
   require Logger
+  alias RSMP.Utility
 
   defstruct(
     id: nil,
@@ -57,25 +58,17 @@ defmodule RSMP.Site do
 
   # helpers
 
-  def from_rsmp_status(client, path, data) do
-    {{module,code}, _component} = RSMP.Utility.parse_path(path)
-    RSMP.Site.find_module(client,module).from_rsmp_status(code,data)
-  end
-
-  def to_rsmp_status(client, path, data) do
-    {{module,code}, _component} = RSMP.Utility.parse_path(path)
-    RSMP.Site.find_module(client,module).to_rsmp_status(code,data)
-  end
-
   def publish_status(client, path) do
     value = client.statuses[path]
     Logger.info("RSMP: Sending status: #{path} #{Kernel.inspect(value)}")
-    status = to_rsmp_status(client, path, value)
+
+    module = Utility.find_module(client,module)
+    status = module.converter.to_rsmp_status(client, path, value)
 
     :emqtt.publish_async(
       client.pid,
       "#{client.id}/status/#{path}",
-      RSMP.Utility.to_payload(status),
+      Utility.to_payload(status),
       [retain: true, qos: 1],
       &publish_done/1
     )
@@ -130,17 +123,17 @@ defmodule RSMP.Site do
   end
 
   def handle_publish({_id, "reaction", module, code}, component, data, client) do
-    client = RSMP.Site.find_module(client,module).receive_reaction(client, code, component, data)
+    client = Utility.find_module(client,module).receive_reaction(client, code, component, data)
     {:noreply, client}
   end
 
   def handle_publish({_id_, "status", module, code}, component, data, client) do
-    client = RSMP.Site.find_module(client,module).receive_status(client, code, component, data)
+    client = Utility.find_module(client,module).receive_status(client, code, component, data)
     {:noreply, client}
   end
 
   def handle_publish({_id, "command", module, code}, component, data, client) do
-    client = RSMP.Site.find_module(client,module).receive_command(client, code, component, data)
+    client = Utility.find_module(client,module).receive_command(client, code, component, data)
     {:noreply, client}
   end
 
@@ -151,10 +144,6 @@ defmodule RSMP.Site do
     {:noreply, client}
   end
 
-  def find_module(site, name) do
-    site.modules |> Map.fetch!(name)
-  end
-
   def handle_status(topic, component, publish, client) do
     Logger.warning(
       "Unhandled status, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
@@ -162,7 +151,6 @@ defmodule RSMP.Site do
 
     {:noreply, client}
   end
-
 
 
   # Enable "use RSMP.Site" in your RSMP Site modules

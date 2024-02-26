@@ -3,6 +3,8 @@ defmodule RSMP.Responder.TLC do
   require Logger
   alias RSMP.{Utility,Site,Alarm}
 
+  def converter(), do: RSMP.Converter.TLC
+  
   def receive_command(client, "2", component, %{payload: payload, properties: properties}) do
     options = %{
       component: component,
@@ -110,79 +112,4 @@ defmodule RSMP.Responder.TLC do
 
     client
   end
-
-
- # export status from internal format to sxl format
-
-  def to_rsmp_status("1", data) do
-    %{
-      "basecyclecounter" => data.base,
-      "cyclecounter" => data.cycle,
-      "signalgroupstatus" => data.groups,
-      "stage" => data.stage
-    }
-  end
-
-  def to_rsmp_status("14", data) do
-    %{
-      "status" => data.plan,
-      "source" => data.source
-    }
-  end
-
-  def to_rsmp_status("22", data) do
-    items =
-      data
-      |> Enum.join(",")
-
-    %{"status" => items}
-  end
-
-  def to_rsmp_status("24", data) do
-    items =
-      data
-      |> Enum.map(fn {plan, value} -> "#{plan}-#{value}" end)
-      |> Enum.join(",")
-
-    %{"status" => items}
-  end
-
-  def to_rsmp_status("28", data) do
-    items =
-      data
-      |> Enum.map(fn {plan, value} -> "#{plan}-#{value}" end)
-      |> Enum.join(",")
-
-    %{"status" => items}
-  end
-
-
-  # import status from sxl format to internal format
-
-  def from_rsmp_status("1", data) do
-    %{
-      base: data["basecyclecounter"],
-      cycle: data["cyclecounter"],
-      groups: data["signalgroupstatus"],
-      stage: data["stage"]
-    }
-  end
-
-  def from_rsmp_status("14", data) do
-    %{
-      plan: data["status"],
-      source: data["source"]
-    }
-  end
-
-  def from_rsmp_status("24", data) do
-    items = String.split(data["status"], ",")
-
-    for item <- items, into: %{} do
-      [plan, value] = String.split(item, "-")
-      {String.to_integer(plan), String.to_integer(value)}
-    end
-  end
-
-  def from_rsmp_status("28", component, data), do: from_rsmp_status("24", component, data) 
 end
