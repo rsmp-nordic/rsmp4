@@ -1,10 +1,9 @@
-defmodule RSMP.Site.Module.TLC do
-  @behaviour RSMP.Site.Module
+defmodule RSMP.Responder.TLC do
+  @behaviour RSMP.Responder
   require Logger
-  alias RSMP.Utility
-  alias RSMP.Site
+  alias RSMP.{Utility,Site,Alarm}
 
-  def receive_command(tlc, 2, component, %{payload: payload, properties: properties}) do
+  def receive_command(client, "2", component, %{payload: payload, properties: properties}) do
     options = %{
       component: component,
       plan: Utility.from_payload(payload),
@@ -12,38 +11,39 @@ defmodule RSMP.Site.Module.TLC do
       command_id: properties[:"Correlation-Data"]
     }
 
-    set_plan(tlc, options)
+    set_plan(client, options)
   end
 
-  def receive_command(tlc, code, component, data) do
+  def receive_command(client, code, component, data) do
     Logger.warning(
       "Unhandled command, code: #{inspect(code)}, component: #{inspect(component)}, publish: #{inspect(data)}"
     )
-
-    tlc
+    client
   end
 
-  # def send_result(site, code, data) do
-  # def send_status(site, code, data) do
-  # def send_alarm(site, code, data) do
+  def receive_reaction(client, "201"=code, component, %{payload: payload}) do
+    flags = Utility.from_payload(payload)
+    path = Utility.build_path("tlc", code, component)
 
-#  def receive_reaction(tlc, 2, component, %{payload: payload}) do
-#    flags = from_payload(payload)
-#    path = build_path(module, code, component)
-#
-#    Logger.info("RSMP: Received alarm flag #{path}, #{inspect(flags)}")
-#
-#    alarm = client.alarms[path] |> Alarm.update_from_string_map(flags)
-#    client = put_in(client.alarms[path], alarm)
-#
-#    Logger.info(inspect(alarm))
-#    Site.publish_alarm(client, path)
-#
-#    data = %{topic: "alarm", changes: %{path => client.alarms[path]}}
-#    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-#
-#    {:noreply, client}
-#  end
+    Logger.info("RSMP: Received alarm flag #{path}, #{inspect(flags)}")
+
+    alarm = client.alarms[path] |> Alarm.update_from_string_map(flags)
+    client = put_in(client.alarms[path], alarm)
+
+    Site.publish_alarm(client, path)
+
+    data = %{topic: "alarm", changes: %{path => client.alarms[path]}}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+
+    client
+  end
+
+  def receive_reaction(client, code, component, data) do
+    Logger.warning(
+      "Unhandled reaction, code: #{inspect(code)}, component: #{inspect(component)}, publish: #{inspect(data)}"
+    )
+    client
+  end
 
   def set_plan(client, %{
         component: _component,
@@ -114,7 +114,7 @@ defmodule RSMP.Site.Module.TLC do
 
  # export status from internal format to sxl format
 
-  def to_rsmp_status(1, data) do
+  def to_rsmp_status("1", data) do
     %{
       "basecyclecounter" => data.base,
       "cyclecounter" => data.cycle,
@@ -123,14 +123,14 @@ defmodule RSMP.Site.Module.TLC do
     }
   end
 
-  def to_rsmp_status(14, data) do
+  def to_rsmp_status("14", data) do
     %{
       "status" => data.plan,
       "source" => data.source
     }
   end
 
-  def to_rsmp_status(22, data) do
+  def to_rsmp_status("22", data) do
     items =
       data
       |> Enum.join(",")
@@ -138,7 +138,7 @@ defmodule RSMP.Site.Module.TLC do
     %{"status" => items}
   end
 
-  def to_rsmp_status(24, data) do
+  def to_rsmp_status("24", data) do
     items =
       data
       |> Enum.map(fn {plan, value} -> "#{plan}-#{value}" end)
@@ -147,7 +147,7 @@ defmodule RSMP.Site.Module.TLC do
     %{"status" => items}
   end
 
-  def to_rsmp_status(28, data) do
+  def to_rsmp_status("28", data) do
     items =
       data
       |> Enum.map(fn {plan, value} -> "#{plan}-#{value}" end)
@@ -159,7 +159,7 @@ defmodule RSMP.Site.Module.TLC do
 
   # import status from sxl format to internal format
 
-  def from_rsmp_status(1, data) do
+  def from_rsmp_status("1", data) do
     %{
       base: data["basecyclecounter"],
       cycle: data["cyclecounter"],
@@ -168,14 +168,14 @@ defmodule RSMP.Site.Module.TLC do
     }
   end
 
-  def from_rsmp_status(14, data) do
+  def from_rsmp_status("14", data) do
     %{
       plan: data["status"],
       source: data["source"]
     }
   end
 
-  def from_rsmp_status(24, data) do
+  def from_rsmp_status("24", data) do
     items = String.split(data["status"], ",")
 
     for item <- items, into: %{} do
@@ -184,5 +184,5 @@ defmodule RSMP.Site.Module.TLC do
     end
   end
 
-  def from_rsmp_status(28, component, data), do: from_rsmp_status(24, component, data)
+  def from_rsmp_status("28", component, data), do: from_rsmp_status("24", component, data) 
 end

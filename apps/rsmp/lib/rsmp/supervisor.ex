@@ -120,7 +120,7 @@ defmodule RSMP.Supervisor do
     supervisor = put_in(supervisor.clients[client_id].alarms[path][flag], value)
 
     # Send alarm flag to device
-    topic = "#{client_id}/react/#{path}"
+    topic = "#{client_id}/reaction/#{path}"
 
     Logger.info("RSMP: Sending alarm flag #{path} to #{client_id}: Set #{flag} to #{value}")
 
@@ -146,6 +146,7 @@ defmodule RSMP.Supervisor do
     {:noreply, supervisor}
   end
 
+  # mqtt
   @impl true
   def handle_info({:publish, publish}, supervisor) do
     {path, component} = parse_topic(publish.topic)
@@ -167,7 +168,7 @@ defmodule RSMP.Supervisor do
 
   # helpers
 
-  defp handle_publish([id, "state"], _component, %{payload: payload}, supervisor) do
+  defp handle_publish({id, "state"}, _component, %{payload: payload}, supervisor) do
     online = from_payload(payload) == 1
 
     client =
@@ -183,7 +184,7 @@ defmodule RSMP.Supervisor do
   end
 
   defp handle_publish(
-         [id, "result", module, command],
+         {id, "result", module, command},
          component,
          %{payload: payload, properties: properties},
          supervisor
@@ -211,7 +212,7 @@ defmodule RSMP.Supervisor do
   end
 
   defp handle_publish(
-         [id, "status", module, code],
+         {id, "status", module, code},
          component,
          %{payload: payload},
          supervisor
@@ -231,7 +232,7 @@ defmodule RSMP.Supervisor do
   end
 
   defp handle_publish(
-         [id, "alarm", module, code],
+         {id, "alarm", module, code},
          component,
          %{payload: payload},
          supervisor
@@ -251,9 +252,9 @@ defmodule RSMP.Supervisor do
   end
 
   # catch-all in case old retained messages are received from the broker
-  defp handle_publish(topic, component, publish, supervisor) do
+  defp handle_publish(path, component, publish, supervisor) do
     Logger.warning(
-      "Unhandled publish, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
+      "Unhandled publish, path: #{inspect(path)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
     )
 
     IO.puts(publish.payload)
@@ -261,7 +262,7 @@ defmodule RSMP.Supervisor do
   end
 
   def publish_done(data) do
-    Logger.info("RSMP: Publish result: #{Kernel.inspect(data)}")
+    Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
   end
 
   def set_client_num_alarms(client) do

@@ -9,8 +9,8 @@ defmodule RSMP.Site.TLC do
     client
     |> Map.merge(%{
       modules: %{
-        "tlc" => RSMP.Site.Module.TLC,
-        "traffic" => RSMP.Site.Module.Traffic
+        "tlc" => RSMP.Responder.TLC,
+        "traffic" => RSMP.Responder.Traffic
       },
       statuses: %{
         # signal group status
@@ -54,8 +54,8 @@ defmodule RSMP.Site.TLC do
     })
   end
 
-  def continue() do
-    Process.send_after(self(), :tick, 1000)
+  def continue_client() do
+    #Process.send_after(self(), :tick, 1000)
   end
 
   def handle_info(:tick, client) do

@@ -82,7 +82,7 @@ defmodule RSMP.Site do
   end
 
   def publish_done(data) do
-    Logger.info("RSMP: Publish result: #{Kernel.inspect(data)}")
+    Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
   end
 
   def alarm_flag_string(client, path) do
@@ -126,26 +126,28 @@ defmodule RSMP.Site do
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/command/#", 1})
 
     # subscribe to alarm reactions
-    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/react/#", 1})
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/reaction/#", 1})
   end
 
-  def handle_publish({_id, "react", module, code}, component, data, client) do
-    RSMP.Site.find_module(client,module).receive_react(client, code, component, data)
+  def handle_publish({_id, "reaction", module, code}, component, data, client) do
+    client = RSMP.Site.find_module(client,module).receive_reaction(client, code, component, data)
+    {:noreply, client}
   end
 
   def handle_publish({_id_, "status", module, code}, component, data, client) do
-    RSMP.Site.find_module(client,module).receive_status(client, code, component, data)
+    client = RSMP.Site.find_module(client,module).receive_status(client, code, component, data)
+    {:noreply, client}
   end
 
   def handle_publish({_id, "command", module, code}, component, data, client) do
-    RSMP.Site.find_module(client,module).receive_command(client, code, component, data)
+    client = RSMP.Site.find_module(client,module).receive_command(client, code, component, data)
+    {:noreply, client}
   end
 
   def handle_publish(topic, component, data, client) do
     Logger.warning(
       "Unhandled publish, topic: #{inspect(topic)}, component: #{inspect(component)}, data: #{inspect(data)}"
     )
-
     {:noreply, client}
   end
 
@@ -208,7 +210,7 @@ defmodule RSMP.Site do
         RSMP.Site.subscribe_to_topics(client)
         Site.publish_state(client, 1)
         Site.publish_all(client)
-        #Site.continue()
+        continue_client()
         {:noreply, client}
       end
 
