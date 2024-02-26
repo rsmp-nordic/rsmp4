@@ -51,7 +51,7 @@ iex(7)> [info] RSMP: tlc_7a88044b: Received response to 'plan' command d16a: %{"
 [info] RSMP: tlc_7a88044b: Received status ./tlc/plan: 5 from tlc_7a88044b
  ```
 
-### Client
+### Site
 From iex (Interactive Elixir) you can use the RSMP.Site module to interact with RSMP MQTT clients. If you have a supervisor, you should see the client appear online, send status messages, etc:
 
 ```sh

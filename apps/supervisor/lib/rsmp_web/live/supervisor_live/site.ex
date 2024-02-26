@@ -1,4 +1,4 @@
-defmodule RSMP.Supervisor.Web.SupervisorLive.Client do
+defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   use RSMP.Supervisor.Web, :live_view
   use Phoenix.Component
 
