@@ -55,7 +55,7 @@ defmodule RSMP.Site.TLC do
   end
 
   def continue_client() do
-    #Process.send_after(self(), :tick, 1000)
+    Process.send_after(self(), :tick, 1000)
   end
 
   def handle_info(:tick, client) do
