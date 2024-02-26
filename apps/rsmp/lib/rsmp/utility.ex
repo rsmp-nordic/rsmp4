@@ -20,14 +20,20 @@ defmodule RSMP.Utility do
   #
   def parse_topic(topic) do
     topic = String.split(topic, "/")
-    Enum.split(topic, 4)
+    {[id,type,module,code], component} = Enum.split(topic, 4)
+    {integer,left} = Integer.parse(code)
+    code = if left == "", do: integer, else: code
+    {{id,type,module,code}, component}
   end
 
   # Parse topic paths of the form:
   # module/method/component/...
   def parse_path(topic) do
     topic = String.split(topic, "/")
-    Enum.split(topic, 2)
+    {[module,code], component} = Enum.split(topic, 2)
+    {integer,left} = Integer.parse(code)
+    code = if left == "", do: integer, else: code
+    {{module,code}, component}
   end
 
   def to_payload(data) do

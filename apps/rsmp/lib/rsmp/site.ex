@@ -6,18 +6,13 @@ defmodule RSMP.Site do
   defstruct(
     id: nil,
     pid: nil,
+    modules: %{},
     statuses: %{},
     alarms: %{}
   )
 
   # api
   def new(options \\ []), do: __struct__(options)
-
-  def start_link(_options \\ []) do
-    {:ok, pid} = GenServer.start_link(__MODULE__, [])
-    Logger.info("RSMP: Start client with pid #{inspect(pid)}")
-    {:ok, pid}
-  end
 
   def get_id(pid) do
     GenServer.call(pid, :get_id)
@@ -59,12 +54,121 @@ defmodule RSMP.Site do
     GenServer.cast(pid, {:toggle_alarm_flag, path, flag})
   end
 
+
+  # helpers
+
+  def from_rsmp_status(client, path, data) do
+    {{module,code}, _component} = RSMP.Utility.parse_path(path)
+    RSMP.Site.find_module(client,module).from_rsmp_status(code,data)
+  end
+
+  def to_rsmp_status(client, path, data) do
+    {{module,code}, _component} = RSMP.Utility.parse_path(path)
+    RSMP.Site.find_module(client,module).to_rsmp_status(code,data)
+  end
+
+  def publish_status(client, path) do
+    value = client.statuses[path]
+    Logger.info("RSMP: Sending status: #{path} #{Kernel.inspect(value)}")
+    status = to_rsmp_status(client, path, value)
+
+    :emqtt.publish_async(
+      client.pid,
+      "#{client.id}/status/#{path}",
+      RSMP.Utility.to_payload(status),
+      [retain: true, qos: 1],
+      &publish_done/1
+    )
+  end
+
+  def publish_done(data) do
+    Logger.info("RSMP: Publish result: #{Kernel.inspect(data)}")
+  end
+
+  def alarm_flag_string(client, path) do
+    client.alarms[path]
+    |> Map.from_struct()
+    |> Enum.filter(fn {_flag, value} -> value == true end)
+    |> Enum.map(fn {flag, _value} -> flag end)
+    |> inspect()
+  end
+
+  def publish_alarm(client, path) do
+    flags = alarm_flag_string(client, path)
+    Logger.info("RSMP: Sending alarm: #{path} #{flags}")
+
+    :emqtt.publish_async(
+      client.pid,
+      "#{client.id}/alarm/#{path}",
+      RSMP.Utility.to_payload(client.alarms[path]),
+      [retain: true, qos: 1],
+      &publish_done/1
+    )
+  end
+
+  def publish_all(client) do
+    for path <- Map.keys(client.alarms), do: publish_alarm(client, path)
+    for path <- Map.keys(client.statuses), do: publish_status(client, path)
+  end
+
+  def publish_state(client, state) do
+    :emqtt.publish_async(
+      client.pid,
+      "#{client.id}/state",
+      RSMP.Utility.to_payload(state),
+      [retain: true, qos: 1],
+      &publish_done/1
+    )
+  end
+
+  def subscribe_to_topics(%{pid: pid, id: id}) do
+    # subscribe to commands
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/command/#", 1})
+
+    # subscribe to alarm reactions
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/react/#", 1})
+  end
+
+  def handle_publish({_id, "react", module, code}, component, data, client) do
+    RSMP.Site.find_module(client,module).receive_react(client, code, component, data)
+  end
+
+  def handle_publish({_id_, "status", module, code}, component, data, client) do
+    RSMP.Site.find_module(client,module).receive_status(client, code, component, data)
+  end
+
+  def handle_publish({_id, "command", module, code}, component, data, client) do
+    RSMP.Site.find_module(client,module).receive_command(client, code, component, data)
+  end
+
+  def handle_publish(topic, component, data, client) do
+    Logger.warning(
+      "Unhandled publish, topic: #{inspect(topic)}, component: #{inspect(component)}, data: #{inspect(data)}"
+    )
+
+    {:noreply, client}
+  end
+
+  def find_module(site, name) do
+    site.modules |> Map.fetch!(name)
+  end
+
+  def handle_status(topic, component, publish, client) do
+    Logger.warning(
+      "Unhandled status, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
+    )
+
+    {:noreply, client}
+  end
+
+
+
   # Enable "use RSMP.Site" in your RSMP Site modules
   defmacro __using__(_options) do
     quote do
       use GenServer
       require Logger
-      import RSMP.Site
+      alias RSMP.Site
       import RSMP.Utility
       alias RSMP.Alarm
 
@@ -101,19 +205,11 @@ defmodule RSMP.Site do
 
       @impl true
       def handle_continue(:start_emqtt, %{pid: pid, id: _} = client) do
-        subscribe_to_topics(client)
-        publish_state(client, 1)
-        publish_all(client)
-        continue()
+        RSMP.Site.subscribe_to_topics(client)
+        Site.publish_state(client, 1)
+        Site.publish_all(client)
+        #Site.continue()
         {:noreply, client}
-      end
-
-      def subscribe_to_topics(%{pid: pid, id: id}) do
-        # subscribe to commands
-        {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/command/#", 1})
-
-        # subscribe to alarm reactions
-        {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/react/#", 1})
       end
 
       # genserver api imlementation
@@ -147,7 +243,7 @@ defmodule RSMP.Site do
       @impl true
       def handle_cast({:set_status, path, value}, client) do
         client = %{client | statuses: Map.put(client.statuses, path, value)}
-        publish_status(client, path)
+        Site.publish_status(client, path)
 
         data = %{topic: "status", changes: [path]}
         Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
@@ -158,7 +254,7 @@ defmodule RSMP.Site do
       def handle_cast({:raise_alarm, path}, client) do
         if Alarm.active?(client.alarms[path]) == false do
           client = Alarm.flag_on(client.alarms[path], :active)
-          publish_alarm(client, path)
+          Site.publish_alarm(client, path)
 
           data = %{topic: "alarm", changes: [path]}
           Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
@@ -172,7 +268,7 @@ defmodule RSMP.Site do
       def handle_cast({:clear_alarm, path}, client) do
         if Alarm.active?(client.alarms[path]) do
           client = Alarm.flag_off(client.alarms[path], :active)
-          publish_alarm(client, path)
+          Site.publish_alarm(client, path)
 
           data = %{topic: "alarm", changes: [path]}
           Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
@@ -186,7 +282,7 @@ defmodule RSMP.Site do
       def handle_cast({:set_alarm_flag, path, flag, value}, client) do
         if Alarm.get_flag(client.alarms[path], flag) != value do
           client = Alarm.set_flag(client.alarms[path], flag, value)
-          publish_alarm(client, path)
+          Site.publish_alarm(client, path)
 
           data = %{topic: "alarm", changes: [path]}
           Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
@@ -200,7 +296,7 @@ defmodule RSMP.Site do
       def handle_cast({:toggle_alarm_flag, path, flag}, client) do
         alarm = client.alarms[path] |> Alarm.toggle_flag(flag)
         client = put_in(client.alarms[path], alarm)
-        publish_alarm(client, path)
+        Site.publish_alarm(client, path)
 
         data = %{topic: "alarm", changes: [path]}
         Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
@@ -212,13 +308,13 @@ defmodule RSMP.Site do
       @impl true
       def handle_info({:publish, publish}, client) do
         {path, component} = parse_topic(publish.topic)
-        handle_publish(path, component, publish, client)
+        Site.handle_publish(path, component, publish, client)
       end
 
       @impl true
       def handle_info({:connected, _publish}, client) do
         Logger.info("RSMP: Connected")
-        subscribe_to_topics(client)
+        Site.subscribe_to_topics(client)
         {:noreply, client}
       end
 
@@ -226,142 +322,6 @@ defmodule RSMP.Site do
       def handle_info({:disconnected, _publish}, client) do
         Logger.warning("RSMP: Disconnected")
         {:noreply, client}
-      end
-
-      def handle_publish(
-            [id, "react", module, code],
-            component,
-            publish,
-            client
-          ),
-          do: handle_react([id, module, code], component, publish, client)
-
-      def handle_publish(
-            [id, "status", module, code],
-            component,
-            publish,
-            client
-          ),
-          do: handle_status([id, module, code], component, publish, client)
-
-      def handle_publish(
-            [id, "command", module, code],
-            component,
-            publish,
-            client
-          ),
-          do: handle_comamnd([id, module, code], component, publish, client)
-
-      def handle_status(topic, component, publish, client) do
-        Logger.warning(
-          "Unhandled status, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
-        )
-
-        {:noreply, client}
-      end
-
-      def handle_command(topic, component, publish, client) do
-        Logger.warning(
-          "Unhandled command, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
-        )
-
-        {:noreply, client}
-      end
-
-      def handle_react([id, module, code], component, %{payload: payload}, client) do
-        flags = from_payload(payload)
-        path = build_path(module, code, component)
-
-        Logger.info("RSMP: Received alarm flag #{path}, #{inspect(flags)}")
-
-        alarm = client.alarms[path] |> Alarm.update_from_string_map(flags)
-        client = put_in(client.alarms[path], alarm)
-
-        Logger.info(inspect(alarm))
-        publish_alarm(client, path)
-
-        data = %{topic: "alarm", changes: %{path => client.alarms[path]}}
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-
-        {:noreply, client}
-      end
-
-      def handle_publish(topic, component, publish, client) do
-        Logger.warning(
-          "Unhandled publish, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
-        )
-
-        {:noreply, client}
-      end
-
-      defoverridable handle_react: 4
-      defoverridable handle_status: 4
-      defoverridable handle_command: 4
-
-      # helpers
-
-      def parse_rsmp_status(path, data) do
-        {path, component} = parse_path(path)
-        parse_rsmp_status(Enum.join(path, "/"), component, data)
-      end
-
-      def format_rsmp_status(path, data) do
-        {path, component} = parse_path(path)
-        format_rsmp_status(Enum.join(path, "/"), component, data)
-      end
-
-      def publish_status(client, path) do
-        value = client.statuses[path]
-        Logger.info("RSMP: Sending status: #{path} #{Kernel.inspect(value)}")
-        status = format_rsmp_status(path, value)
-
-        :emqtt.publish_async(
-          client.pid,
-          "#{client.id}/status/#{path}",
-          to_payload(status),
-          [retain: true, qos: 1],
-          &publish_done/1
-        )
-      end
-
-      def publish_done(data) do
-        Logger.info("RSMP: Publish result: #{Kernel.inspect(data)}")
-      end
-
-      def alarm_flag_string(client, path) do
-        client.alarms[path]
-        |> Map.from_struct()
-        |> Enum.filter(fn {_flag, value} -> value == true end)
-        |> Enum.map(fn {flag, _value} -> flag end)
-        |> inspect()
-      end
-
-      def publish_alarm(client, path) do
-        flags = alarm_flag_string(client, path)
-        Logger.info("RSMP: Sending alarm: #{path} #{flags}")
-
-        :emqtt.publish_async(
-          client.pid,
-          "#{client.id}/alarm/#{path}",
-          to_payload(client.alarms[path]),
-          [retain: true, qos: 1],
-          &publish_done/1
-        )
-      end
-
-      def publish_all(client) do
-        for path <- Map.keys(client.alarms), do: publish_alarm(client, path)
-        for path <- Map.keys(client.statuses), do: publish_status(client, path)
-      end
-
-      def publish_state(client, state) do
-        :emqtt.publish_async(
-          client.pid,
-          "#{client.id}/state",
-          to_payload(state),
-          [retain: true, qos: 1],
-          &publish_done/1
-        )
       end
     end
   end
