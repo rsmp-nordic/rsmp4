@@ -1,80 +1,31 @@
 defmodule RSMP.Responder.TLC do
   @behaviour RSMP.Responder
   require Logger
-  alias RSMP.{Utility,Site,Alarm}
+  alias RSMP.{Utility, Site, Alarm, Path}
 
-  def converter(), do: RSMP.Converter.TLC
-  
-  def receive_command(client, "2", component, %{payload: payload, properties: properties}) do
-    options = %{
-      component: component,
-      plan: Utility.from_payload(payload),
-      response_topic: properties[:"Response-Topic"],
-      command_id: properties[:"Correlation-Data"]
-    }
+  def receive_command(site, %Path{code: "2"}=path, plan, properties) do
+    current_plan = site.statuses["tlc/14"]["status"]
+    status_path = Path.to_string(path)
 
-    set_plan(client, options)
-  end
-
-  def receive_command(client, code, component, data) do
-    Logger.warning(
-      "Unhandled command, code: #{inspect(code)}, component: #{inspect(component)}, publish: #{inspect(data)}"
-    )
-    client
-  end
-
-  def receive_reaction(client, "201"=code, component, %{payload: payload}) do
-    flags = Utility.from_payload(payload)
-    path = Utility.build_path("tlc", code, component)
-
-    Logger.info("RSMP: Received alarm flag #{path}, #{inspect(flags)}")
-
-    alarm = client.alarms[path] |> Alarm.update_from_string_map(flags)
-    client = put_in(client.alarms[path], alarm)
-
-    Site.publish_alarm(client, path)
-
-    data = %{topic: "alarm", changes: %{path => client.alarms[path]}}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-
-    client
-  end
-
-  def receive_reaction(client, code, component, data) do
-    Logger.warning(
-      "Unhandled reaction, code: #{inspect(code)}, component: #{inspect(component)}, publish: #{inspect(data)}"
-    )
-    client
-  end
-
-  def set_plan(client, %{
-        component: _component,
-        plan: plan,
-        response_topic: response_topic,
-        command_id: command_id
-      }) do
-    current_plan = client.statuses["tlc/14"]["status"]
-    status_path = "tlc/14"
-
-    {response, client} =
+    {response, site} =
       cond do
         plan == current_plan ->
           Logger.info("RSMP: Already using plan: #{plan}")
 
           {
             %{status: "already", plan: plan, reason: "Already using plan #{plan}"},
-            client
+            site
           }
 
-        client.plans[plan] != nil ->
+        site.plans[plan] != nil ->
           Logger.info("RSMP: Switching to plan: #{plan}")
 
-          client =
-            client |> put_in([:statuses, status_path], %{"status" => plan, "source" => "forced"})
+          site =
+            site |> put_in([:statuses, status_path], %{"status" => plan, "source" => "forced"})
 
           {
             %{status: "ok", plan: plan, reason: ""},
-            client
+            site
           }
 
         true ->
@@ -82,20 +33,16 @@ defmodule RSMP.Responder.TLC do
 
           {
             %{status: "unknown", plan: plan, reason: "Plan #{plan} not found"},
-            client
+            site
           }
       end
 
-    if response_topic do
-      properties = %{
-        "Correlation-Data": command_id
-      }
-
-      # Client, Topic, Properties, Payload, Opts, Timeout, Callback
+    if properties[:response_topic] do
+      # site, Topic, Properties, Payload, Opts, Timeout, Callback
       :emqtt.publish_async(
-        client.pid,
-        response_topic,
-        properties,
+        site.pid,
+        properties[:response_topic],
+        %{ "Correlation-Data": properties[:command_id] },
         Utility.to_payload(response),
         [retain: true, qos: 1],
         :infinity,
@@ -104,12 +51,47 @@ defmodule RSMP.Responder.TLC do
     end
 
     if response[:status] == "ok" do
-      RSMP.Site.publish_status(client, status_path)
+      RSMP.Site.publish_status(site, status_path)
 
-      data = %{topic: "status", changes: [status_path]}
-      Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+      pub = %{topic: "status", changes: [status_path]}
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
     end
 
-    client
+    site
+  end
+
+  def receive_command(site, path, _data, _properties) do
+    Logger.warning(
+      "Unhandled command, path: #{inspect(path)}"
+    )
+
+    site
+  end
+
+  def receive_reaction(site, %Path{code: "201"}=path, flags, _properties) do
+    path_string = Path.to_string(path)
+    Logger.info("RSMP: Received alarm flag #{inspect(path)}, #{inspect(flags)}")
+
+    alarm = site.alarms[path_string] |> Alarm.update_from_string_map(flags)
+    site = put_in(site.alarms[path_string], alarm)
+
+    Site.publish_alarm(site, path)
+
+    data = %{topic: "alarm", changes: %{path_string => site.alarms[path]}}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+
+    site
+  end
+
+  def receive_reaction(site, code, component, data) do
+    Logger.warning(
+      "Unhandled reaction, code: #{inspect(code)}, component: #{inspect(component)}, publish: #{inspect(data)}"
+    )
+
+    site
+  end
+
+  def receive_alarm(site, _path, _flags, _properties) do
+    site
   end
 end

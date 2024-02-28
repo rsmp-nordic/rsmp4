@@ -2,7 +2,7 @@
 defmodule RSMP.Site do
   @moduledoc false
   require Logger
-  alias RSMP.Utility
+  alias RSMP.{Utility, Topic, Path}
 
   defstruct(
     id: nil,
@@ -55,19 +55,18 @@ defmodule RSMP.Site do
     GenServer.cast(pid, {:toggle_alarm_flag, path, flag})
   end
 
-
   # helpers
 
   def publish_status(client, path) do
-    value = client.statuses[path]
-    Logger.info("RSMP: Sending status: #{path} #{Kernel.inspect(value)}")
-
-    module = Utility.find_module(client,module)
-    status = module.converter.to_rsmp_status(client, path, value)
+    path_string = path |> Path.to_string()
+    value = client.statuses[path_string]
+    Logger.info("RSMP: Sending status: #{path_string} #{Kernel.inspect(value)}")
+    status = to_rsmp_status(client, path, value)
+    topic = %Topic{id: client.id, type: "status", path: path}
 
     :emqtt.publish_async(
       client.pid,
-      "#{client.id}/status/#{path}",
+      Topic.to_string(topic),
       Utility.to_payload(status),
       [retain: true, qos: 1],
       &publish_done/1
@@ -93,7 +92,7 @@ defmodule RSMP.Site do
     :emqtt.publish_async(
       client.pid,
       "#{client.id}/alarm/#{path}",
-      RSMP.Utility.to_payload(client.alarms[path]),
+      Utility.to_payload(client.alarms[path]),
       [retain: true, qos: 1],
       &publish_done/1
     )
@@ -101,14 +100,14 @@ defmodule RSMP.Site do
 
   def publish_all(client) do
     for path <- Map.keys(client.alarms), do: publish_alarm(client, path)
-    for path <- Map.keys(client.statuses), do: publish_status(client, path)
+    # for path <- Map.keys(client.statuses), do: publish_status(client, path)
   end
 
   def publish_state(client, state) do
     :emqtt.publish_async(
       client.pid,
       "#{client.id}/state",
-      RSMP.Utility.to_payload(state),
+      Utility.to_payload(state),
       [retain: true, qos: 1],
       &publish_done/1
     )
@@ -122,25 +121,8 @@ defmodule RSMP.Site do
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/reaction/#", 1})
   end
 
-  def handle_publish({_id, "reaction", module, code}, component, data, client) do
-    client = Utility.find_module(client,module).receive_reaction(client, code, component, data)
-    {:noreply, client}
-  end
-
-  def handle_publish({_id_, "status", module, code}, component, data, client) do
-    client = Utility.find_module(client,module).receive_status(client, code, component, data)
-    {:noreply, client}
-  end
-
-  def handle_publish({_id, "command", module, code}, component, data, client) do
-    client = Utility.find_module(client,module).receive_command(client, code, component, data)
-    {:noreply, client}
-  end
-
-  def handle_publish(topic, component, data, client) do
-    Logger.warning(
-      "Unhandled publish, topic: #{inspect(topic)}, component: #{inspect(component)}, data: #{inspect(data)}"
-    )
+  def handle_publish(topic, _module, data, client) do
+    Logger.warning("Unhandled publish, topic: #{inspect(topic)}, data: #{inspect(data)}")
     {:noreply, client}
   end
 
@@ -152,15 +134,24 @@ defmodule RSMP.Site do
     {:noreply, client}
   end
 
+  def module(site, name), do: site.modules |> Map.fetch!(name)
+  def responder(site, name), do: module(site, name).responder
+  def converter(site, name), do: module(site, name).converter
+
+  def from_rsmp_status(site, path, data) do
+    converter(site, path.module).from_rsmp_status(path.code, data)
+  end
+
+  def to_rsmp_status(site, path, data) do
+    converter(site, path.module).to_rsmp_status(path.code, data)
+  end
 
   # Enable "use RSMP.Site" in your RSMP Site modules
   defmacro __using__(_options) do
     quote do
       use GenServer
       require Logger
-      alias RSMP.Site
-      import RSMP.Utility
-      alias RSMP.Alarm
+      alias RSMP.{Utility, Site, Alarm, Time, Topic, Path}
 
       # api
       def start_link(_options \\ []) do
@@ -175,15 +166,21 @@ defmodule RSMP.Site do
         Logger.info("RSMP: starting emqtt")
 
         id = client_id()
-        client = init_client(%{id: id})
+
+        client =
+          %RSMP.Site{
+            id: id,
+            modules: module_mapping()
+          }
+          |> setup()
 
         options =
-          client_options()
+          Utility.client_options()
           |> Map.merge(%{
             name: String.to_atom(id),
             clientid: id,
             will_topic: "#{id}/state",
-            will_payload: to_payload(0),
+            will_payload: Utility.to_payload(0),
             will_retain: true
           })
 
@@ -195,7 +192,7 @@ defmodule RSMP.Site do
 
       @impl true
       def handle_continue(:start_emqtt, %{pid: pid, id: _} = client) do
-        RSMP.Site.subscribe_to_topics(client)
+        Site.subscribe_to_topics(client)
         Site.publish_state(client, 1)
         Site.publish_all(client)
         continue_client()
@@ -297,8 +294,22 @@ defmodule RSMP.Site do
       # mqtt
       @impl true
       def handle_info({:publish, publish}, client) do
-        {path, component} = parse_topic(publish.topic)
-        Site.handle_publish(path, component, publish, client)
+        topic = Topic.from_string(publish.topic)
+        responder = Site.responder(client, topic.path.module)
+        data = Utility.from_payload(publish[:payload])
+        client =
+          case topic.type do
+            "status" -> responder.receive_status(client, topic.code, topic.component, data)
+            "command" ->
+              properties = %{
+                response_topic: publish[:properties][:"Response-Topic"],
+                command_id: publish[:properties][:"Correlation-Data"]
+              }
+              responder.receive_command(client, topic.code, topic.component, data, properties)
+            "reaction" -> responder.receive_reaction(client, topic.code, topic.component, data)
+          end
+
+        {:noreply, client}
       end
 
       @impl true
@@ -312,6 +323,11 @@ defmodule RSMP.Site do
       def handle_info({:disconnected, _publish}, client) do
         Logger.warning("RSMP: Disconnected")
         {:noreply, client}
+      end
+
+      # helpers
+      def module_mapping() do
+        for module <- modules(), into: %{}, do: {module.name, module}
       end
     end
   end

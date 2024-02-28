@@ -1,0 +1,31 @@
+# A topic paths of the form:
+# id/type/module/method/component/...
+
+defmodule RSMP.Topic do
+  alias RSMP.Path
+  defstruct [:id, :type, path: %Path{}]
+
+  def new() do
+    %__MODULE__{}
+  end
+
+  def new(id, type, module, code, component \\ []) do
+    %__MODULE__{id: id, type: type, path: Path.new(module, code, component)}
+  end
+
+  def component(topic), do: topic.path.component
+
+  def from_string(string) do
+    {topic, component} = string |> String.split("/") |> Enum.split(4)
+
+    case topic do
+      [id, type, module, code] -> new(id, type, module, code, component)
+      [id, type] -> new(id, type, nil, nil, component)
+    end
+  end
+
+  def to_string(topic) do
+    array = [topic.id, topic.type, topic.path.module, topic.path.code] ++ topic.path.component
+    array |> Enum.join("/")
+  end
+end

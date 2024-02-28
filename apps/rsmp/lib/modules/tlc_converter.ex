@@ -1,7 +1,7 @@
 defmodule RSMP.Converter.TLC do
   @behaviour RSMP.Converter
-  
- # convert from internal format to sxl format
+
+  # convert from internal format to sxl format
   def to_rsmp_status("1", data) do
     %{
       "basecyclecounter" => data.base,
@@ -35,8 +35,7 @@ defmodule RSMP.Converter.TLC do
     %{"status" => items}
   end
 
-  def to_rsmp_status("28", data), do: to_rsmp_status("24",data)
-
+  def to_rsmp_status("28", data), do: to_rsmp_status("24", data)
 
   # convert from sxl format to internal format
 
@@ -65,5 +64,5 @@ defmodule RSMP.Converter.TLC do
     end
   end
 
-  def from_rsmp_status("28", component, data), do: from_rsmp_status("24", component, data) 
+  def from_rsmp_status("28", component, data), do: from_rsmp_status("24", component, data)
 end

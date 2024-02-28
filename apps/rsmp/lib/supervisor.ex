@@ -1,7 +1,7 @@
 defmodule RSMP.Supervisor do
   use GenServer
   require Logger
-  alias RSMP.Utility
+  alias RSMP.{Utility,Topic,Path}
 
   defstruct(
     pid: nil,
@@ -148,12 +148,6 @@ defmodule RSMP.Supervisor do
 
   # mqtt
   @impl true
-  def handle_info({:publish, publish}, supervisor) do
-    {path, component} = Utility.parse_topic(publish.topic)
-    handle_publish(path, component, publish, supervisor)
-  end
-
-  @impl true
   def handle_info({:connected, _publish}, supervisor) do
     Logger.info("RSMP: Connected")
     subscribe_to_topics(supervisor)
@@ -166,96 +160,110 @@ defmodule RSMP.Supervisor do
     {:noreply, supervisor}
   end
 
+  @impl true
+  def handle_info({:publish, publish}, supervisor) do
+    topic = Topic.from_string(publish.topic)
+    data = Utility.from_payload(publish[:payload])
+    properties = publish[:properties]
+    supervisor =
+      case topic.type do
+        "state" ->
+          receive_state(supervisor, topic.id, data)
+
+        "status" ->
+          receive_status(supervisor, topic, data)
+
+        "result" ->
+          command_id = properties[:"Correlation-Data"]
+          receive_result(supervisor, topic, data, command_id)
+
+        "alarm" ->
+          receive_alarm(supervisor, topic, data)
+
+        _ ->
+          receive_unknown(supervisor, topic, publish)
+      end
+
+    {:noreply, supervisor}
+  end
+
   # helpers
 
-  defp handle_publish({id, "state"}, _component, %{payload: payload}, supervisor) do
-    online = Utility.from_payload(payload) == 1
+  defp receive_state(supervisor, id, data) do
+    online = data == 1
 
     client =
-      (supervisor.clients[id] || %{statuses: %{}, alarms: %{}, num_alarm: 0})
+      (supervisor.clients[id] || new_site())
       |> Map.put(:online, online)
 
     clients = Map.put(supervisor.clients, id, client)
 
     # Logger.info("#{id}: Online: #{online}")
-    data = %{topic: "clients", clients: clients}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-    {:noreply, %{supervisor | clients: clients}}
+    pub = %{topic: "clients", clients: clients}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+    %{supervisor | clients: clients}
   end
 
-  defp handle_publish(
-         {id, "result", module, command},
-         component,
-         %{payload: payload, properties: properties},
-         supervisor
-       ) do
-    response = Utility.from_payload(payload)
-    command_id = properties[:"Correlation-Data"]
-
+  defp receive_result(supervisor, topic, result, command_id) do
     Logger.info(
-      "RSMP: #{id}: Received response to '#{command}' command #{component}/#{module}/#{command_id}: #{inspect(response)}"
+      "RSMP: #{topic.id}: Received result to '#{topic.code}' command #{Path.to_string(topic.path)}: #{inspect(result)}"
     )
 
-    data = %{
+    pub = %{
       topic: "response",
       response: %{
-        id: id,
-        command: command,
+        id: topic.id,
+        module: topic.path.module,
+        command: topic.code,
         command_id: command_id,
-        result: response
+        result: result
       }
     }
 
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
-    {:noreply, supervisor}
+    supervisor
   end
 
-  defp handle_publish(
-         {id, "status", module, code},
-         component,
-         %{payload: payload},
-         supervisor
-       ) do
-    supervisor = if supervisor.clients[id], do: supervisor, else: put_in(supervisor.clients[id],new_client())
+  defp receive_status(supervisor, topic, data) do
+    id = topic.id
+    path = topic.path
+    supervisor =
+      if supervisor.clients[id],
+        do: supervisor,
+        else: put_in(supervisor.clients[id], new_site())
+
     client = supervisor.clients[id]
-    path = Utility.build_path(module, code, component)
-    status =  Utility.from_rsmp_status(client, path, Utility.from_payload(payload))
-    supervisor = put_in(supervisor.clients[id].statuses[path],status)
+    converter = converter(client, topic.path.module)
+    status = converter.from_rsmp_status(client, path, data)
+    supervisor = put_in(supervisor.clients[id].statuses[path], status)
 
     Logger.info("RSMP: #{id}: Received status #{path}: #{inspect(status)} from #{id}")
-    data = %{topic: "status", clients: supervisor.clients}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-    {:noreply, supervisor}
+    pub = %{topic: "status", clients: supervisor.clients}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+
+    supervisor
   end
 
-  defp handle_publish(
-         {id, "alarm", module, code},
-         component,
-         %{payload: payload},
-         supervisor
-       ) do
-    status = Utility.from_payload(payload)
-    client = supervisor.clients[id] || new_client()
+  defp receive_alarm(supervisor, topic, alarm) do
+    id = topic.id
+    path = topic.path
+    client = supervisor.clients[id] || new_site()
 
-    path = Utility.build_path(module, code, component)
-    alarms = client.alarms |> Map.put(path, status)
-    client = %{client | alarms: alarms} |> set_client_num_alarms()
+    alarms = client.alarms |> Map.put(Path.to_string(topic.path), alarm)
+    client = %{client | alarms: alarms} |> set_site_num_alarms()
     clients = supervisor.clients |> Map.put(id, client)
 
-    Logger.info("RSMP: #{id}: Received alarm #{path}: #{inspect(status)} from #{id}")
-    data = %{topic: "alarm", clients: clients}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-    {:noreply, %{supervisor | clients: clients}}
+    Logger.info("RSMP: #{topic.id}: Received alarm #{path}: #{inspect(alarm)}")
+    pub = %{topic: "alarm", clients: clients}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+
+    %{supervisor | clients: clients}
   end
 
   # catch-all in case old retained messages are received from the broker
-  defp handle_publish(path, component, publish, supervisor) do
-    Logger.warning(
-      "Unhandled publish, path: #{inspect(path)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
-    )
-
-    IO.puts(publish.payload)
+  defp receive_unknown(supervisor, topic, publish) do
+    Logger.warning("Unhandled publish, path: #{inspect(topic)}, publish: #{inspect(publish)}")
     {:noreply, supervisor}
   end
 
@@ -263,18 +271,20 @@ defmodule RSMP.Supervisor do
     Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
   end
 
-  defp new_client() do
-    RSMP.Site.new |> Map.merge(%{
+  defp new_site() do
+    RSMP.Site.new()
+    |> Map.merge(%{
       online: false,
-      modules: 
-      %{
+      modules: %{
         "tlc" => RSMP.Commander.TLC,
         "traffic" => RSMP.Commander.Traffic
-      }
+      },
+      statuses: %{},
+      alarms: %{}
     })
   end
 
-  def set_client_num_alarms(client) do
+  def set_site_num_alarms(client) do
     num =
       client.alarms
       |> Enum.count(fn {_path, alarm} ->
@@ -282,5 +292,17 @@ defmodule RSMP.Supervisor do
       end)
 
     client |> Map.put(:num_alarms, num)
+  end
+
+  def module(supervisor, name), do: supervisor.modules |> Map.fetch!(name)
+  def commander(supervisor, name), do: module(supervisor, name).commander
+  def converter(supervisor, name), do: module(supervisor, name).converter
+
+  def from_rsmp_status(supervisor, path, data) do
+    converter(supervisor, path.module).from_rsmp_status(path.code, data)
+  end
+
+  def to_rsmp_status(supervisor, path, data) do
+    converter(supervisor, path.module).to_rsmp_status(path.code, data)
   end
 end
