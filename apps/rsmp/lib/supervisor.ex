@@ -6,7 +6,7 @@ defmodule RSMP.Supervisor do
   defstruct(
     pid: nil,
     id: nil,
-    clients: %{}
+    sites: %{}
   )
 
   def new(options \\ %{}), do: __struct__(options)
@@ -17,16 +17,16 @@ defmodule RSMP.Supervisor do
     GenServer.start_link(__MODULE__, options, name: __MODULE__)
   end
 
-  def client_ids() do
-    GenServer.call(__MODULE__, :client_ids)
+  def site_ids() do
+    GenServer.call(__MODULE__, :site_ids)
   end
 
-  def clients() do
-    GenServer.call(__MODULE__, :clients)
+  def sites() do
+    GenServer.call(__MODULE__, :sites)
   end
 
-  def client(id) do
-    GenServer.call(__MODULE__, {:client, id})
+  def site(id) do
+    GenServer.call(__MODULE__, {:site, id})
   end
 
   def set_plan(client_id, plan) do
@@ -68,18 +68,18 @@ defmodule RSMP.Supervisor do
   end
 
   @impl true
-  def handle_call(:client_ids, _from, supervisor) do
-    {:reply, Map.keys(supervisor.clients), supervisor}
+  def handle_call(:site_ids, _from, supervisor) do
+    {:reply, Map.keys(supervisor.sites), supervisor}
   end
 
   @impl true
-  def handle_call(:clients, _from, supervisor) do
-    {:reply, supervisor.clients, supervisor}
+  def handle_call(:sites, _from, supervisor) do
+    {:reply, supervisor.sites, supervisor}
   end
 
   @impl true
-  def handle_call({:client, id}, _from, supervisor) do
-    {:reply, supervisor.clients[id], supervisor}
+  def handle_call({:site, id}, _from, supervisor) do
+    {:reply, supervisor.sites[id], supervisor}
   end
 
   @impl true
@@ -117,7 +117,7 @@ defmodule RSMP.Supervisor do
 
   @impl true
   def handle_cast({:set_alarm_flag, client_id, path, flag, value}, supervisor) do
-    supervisor = put_in(supervisor.clients[client_id].alarms[path][flag], value)
+    supervisor = put_in(supervisor.sites[client_id].alarms[path][flag], value)
 
     # Send alarm flag to device
     topic = "#{client_id}/reaction/#{path}"
@@ -138,7 +138,7 @@ defmodule RSMP.Supervisor do
       topic: "alarm",
       id: client_id,
       path: path,
-      alarm: supervisor.clients[client_id].alarms[path]
+      alarm: supervisor.sites[client_id].alarms[path]
     }
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
@@ -192,16 +192,16 @@ defmodule RSMP.Supervisor do
   defp receive_state(supervisor, id, data) do
     online = data == 1
 
-    client =
-      (supervisor.clients[id] || new_site())
+    site =
+      (supervisor.sites[id] || new_site())
       |> Map.put(:online, online)
 
-    clients = Map.put(supervisor.clients, id, client)
+    sites = Map.put(supervisor.sites, id, site)
 
     # Logger.info("#{id}: Online: #{online}")
-    pub = %{topic: "clients", clients: clients}
+    pub = %{topic: "sites", sites: sites}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-    %{supervisor | clients: clients}
+    %{supervisor | sites: sites}
   end
 
   defp receive_result(supervisor, topic, result, command_id) do
@@ -229,17 +229,16 @@ defmodule RSMP.Supervisor do
     id = topic.id
     path = topic.path
     supervisor =
-      if supervisor.clients[id],
+      if supervisor.sites[id],
         do: supervisor,
-        else: put_in(supervisor.clients[id], new_site())
+        else: put_in(supervisor.sites[id], new_site())
 
-    client = supervisor.clients[id]
-    converter = converter(client, topic.path.module)
-    status = converter.from_rsmp_status(client, path, data)
-    supervisor = put_in(supervisor.clients[id].statuses[path], status)
+    site = supervisor.sites[id]
+    status = from_rsmp_status(site, path, data)
+    supervisor = put_in(supervisor.sites[id].statuses[path], status)
 
-    Logger.info("RSMP: #{id}: Received status #{path}: #{inspect(status)} from #{id}")
-    pub = %{topic: "status", clients: supervisor.clients}
+    Logger.info("RSMP: #{id}: Received status #{inspect(path)}: #{inspect(status)} from #{id}")
+    pub = %{topic: "status", sites: supervisor.sites}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
     supervisor
@@ -248,22 +247,22 @@ defmodule RSMP.Supervisor do
   defp receive_alarm(supervisor, topic, alarm) do
     id = topic.id
     path = topic.path
-    client = supervisor.clients[id] || new_site()
+    site = supervisor.sites[id] || new_site()
 
-    alarms = client.alarms |> Map.put(Path.to_string(topic.path), alarm)
-    client = %{client | alarms: alarms} |> set_site_num_alarms()
-    clients = supervisor.clients |> Map.put(id, client)
+    alarms = site.alarms |> Map.put(Path.to_string(topic.path), alarm)
+    site = %{site | alarms: alarms} |> set_site_num_alarms()
+    sites = supervisor.sites |> Map.put(id, site)
 
-    Logger.info("RSMP: #{topic.id}: Received alarm #{path}: #{inspect(alarm)}")
-    pub = %{topic: "alarm", clients: clients}
+    Logger.info("RSMP: #{topic.id}: Received alarm #{inspect(path)}: #{inspect(alarm)}")
+    pub = %{topic: "alarm", sites: sites}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
-    %{supervisor | clients: clients}
+    %{supervisor | sites: sites}
   end
 
   # catch-all in case old retained messages are received from the broker
   defp receive_unknown(supervisor, topic, publish) do
-    Logger.warning("Unhandled publish, path: #{inspect(topic)}, publish: #{inspect(publish)}")
+    Logger.warning("Unhandled publish, topic: #{inspect(topic)}, publish: #{inspect(publish)}")
     {:noreply, supervisor}
   end
 
@@ -284,14 +283,14 @@ defmodule RSMP.Supervisor do
     })
   end
 
-  def set_site_num_alarms(client) do
+  def set_site_num_alarms(site) do
     num =
-      client.alarms
+      site.alarms
       |> Enum.count(fn {_path, alarm} ->
         alarm["active"]
       end)
 
-    client |> Map.put(:num_alarms, num)
+    site |> Map.put(:num_alarms, num)
   end
 
   def module(supervisor, name), do: supervisor.modules |> Map.fetch!(name)

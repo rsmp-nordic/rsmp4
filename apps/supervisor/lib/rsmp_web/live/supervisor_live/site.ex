@@ -12,13 +12,13 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
       Phoenix.PubSub.subscribe(RSMP.PubSub, "rsmp")
     end
 
-    client_id = params["client_id"]
-    client = RSMP.Supervisor.client(client_id)
+    site_id = params["site_id"]
+    site = RSMP.Supervisor.site(site_id)
 
     {:ok,
      assign(socket,
-       client_id: client_id,
-       client: client,
+       site_id: site_id,
+       site: site,
        alarm_flags: Enum.sort(["active", "acknowledged", "blocked"]),
        commands: ["tlc/2"],
        responses: %{}
@@ -26,27 +26,27 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   def assign_client(socket) do
-    client_id = socket.assigns.client_id
-    client = RSMP.Supervisor.client(client_id)
-    assign(socket, client: client)
+    site_id = socket.assigns.site_id
+    site = RSMP.Supervisor.site(site_id)
+    assign(socket, site: site)
   end
 
   # UI events
 
   @impl true
   def handle_event("alarm", %{"path" => path, "flag" => flag, "value" => value}, socket) do
-    client_id = socket.assigns.client_id
+    site_id = socket.assigns.site_id
     new_value = value == "false"
 
-    RSMP.Supervisor.set_alarm_flag(client_id, path, flag, new_value)
+    RSMP.Supervisor.set_alarm_flag(site_id, path, flag, new_value)
     {:noreply, socket |> assign_client()}
   end
 
   @impl true
   def handle_event("command", %{"path" => path, "value" => plan}, socket) do
     plan = String.to_integer(plan)
-    client_id = socket.assigns[:client_id]
-    RSMP.Supervisor.set_plan(client_id, plan)
+    site_id = socket.assigns[:site_id]
+    RSMP.Supervisor.set_plan(site_id, plan)
     Process.send_after(self(), {:command_waiting, path}, 1000)
 
     responses =

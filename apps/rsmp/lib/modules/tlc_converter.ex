@@ -55,6 +55,14 @@ defmodule RSMP.Converter.TLC do
     }
   end
 
+  def from_rsmp_status("22", data) do
+    items = String.split(data["status"], ",")
+
+    for item <- items do
+      String.to_integer(item)
+    end
+  end
+
   def from_rsmp_status("24", data) do
     items = String.split(data["status"], ",")
 
@@ -64,5 +72,5 @@ defmodule RSMP.Converter.TLC do
     end
   end
 
-  def from_rsmp_status("28", component, data), do: from_rsmp_status("24", component, data)
+  def from_rsmp_status("28", data), do: from_rsmp_status("24", data)
 end

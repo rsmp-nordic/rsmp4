@@ -57,15 +57,15 @@ defmodule RSMP.Site do
 
   # helpers
 
-  def publish_status(client, path) do
-    path_string = path |> Path.to_string()
-    value = client.statuses[path_string]
+  def publish_status(site, path) do
+    path_string = Path.to_string(path)
+    value = site.statuses[path_string]
     Logger.info("RSMP: Sending status: #{path_string} #{Kernel.inspect(value)}")
-    status = to_rsmp_status(client, path, value)
-    topic = %Topic{id: client.id, type: "status", path: path}
+    status = to_rsmp_status(site, path, value)
+    topic = %Topic{id: site.id, type: "status", path: path}
 
     :emqtt.publish_async(
-      client.pid,
+      site.pid,
       Topic.to_string(topic),
       Utility.to_payload(status),
       [retain: true, qos: 1],
@@ -77,36 +77,36 @@ defmodule RSMP.Site do
     Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
   end
 
-  def alarm_flag_string(client, path) do
-    client.alarms[path]
+  def alarm_flag_string(site, path) do
+    site.alarms[path]
     |> Map.from_struct()
     |> Enum.filter(fn {_flag, value} -> value == true end)
     |> Enum.map(fn {flag, _value} -> flag end)
     |> inspect()
   end
 
-  def publish_alarm(client, path) do
-    flags = alarm_flag_string(client, path)
+  def publish_alarm(site, path) do
+    flags = alarm_flag_string(site, path)
     Logger.info("RSMP: Sending alarm: #{path} #{flags}")
 
     :emqtt.publish_async(
-      client.pid,
-      "#{client.id}/alarm/#{path}",
-      Utility.to_payload(client.alarms[path]),
+      site.pid,
+      "#{site.id}/alarm/#{path}",
+      Utility.to_payload(site.alarms[path]),
       [retain: true, qos: 1],
       &publish_done/1
     )
   end
 
-  def publish_all(client) do
-    for path <- Map.keys(client.alarms), do: publish_alarm(client, path)
-    # for path <- Map.keys(client.statuses), do: publish_status(client, path)
+  def publish_all(site) do
+    for path <- Map.keys(site.alarms), do: publish_alarm(site, path)
+    # for path <- Map.keys(site.statuses), do: publish_status(site, path)
   end
 
-  def publish_state(client, state) do
+  def publish_state(site, state) do
     :emqtt.publish_async(
-      client.pid,
-      "#{client.id}/state",
+      site.pid,
+      "#{site.id}/state",
       Utility.to_payload(state),
       [retain: true, qos: 1],
       &publish_done/1
@@ -121,17 +121,17 @@ defmodule RSMP.Site do
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/reaction/#", 1})
   end
 
-  def handle_publish(topic, _module, data, client) do
+  def handle_publish(topic, _module, data, site) do
     Logger.warning("Unhandled publish, topic: #{inspect(topic)}, data: #{inspect(data)}")
-    {:noreply, client}
+    {:noreply, site}
   end
 
-  def handle_status(topic, component, publish, client) do
+  def handle_status(topic, component, publish, site) do
     Logger.warning(
       "Unhandled status, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
     )
 
-    {:noreply, client}
+    {:noreply, site}
   end
 
   def module(site, name), do: site.modules |> Map.fetch!(name)
@@ -156,7 +156,7 @@ defmodule RSMP.Site do
       # api
       def start_link(_options \\ []) do
         {:ok, pid} = GenServer.start_link(__MODULE__, [])
-        Logger.info("RSMP: Starting client with pid #{inspect(pid)}")
+        Logger.info("RSMP: Starting site with pid #{inspect(pid)}")
         {:ok, pid}
       end
 
@@ -167,7 +167,7 @@ defmodule RSMP.Site do
 
         id = client_id()
 
-        client =
+        site =
           %RSMP.Site{
             id: id,
             modules: module_mapping()
@@ -186,143 +186,143 @@ defmodule RSMP.Site do
 
         {:ok, pid} = :emqtt.start_link(options)
         {:ok, _} = :emqtt.connect(pid)
-        client = Map.put(client, :pid, pid)
-        {:ok, client, {:continue, :start_emqtt}}
+        site = Map.put(site, :pid, pid)
+        {:ok, site, {:continue, :start_emqtt}}
       end
 
       @impl true
-      def handle_continue(:start_emqtt, %{pid: pid, id: _} = client) do
-        Site.subscribe_to_topics(client)
-        Site.publish_state(client, 1)
-        Site.publish_all(client)
+      def handle_continue(:start_emqtt, %{pid: pid, id: _} = site) do
+        Site.subscribe_to_topics(site)
+        Site.publish_state(site, 1)
+        Site.publish_all(site)
         continue_client()
-        {:noreply, client}
+        {:noreply, site}
       end
 
       # genserver api imlementation
       @impl true
-      def handle_call(:get_id, _from, client) do
-        {:reply, client.id, client}
+      def handle_call(:get_id, _from, site) do
+        {:reply, site.id, site}
       end
 
       @impl true
-      def handle_call(:get_statuses, _from, client) do
-        {:reply, client.statuses, client}
+      def handle_call(:get_statuses, _from, site) do
+        {:reply, site.statuses, site}
       end
 
       @impl true
-      def handle_call({:get_status, path}, _from, client) do
-        {:reply, client.statuses[path], client}
+      def handle_call({:get_status, path}, _from, site) do
+        {:reply, site.statuses[path], site}
       end
 
       @impl true
-      def handle_call(:get_alarms, _from, client) do
-        {:reply, client.alarms, client}
+      def handle_call(:get_alarms, _from, site) do
+        {:reply, site.alarms, site}
       end
 
       @impl true
-      def handle_call({:get_alarm_flag, path, flag}, _from, client) do
-        alarm = client.alarms[path] || Alarm.new()
+      def handle_call({:get_alarm_flag, path, flag}, _from, site) do
+        alarm = site.alarms[path] || Alarm.new()
         flag = Alarm.get_flag(alarm, flag)
-        {:reply, flag, client}
+        {:reply, flag, site}
       end
 
       @impl true
-      def handle_cast({:set_status, path, value}, client) do
-        client = %{client | statuses: Map.put(client.statuses, path, value)}
-        Site.publish_status(client, path)
+      def handle_cast({:set_status, path, value}, site) do
+        site = %{site | statuses: Map.put(site.statuses, path, value)}
+        Site.publish_status(site, path)
 
         data = %{topic: "status", changes: [path]}
         Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-        {:noreply, client}
+        {:noreply, site}
       end
 
       @impl true
-      def handle_cast({:raise_alarm, path}, client) do
-        if Alarm.active?(client.alarms[path]) == false do
-          client = Alarm.flag_on(client.alarms[path], :active)
-          Site.publish_alarm(client, path)
+      def handle_cast({:raise_alarm, path}, site) do
+        if Alarm.active?(site.alarms[path]) == false do
+          site = Alarm.flag_on(site.alarms[path], :active)
+          Site.publish_alarm(site, path)
 
           data = %{topic: "alarm", changes: [path]}
           Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-          {:noreply, client}
+          {:noreply, site}
         else
-          {:noreply, client}
+          {:noreply, site}
         end
       end
 
       @impl true
-      def handle_cast({:clear_alarm, path}, client) do
-        if Alarm.active?(client.alarms[path]) do
-          client = Alarm.flag_off(client.alarms[path], :active)
-          Site.publish_alarm(client, path)
+      def handle_cast({:clear_alarm, path}, site) do
+        if Alarm.active?(site.alarms[path]) do
+          site = Alarm.flag_off(site.alarms[path], :active)
+          Site.publish_alarm(site, path)
 
           data = %{topic: "alarm", changes: [path]}
           Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-          {:noreply, client}
+          {:noreply, site}
         else
-          {:noreply, client}
+          {:noreply, site}
         end
       end
 
       @impl true
-      def handle_cast({:set_alarm_flag, path, flag, value}, client) do
-        if Alarm.get_flag(client.alarms[path], flag) != value do
-          client = Alarm.set_flag(client.alarms[path], flag, value)
-          Site.publish_alarm(client, path)
+      def handle_cast({:set_alarm_flag, path, flag, value}, site) do
+        if Alarm.get_flag(site.alarms[path], flag) != value do
+          site = Alarm.set_flag(site.alarms[path], flag, value)
+          Site.publish_alarm(site, path)
 
           data = %{topic: "alarm", changes: [path]}
           Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
-          {:noreply, client}
+          {:noreply, site}
         else
-          {:noreply, client}
+          {:noreply, site}
         end
       end
 
       @impl true
-      def handle_cast({:toggle_alarm_flag, path, flag}, client) do
-        alarm = client.alarms[path] |> Alarm.toggle_flag(flag)
-        client = put_in(client.alarms[path], alarm)
-        Site.publish_alarm(client, path)
+      def handle_cast({:toggle_alarm_flag, path, flag}, site) do
+        alarm = site.alarms[path] |> Alarm.toggle_flag(flag)
+        site = put_in(site.alarms[path], alarm)
+        Site.publish_alarm(site, path)
 
         data = %{topic: "alarm", changes: [path]}
         Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
 
-        {:noreply, client}
+        {:noreply, site}
       end
 
       # mqtt
       @impl true
-      def handle_info({:publish, publish}, client) do
+      def handle_info({:publish, publish}, site) do
         topic = Topic.from_string(publish.topic)
-        responder = Site.responder(client, topic.path.module)
+        responder = Site.responder(site, topic.path.module)
         data = Utility.from_payload(publish[:payload])
-        client =
+        site =
           case topic.type do
-            "status" -> responder.receive_status(client, topic.code, topic.component, data)
+            "status" -> responder.receive_status(site, topic.code, topic.component, data)
             "command" ->
               properties = %{
                 response_topic: publish[:properties][:"Response-Topic"],
                 command_id: publish[:properties][:"Correlation-Data"]
               }
-              responder.receive_command(client, topic.code, topic.component, data, properties)
-            "reaction" -> responder.receive_reaction(client, topic.code, topic.component, data)
+              responder.receive_command(site, topic.code, topic.component, data, properties)
+            "reaction" -> responder.receive_reaction(site, topic.code, topic.component, data)
           end
 
-        {:noreply, client}
+        {:noreply, site}
       end
 
       @impl true
-      def handle_info({:connected, _publish}, client) do
+      def handle_info({:connected, _publish}, site) do
         Logger.info("RSMP: Connected")
-        Site.subscribe_to_topics(client)
-        {:noreply, client}
+        Site.subscribe_to_topics(site)
+        {:noreply, site}
       end
 
       @impl true
-      def handle_info({:disconnected, _publish}, client) do
+      def handle_info({:disconnected, _publish}, site) do
         Logger.warning("RSMP: Disconnected")
-        {:noreply, client}
+        {:noreply, site}
       end
 
       # helpers

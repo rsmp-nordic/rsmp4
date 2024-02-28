@@ -18,22 +18,22 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   def initial_mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       clients: %{}
+       sites: %{}
      )}
   end
 
   def connected_mount(_params, _session, socket) do
     Phoenix.PubSub.subscribe(RSMP.PubSub, "rsmp")
-    clients = RSMP.Supervisor.clients()
+    sites = RSMP.Supervisor.sites()
 
     {:ok,
      assign(socket,
-       clients: sort_clients(clients)
+       sites: sort_sites(sites)
      )}
   end
 
-  def sort_clients(clients) do
-    clients
+  def sort_sites(sites) do
+    sites
     |> Map.to_list()
     |> Enum.sort_by(fn {id, state} -> {state.online == false, id} end, :asc)
   end
@@ -61,18 +61,18 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   end
 
   @impl true
-  def handle_info(%{topic: "clients", clients: clients}, socket) do
-    {:noreply, assign(socket, clients: sort_clients(clients))}
+  def handle_info(%{topic: "sites", sites: sites}, socket) do
+    {:noreply, assign(socket, sites: sort_sites(sites))}
   end
 
   @impl true
-  def handle_info(%{topic: "status", clients: clients}, socket) do
-    {:noreply, assign(socket, clients: sort_clients(clients))}
+  def handle_info(%{topic: "status", sites: sites}, socket) do
+    {:noreply, assign(socket, sites: sort_sites(sites))}
   end
 
   @impl true
-  def handle_info(%{topic: "alarm", clients: clients}, socket) do
-    {:noreply, assign(socket, clients: sort_clients(clients))}
+  def handle_info(%{topic: "alarm", sites: sites}, socket) do
+    {:noreply, assign(socket, sites: sort_sites(sites))}
   end
 
   @impl true
@@ -83,8 +83,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
 
   @impl true
   def handle_info(%{topic: "alarm", id: _id, path: _path, alarm: _alarm}, socket) do
-    clients = RSMP.Supervisor.clients() |> sort_clients()
+    sites = RSMP.Supervisor.sites() |> sort_sites()
 
-    {:noreply, assign(socket, clients: clients)}
+    {:noreply, assign(socket, sites: sites)}
   end
 end

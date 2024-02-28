@@ -12,7 +12,48 @@ defmodule RSMP.Site.TLC do
   end
 
   def setup(site) do
-    site
+    site |> Map.merge(%{
+      statuses: %{
+        # signal group status
+        "tlc/1" => %{
+          base: 0,
+          cycle: 0,
+          groups: "",
+          stage: 0
+        },
+        # curent signal group plan
+        "tlc/14" => %{plan: 1, source: "startup"},
+        # signal group plans
+        "tlc/22" => [1, 2],
+        # offsets
+        "tlc/24" => %{1 => 1, 2 => 2},
+        # cycle times
+        "tlc/28" => %{1 => 6, 2 => 4},
+        # number of vehicle
+        "traffic/201/dl/1" => %{
+          starttime: RSMP.Time.timestamp(),
+          vehicles: 0
+        }
+      },
+      alarms: %{
+        # serious hardware error
+        "tlc/201/sg/1" => Alarm.new(),
+        "tlc/201/sg/2" => Alarm.new(),
+        # a301
+        "tlc/201/dl/a1" => Alarm.new()
+      },
+      plans: %{
+        1 => %{
+          1 => "111nbb",
+          2 => "11nbbb"
+        },
+        2 => %{
+          1 => "eeffff",
+          2 => "gggghh"
+        }
+      }
+    })
+
   end
 
   def continue_client() do
@@ -33,12 +74,13 @@ defmodule RSMP.Site.TLC do
   def cycle(site) do
     cycletime = cur_cycletime(site)
     offset = cur_offset(site)
-    signal_group_status_path = "tlc/1"
-    base = site.statuses[signal_group_status_path].base
+    path = Path.new("tlc","1")
+    path_string = Path.to_string(path)
+    base = site.statuses[path_string].base
     base = rem(base + 1, cycletime)
     cycle = rem(base + offset, cycletime)
-    site = put_in(site, [:statuses, signal_group_status_path, :base], base)
-    site = put_in(site, [:statuses, signal_group_status_path, :cycle], cycle)
+    site = put_in(site.statuses[path_string][:base], base)
+    site = put_in(site.statuses[path_string][:cycle], cycle)
 
     phases =
       for {sg, sg_plan} <- cur_plan(site), into: %{} do
@@ -46,11 +88,11 @@ defmodule RSMP.Site.TLC do
       end
 
     phase_string = Map.values(phases) |> Enum.join()
-    site = put_in(site, [:statuses, signal_group_status_path, :groups], phase_string)
+    site = put_in(site.statuses[path_string][:groups], phase_string)
 
-    Site.publish_status(site, signal_group_status_path)
+    Site.publish_status(site, path)
 
-    data = %{topic: "status", changes: [signal_group_status_path]}
+    data = %{topic: "status", changes: [path_string]}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
 
     site
@@ -58,15 +100,16 @@ defmodule RSMP.Site.TLC do
 
   # update detector counts
   def detect(site) do
-    counts_path = "traffic/201/dl/1"
+    path = Path.new("traffic","201",["dl","1"])
+    path_string = Path.to_string(path)
     now = Time.timestamp()
 
-    site = site |> put_in([:statuses, counts_path, :vehicles], :rand.uniform(3))
-    site = site |> put_in([:statuses, counts_path, :starttime], now)
+    site = put_in(site.statuses[path_string][:vehicles], :rand.uniform(3))
+    site = put_in(site.statuses[path_string][:starttime], now)
 
-    Site.publish_status(site, counts_path)
+    Site.publish_status(site, path)
 
-    data = %{topic: "status", changes: [counts_path]}
+    data = %{topic: "status", changes: [path_string]}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
 
     site
