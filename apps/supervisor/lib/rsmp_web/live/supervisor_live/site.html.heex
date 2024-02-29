@@ -16,9 +16,9 @@
       </tr>
     </thead>
 
-    <%= for {status,value} <- @site.statuses do %>
+    <%= for {path,value} <- @site.statuses do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1"><%= inspect(status) %></td>
+        <td class="px-1 py-1"><%= path %></td>
         <td class="px-1 py-1">
           <%= {:ok, str} = Poison.encode(value)
           String.trim(str) %>
@@ -80,7 +80,7 @@
 
     <%= for {command,path} <- @commands do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1"><%= command %>, <%= inspect(path) %></td>
+        <td class="px-1 py-1"><%= command %>, <%= RSMP.Path.to_string(path) %></td>
         <td class="px-1 py-1">
           <form phx-submit="command">
             <input

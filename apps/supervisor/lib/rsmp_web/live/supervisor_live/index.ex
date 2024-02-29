@@ -46,7 +46,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
       ) do
     RSMP.Supervisor.set_alarm_flag(
       site_id,
-      path,
+      RSMP.Path.from_string(path),
       flag,
       value == "true"
     )

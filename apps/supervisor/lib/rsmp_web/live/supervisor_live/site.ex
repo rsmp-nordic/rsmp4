@@ -1,7 +1,6 @@
 defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   use RSMP.Supervisor.Web, :live_view
   use Phoenix.Component
-
   require Logger
 
   @impl true
@@ -38,7 +37,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     site_id = socket.assigns.site_id
     new_value = value == "false"
 
-    RSMP.Supervisor.set_alarm_flag(site_id, path, flag, new_value)
+    RSMP.Supervisor.set_alarm_flag(site_id, RSMP.Path.from_string(path), flag, new_value)
     {:noreply, socket |> assign_site()}
   end
 
@@ -118,7 +117,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_info(data, socket) do
-    IO.puts("unhandled info: #{inspect(data)}")
+   Logger.warning("unhandled info: #{inspect(data)}")
     {:noreply, socket}
   end
 end

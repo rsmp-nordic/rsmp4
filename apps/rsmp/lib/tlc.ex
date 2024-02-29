@@ -31,7 +31,7 @@ defmodule RSMP.Site.TLC do
         "tlc/28" => %{1 => 6, 2 => 4},
         # number of vehicle
         "traffic/201/dl/1" => %{
-          starttime: RSMP.Time.timestamp(),
+          since: RSMP.Time.timestamp(),
           vehicles: 0
         }
       },
@@ -105,7 +105,7 @@ defmodule RSMP.Site.TLC do
     now = Time.timestamp()
 
     site = put_in(site.statuses[path_string][:vehicles], :rand.uniform(3))
-    site = put_in(site.statuses[path_string][:starttime], now)
+    site = put_in(site.statuses[path_string][:since], now)
 
     Site.publish_status(site, path)
 

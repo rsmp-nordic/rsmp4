@@ -6,7 +6,7 @@ defmodule RSMP.Converter.Traffic do
 
   def to_rsmp_status("201", data) do
     %{
-      "starttime" => data.starttime,
+      "starttime" => data.since,
       "vehicles" => data.vehicles
     }
   end
@@ -15,7 +15,7 @@ defmodule RSMP.Converter.Traffic do
 
   def from_rsmp_status("201", data) do
     %{
-      starttime: data["starttime"],
+      since: data["starttime"],
       vehicles: data["vehicles"]
     }
   end

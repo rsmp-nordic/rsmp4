@@ -78,7 +78,7 @@ defmodule RSMP.Site do
   end
 
   def alarm_flag_string(site, path) do
-    site.alarms[path]
+    site.alarms[Path.to_string(path)]
     |> Map.from_struct()
     |> Enum.filter(fn {_flag, value} -> value == true end)
     |> Enum.map(fn {flag, _value} -> flag end)
@@ -87,20 +87,21 @@ defmodule RSMP.Site do
 
   def publish_alarm(site, path) do
     flags = alarm_flag_string(site, path)
-    Logger.info("RSMP: Sending alarm: #{path} #{flags}")
+    path_string = Path.to_string(path)
+    Logger.info("RSMP: Sending alarm: #{path_string} #{flags}")
 
     :emqtt.publish_async(
       site.pid,
-      "#{site.id}/alarm/#{path}",
-      Utility.to_payload(site.alarms[path]),
+      "#{site.id}/alarm/#{path_string}",
+      Utility.to_payload(site.alarms[path_string]),
       [retain: true, qos: 1],
       &publish_done/1
     )
   end
 
   def publish_all(site) do
-    for path <- Map.keys(site.alarms), do: publish_alarm(site, path)
-    # for path <- Map.keys(site.statuses), do: publish_status(site, path)
+    for path <- Map.keys(site.alarms), do: publish_alarm(site, Path.from_string(path))
+    for path <- Map.keys(site.statuses), do: publish_status(site, Path.from_string(path))
   end
 
   def publish_state(site, state) do
@@ -232,8 +233,8 @@ defmodule RSMP.Site do
         site = %{site | statuses: Map.put(site.statuses, path, value)}
         Site.publish_status(site, path)
 
-        data = %{topic: "status", changes: [path]}
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+        pub = %{topic: "status", changes: [path]}
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
         {:noreply, site}
       end
 
@@ -241,10 +242,10 @@ defmodule RSMP.Site do
       def handle_cast({:raise_alarm, path}, site) do
         if Alarm.active?(site.alarms[path]) == false do
           site = Alarm.flag_on(site.alarms[path], :active)
-          Site.publish_alarm(site, path)
+          Site.publish_alarm(site, Path.from_string(path))
 
-          data = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+          pub = %{topic: "alarm", changes: [path]}
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
           {:noreply, site}
         else
           {:noreply, site}
@@ -255,10 +256,10 @@ defmodule RSMP.Site do
       def handle_cast({:clear_alarm, path}, site) do
         if Alarm.active?(site.alarms[path]) do
           site = Alarm.flag_off(site.alarms[path], :active)
-          Site.publish_alarm(site, path)
+          Site.publish_alarm(site, Path.from_string(path))
 
-          data = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+          pub = %{topic: "alarm", changes: [path]}
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
           {:noreply, site}
         else
           {:noreply, site}
@@ -269,10 +270,10 @@ defmodule RSMP.Site do
       def handle_cast({:set_alarm_flag, path, flag, value}, site) do
         if Alarm.get_flag(site.alarms[path], flag) != value do
           site = Alarm.set_flag(site.alarms[path], flag, value)
-          Site.publish_alarm(site, path)
+          Site.publish_alarm(site, Path.from_string(path))
 
-          data = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+          pub = %{topic: "alarm", changes: [path]}
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
           {:noreply, site}
         else
           {:noreply, site}
@@ -283,10 +284,10 @@ defmodule RSMP.Site do
       def handle_cast({:toggle_alarm_flag, path, flag}, site) do
         alarm = site.alarms[path] |> Alarm.toggle_flag(flag)
         site = put_in(site.alarms[path], alarm)
-        Site.publish_alarm(site, path)
+        Site.publish_alarm(site, Path.from_string(path))
 
-        data = %{topic: "alarm", changes: [path]}
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+        pub = %{topic: "alarm", changes: [path]}
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
         {:noreply, site}
       end
@@ -297,16 +298,15 @@ defmodule RSMP.Site do
         topic = Topic.from_string(publish.topic)
         responder = Site.responder(site, topic.path.module)
         data = Utility.from_payload(publish[:payload])
+        properties = %{
+          response_topic: publish[:properties][:"Response-Topic"],
+          command_id: publish[:properties][:"Correlation-Data"]
+        }
         site =
           case topic.type do
-            "status" -> responder.receive_status(site, topic.code, topic.component, data)
-            "command" ->
-              properties = %{
-                response_topic: publish[:properties][:"Response-Topic"],
-                command_id: publish[:properties][:"Correlation-Data"]
-              }
-              responder.receive_command(site, topic.code, topic.component, data, properties)
-            "reaction" -> responder.receive_reaction(site, topic.code, topic.component, data)
+            "status" -> responder.receive_status(site, topic.path, data, properties)
+            "command" -> responder.receive_command(site, topic.path, data, properties)
+            "reaction" -> responder.receive_reaction(site, topic.path, data, properties)
           end
 
         {:noreply, site}

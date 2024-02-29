@@ -117,16 +117,19 @@ defmodule RSMP.Supervisor do
 
   @impl true
   def handle_cast({:set_alarm_flag, site_id, path, flag, value}, supervisor) do
-    supervisor = put_in(supervisor.sites[site_id].alarms[path][flag], value)
+    path_string = Path.to_string(path)
+    IO.puts site_id
+    IO.puts inspect supervisor.sites[site_id].alarms
+
+    supervisor = put_in(supervisor.sites[site_id].alarms[path_string][flag], value)
 
     # Send alarm flag to device
-    topic = "#{site_id}/reaction/#{path}"
-
-    Logger.info("RSMP: Sending alarm flag #{path} to #{site_id}: Set #{flag} to #{value}")
+    topic = %Topic{id: site_id, type: "reaction", path: path}
+    Logger.info("RSMP: Sending alarm flag #{path_string} to #{site_id}: Set #{flag} to #{value}")
 
     :emqtt.publish_async(
       supervisor.pid,
-      topic,
+      Topic.to_string(topic),
       Utility.to_payload(%{flag => value}),
       [retain: true, qos: 1],
       &publish_done/1
@@ -134,14 +137,13 @@ defmodule RSMP.Supervisor do
 
     {:noreply, supervisor}
 
-    data = %{
+    pub = %{
       topic: "alarm",
       id: site_id,
       path: path,
-      alarm: supervisor.sites[site_id].alarms[path]
+      alarm: supervisor.sites[site_id].alarms[path_string]
     }
-
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
     {:noreply, supervisor}
   end
@@ -227,7 +229,7 @@ defmodule RSMP.Supervisor do
     {supervisor, site} = get_site(supervisor, id)
 
     status = from_rsmp_status(site, path, data)
-    supervisor = put_in(supervisor.sites[id].statuses[path], status)
+    supervisor = put_in(supervisor.sites[id].statuses[Path.to_string(path)], status)
 
     Logger.info("RSMP: #{id}: Received status #{Path.to_string(path)}: #{inspect(status)} from #{id}")
     pub = %{topic: "status", sites: supervisor.sites}
@@ -238,18 +240,19 @@ defmodule RSMP.Supervisor do
 
   defp receive_alarm(supervisor, topic, alarm) do
     id = topic.id
-    path = topic.path
+    path_string = Path.to_string(topic.path)
     {supervisor, site} = get_site(supervisor, id)
-
-    alarms = site.alarms |> Map.put(Path.to_string(topic.path), alarm)
+    alarms = site.alarms |> Map.put(path_string, alarm)
     site = %{site | alarms: alarms} |> set_site_num_alarms()
-    sites = supervisor.sites |> Map.put(id, site)
+    supervisor = put_in(supervisor.sites[id], site)
 
-    Logger.info("RSMP: #{topic.id}: Received alarm #{Path.to_string(path)}: #{inspect(alarm)}")
-    pub = %{topic: "alarm", sites: sites}
+    Logger.info("RSMP: #{topic.id}: Received alarm #{path_string}: #{inspect(alarm)}")
+    pub = %{topic: "alarm", sites: supervisor.sites}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
-    %{supervisor | sites: sites}
+    IO.puts id
+    IO.puts inspect(supervisor.sites[id].alarms)
+    supervisor
   end
 
   # catch-all in case old retained messages are received from the broker

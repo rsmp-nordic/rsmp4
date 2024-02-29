@@ -83,9 +83,9 @@ defmodule RSMP.Responder.TLC do
     site
   end
 
-  def receive_reaction(site, code, component, data) do
+  def receive_reaction(site, path, data, _properties) do
     Logger.warning(
-      "Unhandled reaction, code: #{inspect(code)}, component: #{inspect(component)}, publish: #{inspect(data)}"
+      "Unhandled reaction, path: #{inspect(path)}, publish: #{inspect(data)}"
     )
 
     site
