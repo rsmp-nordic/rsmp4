@@ -66,18 +66,13 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   # MQTT PubSub events
 
   @impl true
-  def handle_info(%{topic: "status", sites: _sites}, socket) do
+  def handle_info(%{topic: "status"}, socket) do
     {:noreply, socket |> assign_site()}
   end
 
   @impl true
-  def handle_info(%{topic: "alarm", sites: _sites}, socket) do
+  def handle_info(%{topic: "alarm"}, socket) do
     {:noreply, socket |> assign_site()}
-  end
-
-  @impl true
-  def handle_info(%{topic: "alarm", path: _path, alarm: _alarm}, socket) do
-    {:noreply, socket}
   end
 
   # Called 1s after we send a command.
@@ -119,7 +114,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_info(data, socket) do
-   Logger.warning("unhandled info: #{inspect(data)}")
+    Logger.warning("unhandled info: #{inspect(data)}")
     {:noreply, socket}
   end
 end

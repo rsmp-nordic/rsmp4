@@ -4,8 +4,10 @@ defmodule RSMP.Responder.TLC do
   alias RSMP.{Utility, Site, Alarm, Path}
 
   def receive_command(site, %Path{code: "2"}=path, plan, properties) do
-    current_plan = site.statuses["tlc/14"]["status"]
-    status_path = Path.to_string(path)
+    current_plan_path = Path.new("tlc","14")
+    current_plan_path_string = Path.to_string(current_plan_path)
+    current_plan = site.statuses[current_plan_path_string]["plan"]
+    path_string = Path.to_string(path)
 
     {response, site} =
       cond do
@@ -19,7 +21,7 @@ defmodule RSMP.Responder.TLC do
 
         site.plans[plan] != nil ->
           Logger.info("RSMP: Switching to plan: #{plan}")
-          site = put_in(site.statuses[status_path], %{"status" => plan, "source" => "forced"})
+          site = put_in(site.statuses[current_plan_path_string], %{plan: plan, source: "forced"})
           {
             %{status: "ok", plan: plan, reason: ""},
             site
@@ -48,7 +50,8 @@ defmodule RSMP.Responder.TLC do
     end
 
     if response[:status] == "ok" do
-      RSMP.Site.publish_status(site, status_path)
+      IO.puts inspect(site.statuses[current_plan_path_string])
+      RSMP.Site.publish_status(site, current_plan_path)
 
       pub = %{topic: "status", changes: [path]}
       Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)

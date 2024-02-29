@@ -66,7 +66,7 @@ defmodule RSMP.Site.TLC do
       |> cycle()
       |> detect()
 
-    Process.send_after(self(), :tick, 1000)
+    #Process.send_after(self(), :tick, 1000)
     {:noreply, site}
   end
 

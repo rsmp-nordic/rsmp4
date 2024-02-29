@@ -118,9 +118,6 @@ defmodule RSMP.Supervisor do
   @impl true
   def handle_cast({:set_alarm_flag, site_id, path, flag, value}, supervisor) do
     path_string = Path.to_string(path)
-    IO.puts site_id
-    IO.puts inspect supervisor.sites[site_id].alarms
-
     supervisor = put_in(supervisor.sites[site_id].alarms[path_string][flag], value)
 
     # Send alarm flag to device
@@ -196,7 +193,7 @@ defmodule RSMP.Supervisor do
     site = %{site | online: online}
     supervisor = put_in(supervisor.sites[id], site)
     
-    pub = %{topic: "sites", sites: supervisor.sites}
+    pub = %{topic: "state", site: id}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
     
     supervisor
@@ -232,7 +229,7 @@ defmodule RSMP.Supervisor do
     supervisor = put_in(supervisor.sites[id].statuses[Path.to_string(path)], status)
 
     Logger.info("RSMP: #{id}: Received status #{Path.to_string(path)}: #{inspect(status)} from #{id}")
-    pub = %{topic: "status", sites: supervisor.sites}
+    pub = %{topic: "status", site: id, status: %{topic.path => status}}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
     supervisor
@@ -247,11 +244,9 @@ defmodule RSMP.Supervisor do
     supervisor = put_in(supervisor.sites[id], site)
 
     Logger.info("RSMP: #{topic.id}: Received alarm #{path_string}: #{inspect(alarm)}")
-    pub = %{topic: "alarm", sites: supervisor.sites}
+    pub = %{topic: "alarm", alarm: %{topic.path => alarm}}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
-    IO.puts id
-    IO.puts inspect(supervisor.sites[id].alarms)
     supervisor
   end
 
