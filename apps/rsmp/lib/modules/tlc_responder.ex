@@ -19,10 +19,7 @@ defmodule RSMP.Responder.TLC do
 
         site.plans[plan] != nil ->
           Logger.info("RSMP: Switching to plan: #{plan}")
-
-          site =
-            site |> put_in([:statuses, status_path], %{"status" => plan, "source" => "forced"})
-
+          site = put_in(site.statuses[status_path], %{"status" => plan, "source" => "forced"})
           {
             %{status: "ok", plan: plan, reason: ""},
             site
@@ -53,7 +50,7 @@ defmodule RSMP.Responder.TLC do
     if response[:status] == "ok" do
       RSMP.Site.publish_status(site, status_path)
 
-      pub = %{topic: "status", changes: [status_path]}
+      pub = %{topic: "status", changes: [path]}
       Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
     end
 

@@ -78,15 +78,15 @@
       </tr>
     </thead>
 
-    <%= for {command,path} <- @commands do %>
+    <%= for {command,status} <- @commands do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1"><%= command %>, <%= RSMP.Path.to_string(path) %></td>
+        <td class="px-1 py-1"><%= command %></td>
         <td class="px-1 py-1">
           <form phx-submit="command">
             <input
               type="number"
               name="value"
-              value={@site.statuses[path]}
+              value={status}
               class="bg-stone-600 text-white rounded-lg px-2 w-20"
             />
             <input type="hidden" name="path" value={command} />

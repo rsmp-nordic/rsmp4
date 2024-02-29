@@ -204,7 +204,7 @@ defmodule RSMP.Supervisor do
 
   defp receive_result(supervisor, topic, result, command_id) do
     Logger.info(
-      "RSMP: #{topic.id}: Received result to '#{topic.code}' command #{Path.to_string(topic.path)}: #{inspect(result)}"
+      "RSMP: #{topic.id}: Received result to '#{topic.path.code}' command #{Path.to_string(topic.path)}: #{inspect(result)}"
     )
 
     pub = %{
@@ -212,7 +212,7 @@ defmodule RSMP.Supervisor do
       response: %{
         id: topic.id,
         module: topic.path.module,
-        command: topic.code,
+        command: topic.path.code,
         command_id: command_id,
         result: result
       }

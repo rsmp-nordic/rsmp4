@@ -19,7 +19,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
        site_id: site_id,
        site: site,
        alarm_flags: Enum.sort(["active", "acknowledged", "blocked"]),
-       commands: ["tlc/2"],
+       commands: %{
+        "tlc/2" => site.statuses["tlc/14"][:plan]
+      },
        responses: %{}
      )}
   end
