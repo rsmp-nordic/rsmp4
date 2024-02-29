@@ -18,7 +18,7 @@ Interactive Elixir (1.15.5) - press Ctrl+C to exit (type h() ENTER for help)
 [info] RSMP: tlc_2b3c3cf7: Received status ./env/temperature: 28 from tlc_2b3c3cf7
 [info] RSMP: tlc_2b3c3cf7: Received status ./tlc/plan: 4 from tlc_2b3c3cf7
 
-iex(4)> RSMP.Supervisor.client_ids()
+iex(4)> RSMP.Supervisor.site_ids()
 ["tlc_2b3c3cf7", "tlc_7a88044b", "tlc_d8815f19", "tlc_debf8805"]
 
 iex(6)> RSMP.Supervisor.client("tlc_2b3c3cf7")

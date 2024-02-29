@@ -7,7 +7,7 @@ defmodule RSMP.Site.TLC do
       RSMP.Module.Traffic
     ]
 
-  def client_id do
+  def site_id do
     "tlc_#{SecureRandom.hex(4)}"
   end
 
@@ -92,8 +92,8 @@ defmodule RSMP.Site.TLC do
 
     Site.publish_status(site, path)
 
-    data = %{topic: "status", changes: [path_string]}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+    pub = %{topic: "status", changes: [path_string]}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
     site
   end
@@ -109,8 +109,8 @@ defmodule RSMP.Site.TLC do
 
     Site.publish_status(site, path)
 
-    data = %{topic: "status", changes: [path_string]}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+    pub = %{topic: "status", changes: [path_string]}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
     site
   end

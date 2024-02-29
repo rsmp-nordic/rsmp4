@@ -41,11 +41,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   @impl true
   def handle_event(
         "alarm",
-        %{"client-id" => client_id, "path" => path, "flag" => flag, "value" => value},
+        %{"site-id" => site_id, "path" => path, "flag" => flag, "value" => value},
         socket
       ) do
     RSMP.Supervisor.set_alarm_flag(
-      client_id,
+      site_id,
       path,
       flag,
       value == "true"

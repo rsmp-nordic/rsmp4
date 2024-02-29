@@ -13,7 +13,7 @@
         <th class="px-1 py-1">Alarms</th>
       </tr>
     </thead>
-    <%= for {id,state} <- @clients do %>
+    <%= for {id,state} <- @sites do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
         <td class="px-1 py-1"><%= if state.online, do: "🟢" %></td>
         <td class="px-1 py-1"><.link href={~p"/site/#{id}"}><%= id %></.link></td>

@@ -62,7 +62,7 @@ defmodule RSMP.Responder.TLC do
 
   def receive_command(site, path, _data, _properties) do
     Logger.warning(
-      "Unhandled command, path: #{inspect(path)}"
+      "Unhandled command, path: #{Path.to_string(path)}"
     )
 
     site
@@ -70,15 +70,15 @@ defmodule RSMP.Responder.TLC do
 
   def receive_reaction(site, %Path{code: "201"}=path, flags, _properties) do
     path_string = Path.to_string(path)
-    Logger.info("RSMP: Received alarm flag #{inspect(path)}, #{inspect(flags)}")
+    Logger.info("RSMP: Received alarm flag #{Path.to_string(path)}, #{inspect(flags)}")
 
     alarm = site.alarms[path_string] |> Alarm.update_from_string_map(flags)
     site = put_in(site.alarms[path_string], alarm)
 
     Site.publish_alarm(site, path)
 
-    data = %{topic: "alarm", changes: %{path_string => site.alarms[path]}}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
+    pub = %{topic: "alarm", changes: %{path_string => site.alarms[path]}}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
     site
   end

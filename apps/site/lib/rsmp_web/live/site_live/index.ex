@@ -31,7 +31,7 @@ defmodule RSMP.Site.Web.SiteLive.Index do
 
     {:ok,
      assign(socket,
-       rsmp_client_id: pid,
+       rsmp_site_id: pid,
        id: Site.get_id(pid),
        statuses: Site.get_statuses(pid),
        alarms: alarm_map(Site.get_alarms(pid)),
@@ -46,7 +46,7 @@ defmodule RSMP.Site.Web.SiteLive.Index do
 
   def change_status(data, socket, delta) do
     path = data["value"]
-    pid = socket.assigns[:rsmp_client_id]
+    pid = socket.assigns[:rsmp_site_id]
     statuses = Site.get_statuses(pid)
     new_value = statuses[path] + delta
     Site.set_status(pid, path, new_value)
@@ -83,7 +83,7 @@ defmodule RSMP.Site.Web.SiteLive.Index do
 
   @impl true
   def handle_event("alarm", %{"path" => path, "value" => flag} = _data, socket) do
-    pid = socket.assigns[:rsmp_client_id]
+    pid = socket.assigns[:rsmp_site_id]
     Site.toggle_alarm_flag(pid, path, RSMP.Alarm.flag_atom_from_string(flag))
     {:noreply, socket}
   end
@@ -95,14 +95,14 @@ defmodule RSMP.Site.Web.SiteLive.Index do
 
   @impl true
   def handle_info(%{topic: "status", changes: _changes}, socket) do
-    pid = socket.assigns[:rsmp_client_id]
+    pid = socket.assigns[:rsmp_site_id]
     statuses = Site.get_statuses(pid)
     {:noreply, assign(socket, statuses: statuses)}
   end
 
   @impl true
   def handle_info(%{topic: "alarm", changes: _changes}, socket) do
-    pid = socket.assigns[:rsmp_client_id]
+    pid = socket.assigns[:rsmp_site_id]
     alarms = Site.get_alarms(pid)
     {:noreply, assign(socket, alarms: alarm_map(alarms))}
   end

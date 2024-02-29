@@ -1,6 +1,6 @@
 <p><.link href={~p"/"}>&larr; Site List</.link></p>
 
-<h1 class="text-2xl font-bold py-4">Site <%= @client_id %></h1>
+<h1 class="text-2xl font-bold py-4">Site <%= @site_id %></h1>
 <div id="client" phx-update="append"></div>
 
 <div class="overflow-x-auto rounded-md my-4">
@@ -16,9 +16,9 @@
       </tr>
     </thead>
 
-    <%= for {status,value} <- @client.statuses do %>
+    <%= for {status,value} <- @site.statuses do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1"><%= status %></td>
+        <td class="px-1 py-1"><%= inspect(status) %></td>
         <td class="px-1 py-1">
           <%= {:ok, str} = Poison.encode(value)
           String.trim(str) %>
@@ -43,7 +43,7 @@
       </tr>
     </thead>
 
-    <%= for {path,alarm} <- @client.alarms do %>
+    <%= for {path,alarm} <- @site.alarms do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
         <td class="px-1 py-1"><%= path %></td>
         <%= for flag <- @alarm_flags do %>
@@ -86,7 +86,7 @@
             <input
               type="number"
               name="value"
-              value={@client.statuses[path]}
+              value={@site.statuses[path]}
               class="bg-stone-600 text-white rounded-lg px-2 w-20"
             />
             <input type="hidden" name="path" value={command} />

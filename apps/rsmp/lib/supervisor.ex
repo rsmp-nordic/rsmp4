@@ -29,12 +29,12 @@ defmodule RSMP.Supervisor do
     GenServer.call(__MODULE__, {:site, id})
   end
 
-  def set_plan(client_id, plan) do
-    GenServer.cast(__MODULE__, {:set_plan, client_id, plan})
+  def set_plan(site_id, plan) do
+    GenServer.cast(__MODULE__, {:set_plan, site_id, plan})
   end
 
-  def set_alarm_flag(client_id, path, flag, value) do
-    GenServer.cast(__MODULE__, {:set_alarm_flag, client_id, path, flag, value})
+  def set_alarm_flag(site_id, path, flag, value) do
+    GenServer.cast(__MODULE__, {:set_alarm_flag, site_id, path, flag, value})
   end
 
   # Callbacks
@@ -83,23 +83,23 @@ defmodule RSMP.Supervisor do
   end
 
   @impl true
-  def handle_cast({:set_plan, client_id, plan}, supervisor) do
+  def handle_cast({:set_plan, site_id, plan}, supervisor) do
     # Send command to device
     # set current time plan
     path = "tlc/2"
-    topic = "#{client_id}/command/#{path}"
+    topic = "#{site_id}/command/#{path}"
     command_id = SecureRandom.hex(2)
 
     Logger.info(
-      "RSMP: Sending '#{path}' command #{command_id} to #{client_id}: Please switch to plan #{plan}"
+      "RSMP: Sending '#{path}' command #{command_id} to #{site_id}: Please switch to plan #{plan}"
     )
 
     properties = %{
-      "Response-Topic": "#{client_id}/result/#{path}",
+      "Response-Topic": "#{site_id}/result/#{path}",
       "Correlation-Data": command_id
     }
 
-    # Logger.info("response/#{client_id}/#{topic}")
+    # Logger.info("response/#{site_id}/#{topic}")
 
     :ok =
       :emqtt.publish_async(
@@ -116,13 +116,13 @@ defmodule RSMP.Supervisor do
   end
 
   @impl true
-  def handle_cast({:set_alarm_flag, client_id, path, flag, value}, supervisor) do
-    supervisor = put_in(supervisor.sites[client_id].alarms[path][flag], value)
+  def handle_cast({:set_alarm_flag, site_id, path, flag, value}, supervisor) do
+    supervisor = put_in(supervisor.sites[site_id].alarms[path][flag], value)
 
     # Send alarm flag to device
-    topic = "#{client_id}/reaction/#{path}"
+    topic = "#{site_id}/reaction/#{path}"
 
-    Logger.info("RSMP: Sending alarm flag #{path} to #{client_id}: Set #{flag} to #{value}")
+    Logger.info("RSMP: Sending alarm flag #{path} to #{site_id}: Set #{flag} to #{value}")
 
     :emqtt.publish_async(
       supervisor.pid,
@@ -136,9 +136,9 @@ defmodule RSMP.Supervisor do
 
     data = %{
       topic: "alarm",
-      id: client_id,
+      id: site_id,
       path: path,
-      alarm: supervisor.sites[client_id].alarms[path]
+      alarm: supervisor.sites[site_id].alarms[path]
     }
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", data)
@@ -188,20 +188,16 @@ defmodule RSMP.Supervisor do
   end
 
   # helpers
-
   defp receive_state(supervisor, id, data) do
+    {supervisor, site} = get_site(supervisor, id)
     online = data == 1
-
-    site =
-      (supervisor.sites[id] || new_site())
-      |> Map.put(:online, online)
-
-    sites = Map.put(supervisor.sites, id, site)
-
-    # Logger.info("#{id}: Online: #{online}")
-    pub = %{topic: "sites", sites: sites}
+    site = %{site | online: online}
+    supervisor = put_in(supervisor.sites[id], site)
+    
+    pub = %{topic: "sites", sites: supervisor.sites}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-    %{supervisor | sites: sites}
+    
+    supervisor
   end
 
   defp receive_result(supervisor, topic, result, command_id) do
@@ -228,16 +224,12 @@ defmodule RSMP.Supervisor do
   defp receive_status(supervisor, topic, data) do
     id = topic.id
     path = topic.path
-    supervisor =
-      if supervisor.sites[id],
-        do: supervisor,
-        else: put_in(supervisor.sites[id], new_site())
+    {supervisor, site} = get_site(supervisor, id)
 
-    site = supervisor.sites[id]
     status = from_rsmp_status(site, path, data)
     supervisor = put_in(supervisor.sites[id].statuses[path], status)
 
-    Logger.info("RSMP: #{id}: Received status #{inspect(path)}: #{inspect(status)} from #{id}")
+    Logger.info("RSMP: #{id}: Received status #{Path.to_string(path)}: #{inspect(status)} from #{id}")
     pub = %{topic: "status", sites: supervisor.sites}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
@@ -247,13 +239,13 @@ defmodule RSMP.Supervisor do
   defp receive_alarm(supervisor, topic, alarm) do
     id = topic.id
     path = topic.path
-    site = supervisor.sites[id] || new_site()
+    {supervisor, site} = get_site(supervisor, id)
 
     alarms = site.alarms |> Map.put(Path.to_string(topic.path), alarm)
     site = %{site | alarms: alarms} |> set_site_num_alarms()
     sites = supervisor.sites |> Map.put(id, site)
 
-    Logger.info("RSMP: #{topic.id}: Received alarm #{inspect(path)}: #{inspect(alarm)}")
+    Logger.info("RSMP: #{topic.id}: Received alarm #{Path.to_string(path)}: #{inspect(alarm)}")
     pub = %{topic: "alarm", sites: sites}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
@@ -270,19 +262,6 @@ defmodule RSMP.Supervisor do
     Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
   end
 
-  defp new_site() do
-    RSMP.Site.new()
-    |> Map.merge(%{
-      online: false,
-      modules: %{
-        "tlc" => RSMP.Commander.TLC,
-        "traffic" => RSMP.Commander.Traffic
-      },
-      statuses: %{},
-      alarms: %{}
-    })
-  end
-
   def set_site_num_alarms(site) do
     num =
       site.alarms
@@ -291,6 +270,13 @@ defmodule RSMP.Supervisor do
       end)
 
     site |> Map.put(:num_alarms, num)
+  end
+
+  defp get_site(supervisor,id) do
+    supervisor = if supervisor.sites[id],
+      do: supervisor,
+      else: put_in(supervisor.sites[id], RSMP.Remote.Site.new(id: id))
+    {supervisor, supervisor.sites[id]}
   end
 
   def module(supervisor, name), do: supervisor.modules |> Map.fetch!(name)

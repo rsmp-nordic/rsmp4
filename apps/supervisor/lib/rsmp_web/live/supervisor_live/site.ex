@@ -25,7 +25,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
      )}
   end
 
-  def assign_client(socket) do
+  def assign_site(socket) do
     site_id = socket.assigns.site_id
     site = RSMP.Supervisor.site(site_id)
     assign(socket, site: site)
@@ -39,7 +39,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     new_value = value == "false"
 
     RSMP.Supervisor.set_alarm_flag(site_id, path, flag, new_value)
-    {:noreply, socket |> assign_client()}
+    {:noreply, socket |> assign_site()}
   end
 
   @impl true
@@ -65,13 +65,13 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   # MQTT PubSub events
 
   @impl true
-  def handle_info(%{topic: "status", clients: _clients}, socket) do
-    {:noreply, socket |> assign_client()}
+  def handle_info(%{topic: "status", sites: _sites}, socket) do
+    {:noreply, socket |> assign_site()}
   end
 
   @impl true
-  def handle_info(%{topic: "alarm", clients: _clients}, socket) do
-    {:noreply, socket |> assign_client()}
+  def handle_info(%{topic: "alarm", sites: _sites}, socket) do
+    {:noreply, socket |> assign_site()}
   end
 
   @impl true
@@ -118,7 +118,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_info(data, socket) do
-    IO.puts("unhandled handle_info: #{inspect(data)}")
+    IO.puts("unhandled info: #{inspect(data)}")
     {:noreply, socket}
   end
 end

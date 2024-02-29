@@ -165,7 +165,7 @@ defmodule RSMP.Site do
       def init([]) do
         Logger.info("RSMP: starting emqtt")
 
-        id = client_id()
+        id = site_id()
 
         site =
           %RSMP.Site{
