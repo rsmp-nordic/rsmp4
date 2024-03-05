@@ -155,18 +155,16 @@ defmodule RSMP.Site do
       alias RSMP.{Utility, Site, Alarm, Time, Topic, Path}
 
       # api
-      def start_link(_options \\ []) do
-        {:ok, pid} = GenServer.start_link(__MODULE__, [])
+      def start_link(options \\ []) do
+        {:ok, pid} = GenServer.start_link(__MODULE__, options)
         Logger.info("RSMP: Starting site with pid #{inspect(pid)}")
         {:ok, pid}
       end
 
       # genserver
       @impl true
-      def init([]) do
+      def init(site_id: id) do
         Logger.info("RSMP: starting emqtt")
-
-        id = site_id()
 
         site =
           %RSMP.Site{

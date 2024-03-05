@@ -1,4 +1,4 @@
-defmodule RSMP.Site.Web.SiteLive.Index do
+defmodule RSMP.Site.Web.SiteLive.Site do
   use RSMP.Site.Web, :live_view
   alias RSMP.Site
   require Logger
@@ -25,9 +25,14 @@ defmodule RSMP.Site.Web.SiteLive.Index do
      )}
   end
 
-  def connected_mount(_params, _session, socket) do
+  def connected_mount(params, _session, socket) do
     Phoenix.PubSub.subscribe(RSMP.PubSub, "rsmp")
-    {:ok, pid} = Site.TLC.start_link([])
+
+    site_id = params["site_id"]
+
+    #id = RSMP.Site.TLC.make_site_id()
+
+    {:ok, pid} = Site.TLC.start_link(site_id: site_id)
 
     {:ok,
      assign(socket,
@@ -108,7 +113,7 @@ defmodule RSMP.Site.Web.SiteLive.Index do
   end
 
   # Change tracking on assigns only works with simple data, we
-  # cannot use functions to extrect data in our temples.
+  # cannot use functions to extract data in our templates.
   # Convert alarm structs to plain maps.
   def alarm_map(alarms) do
     alarms

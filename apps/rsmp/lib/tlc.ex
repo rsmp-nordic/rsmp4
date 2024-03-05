@@ -7,7 +7,7 @@ defmodule RSMP.Site.TLC do
       RSMP.Module.Traffic
     ]
 
-  def site_id do
+  def make_site_id do
     "tlc_#{SecureRandom.hex(4)}"
   end
 

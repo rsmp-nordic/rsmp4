@@ -17,6 +17,7 @@ defmodule RSMP.Site.Web.Router do
   scope "/", RSMP.Site.Web do
     pipe_through :browser
 
-    live "/", SiteLive.Index
+    #live "/", SiteLive.Index
+    live "/site/:site_id", SiteLive.Site, :site
   end
 end
