@@ -105,11 +105,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
       |> Map.put("symbol", symbol)
       |> Map.put("phase", "received")
 
-    responses =
-      socket.assigns.responses
-      |> Map.put("tlc/2", result)
-
-    {:noreply, assign(socket, responses: responses)}
+    responses = socket.assigns.responses |> Map.put("tlc/2", result)
+    commands = socket.assigns.commands |> Map.put("tlc/2", response[:result]["plan"])
+    {:noreply, assign(socket, responses: responses, commands: commands)}
   end
 
   @impl true

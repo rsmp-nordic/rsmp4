@@ -30,7 +30,7 @@ defmodule RSMP.Responder.TLC do
           Logger.info("RSMP: Unknown plan: #{plan}")
 
           {
-            %{status: "unknown", plan: plan, reason: "Plan #{plan} not found"},
+            %{status: "unknown", plan: current_plan, reason: "Plan #{plan} not found"},
             site
           }
       end
