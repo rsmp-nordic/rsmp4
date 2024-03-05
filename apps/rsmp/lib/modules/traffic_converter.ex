@@ -20,4 +20,7 @@ defmodule RSMP.Converter.Traffic do
     }
   end
 
+  # setup default command values from statuses
+  
+  def command_default(_code, _statuses), do: nil
 end
