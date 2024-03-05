@@ -44,12 +44,12 @@ defmodule RSMP.Site.TLC do
       },
       plans: %{
         1 => %{
-          1 => "111nbb",
-          2 => "11nbbb"
+          1 => "111efg",
+          2 => "abc111"
         },
         2 => %{
-          1 => "eeffff",
-          2 => "gggghh"
+          1 => "abc222",
+          2 => "222abc"
         }
       }
     })
@@ -66,7 +66,7 @@ defmodule RSMP.Site.TLC do
       |> cycle()
       |> detect()
 
-    #Process.send_after(self(), :tick, 1000)
+    Process.send_after(self(), :tick, 1000)
     {:noreply, site}
   end
 

@@ -6,8 +6,7 @@ defmodule RSMP.Responder.TLC do
   def receive_command(site, %Path{code: "2"}=path, plan, properties) do
     current_plan_path = Path.new("tlc","14")
     current_plan_path_string = Path.to_string(current_plan_path)
-    current_plan = site.statuses[current_plan_path_string]["plan"]
-    path_string = Path.to_string(path)
+    current_plan = site.statuses[current_plan_path_string][:plan]
 
     {response, site} =
       cond do
@@ -37,6 +36,7 @@ defmodule RSMP.Responder.TLC do
       end
 
     if properties[:response_topic] do
+      Logger.info("RSMP: Sending result: #{Path.to_string(path)}, #{inspect(response)}")
       # site, Topic, Properties, Payload, Opts, Timeout, Callback
       :emqtt.publish_async(
         site.pid,
@@ -50,7 +50,6 @@ defmodule RSMP.Responder.TLC do
     end
 
     if response[:status] == "ok" do
-      IO.puts inspect(site.statuses[current_plan_path_string])
       RSMP.Site.publish_status(site, current_plan_path)
 
       pub = %{topic: "status", changes: [path]}
