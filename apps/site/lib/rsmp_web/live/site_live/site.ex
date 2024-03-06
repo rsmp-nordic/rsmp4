@@ -45,8 +45,14 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
-  def handle_params(_params, _url, socket) do
-    {:noreply, socket}
+  def handle_params(params, _url, socket) do
+    site_id = params["site_id"]
+    if site_id do
+      {:noreply, socket}
+    else
+      site_id = RSMP.Site.TLC.make_site_id()
+      {:noreply, push_patch(socket, to: ~p"/site/#{site_id}")}
+    end
   end
 
   def change_status(data, socket, delta) do
