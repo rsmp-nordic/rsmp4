@@ -28,7 +28,7 @@ defmodule RSMP.Site.TLC do
         # offsets
         "tlc/24" => %{1 => 1, 2 => 2},
         # cycle times
-        "tlc/28" => %{1 => 6, 2 => 4},
+        "tlc/28" => %{1 => 6, 2 => 6},
         # number of vehicle
         "traffic/201/dl/1" => %{
           since: RSMP.Time.timestamp(),
@@ -53,6 +53,7 @@ defmodule RSMP.Site.TLC do
         }
       }
     })
+    |> base_moved()
 
   end
 
@@ -70,16 +71,24 @@ defmodule RSMP.Site.TLC do
     {:noreply, site}
   end
 
-  # move cycle counter and update signal group status
-  def cycle(site) do
+  # move base counter
+  def move_base(site) do
+    path = Path.new("tlc","1")
+    path_string = Path.to_string(path)
     cycletime = cur_cycletime(site)
-    offset = cur_offset(site)
+    base = site.statuses[path_string].base
+    base = rem(base + 1, cycletime)
+    put_in(site.statuses[path_string][:base], base)
+  end
+
+  # update cycle when base counter moved
+  def base_moved(site) do
     path = Path.new("tlc","1")
     path_string = Path.to_string(path)
     base = site.statuses[path_string].base
-    base = rem(base + 1, cycletime)
+    cycletime = cur_cycletime(site)
+    offset = cur_offset(site)
     cycle = rem(base + offset, cycletime)
-    site = put_in(site.statuses[path_string][:base], base)
     site = put_in(site.statuses[path_string][:cycle], cycle)
 
     phases =
@@ -88,8 +97,18 @@ defmodule RSMP.Site.TLC do
       end
 
     phase_string = Map.values(phases) |> Enum.join()
-    site = put_in(site.statuses[path_string][:groups], phase_string)
+    put_in(site.statuses[path_string][:groups], phase_string)
+  end
 
+  # move cycle counter and update signal group status
+  def cycle(site) do
+    site =
+      site
+      |> move_base
+      |> base_moved
+
+    path = Path.new("tlc","1")
+    path_string = Path.to_string(path)
     Site.publish_status(site, path)
 
     pub = %{topic: "status", changes: [path_string]}
