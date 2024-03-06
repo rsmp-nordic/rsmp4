@@ -93,7 +93,7 @@ defmodule RSMP.Site do
     :emqtt.publish_async(
       site.pid,
       "#{site.id}/alarm/#{path_string}",
-      Utility.to_payload(site.alarms[path_string]),
+      Utility.to_payload(Map.from_struct(site.alarms[path_string])),
       [retain: true, qos: 1],
       &publish_done/1
     )
