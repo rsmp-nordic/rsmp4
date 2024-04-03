@@ -1,3 +1,10 @@
+
+# Node protocol
+defprotocol RSMP.Node.Protocol do
+  def handle_publish(node, publish)
+end
+
+
 # RSMP Node
 defmodule RSMP.Node do
   @moduledoc false
@@ -32,9 +39,9 @@ defmodule RSMP.Node do
   end
  
 
-   # GenServer callbacks
+   # implementations
 
-  @impl true
+  @impl GenServer
   def init(id: id, services: services) do
     site =
       new(id: id, services: services) 
@@ -43,6 +50,11 @@ defmodule RSMP.Node do
       |> subscribe()
 
     {:ok, site}
+  end
+
+  @impl :emqtt
+  def handle_info({:publish, publish}, site) do
+    RSMP.Node.Protocol.handle_publish(node, publish) # dispatch based on type, might end at e.g. RSMP.Node.TLC.receive()
   end
 
 
@@ -69,7 +81,30 @@ defmodule RSMP.Node do
     Map.put(node, :emqtt, emqtt)
   end   
 
-  def subscribe(node) do
-    node
-  end 
+
 end
+
+
+
+# TLC node
+defmodule RSMP.Node.TLC do
+  defimpl RSMP.Node.Protocol, for: __MODULE__ do
+    def services(node) do
+      [
+        RSMP.Service.TLC,
+        RSMP.Service.Traffic
+      ]
+    end
+
+    def subscribe(node) do
+      node
+    end
+
+    def handle_publish(node, publish)
+      # got an mqtt message
+    end
+  end
+end
+
+# Usage
+tlc = RSMP.Node.TLC.new
