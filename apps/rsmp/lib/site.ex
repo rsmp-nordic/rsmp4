@@ -1,8 +1,9 @@
 # RSMP Site
-defmodule RSMP.Site do
+defmodule RSMP.Site do  
   @moduledoc false
   require Logger
   alias RSMP.{Utility, Topic, Path}
+
 
   defstruct(
     id: nil,

@@ -1,23 +1,28 @@
-
-# Node protocol
-defprotocol RSMP.Node.Protocol do
-  def handle_publish(node, publish)
-end
-
-
 # RSMP Node
+# Acts as a GenServer and has the MQTT connection. 
+# Message handling and behaviour are delegated to Services and Managers.
+
 defmodule RSMP.Node do
-  @moduledoc false
-  require Logger
-  alias RSMP.{Utility, Topic, Path}
+
+  defprotocol Builder do
+    def name()
+    def services()
+    def managers()
+  end
 
   defstruct(
     id: nil,
     emqtt: nil,
     services: %{},
+    managers: %{}
     remotes: %{}
   )
 
+  @moduledoc false
+  use GenServer
+  require Logger
+  alias RSMP.{Utility, Topic, Path}
+  
   def new(options \\ %{}), do: __struct__(options)
 
   # api
@@ -34,23 +39,49 @@ defmodule RSMP.Node do
     GenServer.call(pid, :services)
   end
 
+  def managers(pid) do
+    GenServer.call(pid, :services)
+  end
+
   def remotes() do
     GenServer.call(pid, :remotes)
   end
- 
 
-   # implementations
+
+  # GenServer callbacks
 
   @impl GenServer
-  def init(id: id, services: services) do
-    site =
-      new(id: id, services: services) 
+  def init(id: id, services: services, managers: managers) do
+    node =
+      new(id: id, services: services, managers: managers) 
       |> setup()
       |> start_mqtt()
       |> subscribe()
 
-    {:ok, site}
+    {:ok, node}
   end
+
+  @impl true
+  def handle_call(:id, _from, node) do
+    {:reply, node.id, node}
+  end
+
+  @impl true
+  def handle_call(:services, _from, node) do
+    {:reply, node.services, node}
+  end
+
+  @impl true
+  def handle_call({:managers, path}, _from, node) do
+    {:reply, node.managers, node}
+  end
+
+  @impl true
+  def handle_call(:remotes, _from, node) do
+    {:reply, node.remotes, node}
+  end
+
+  # emqtt callbacks
 
   @impl :emqtt
   def handle_info({:publish, publish}, site) do
@@ -58,7 +89,7 @@ defmodule RSMP.Node do
   end
 
 
-  # helpers
+  # implementation
 
   def setup(node) do
     node
@@ -81,30 +112,112 @@ defmodule RSMP.Node do
     Map.put(node, :emqtt, emqtt)
   end   
 
+  def subscribe(node) do
+    node
+  end
+
+end
+
+#####
+
+defmodule RSMP.Node do
+  defmodule Builder do
+    @callback start() :: RSMP.Node.t
+  end
+
+  use GenServer
+
+  defstruct(
+    services: {}
+  )
+
+  def new(options \\ %{}), do: __struct__(options)
+
+  # api
+
+  def start(options) do
+    {:ok, node} = GenServer.start_link(RSMP.Node, options)
+    node
+  end
+
+  def status(node, name, code) do
+    GenServer.call(node,{:status, name, code})
+  end
+
+  def ingoing(node, name, message) do
+    GenServer.cast(node,{:status,name,message})
+  end
+
+  def mapping(modules) do
+    for module <- modules, into: %{}, do: {RSMP.Service.name(module), module}
+  end
+
+  # callbacks
+
+  @impl GenServer
+  def init(options) do
+    node = new(options)
+    {:ok, node}
+  end
+
+  @impl GenServer
+  def handle_call({:status, name, code}, _from, node) do
+    status = node.services[name] |> RSMP.Service.status(code)
+    {:reply, status, node}
+  end
+
+  @impl GenServer
+  def handle_cast({:ingoing, name, code, args}, node) do
+    service = node.services[name] |> RSMP.Service.ingoing(code, args)
+    node = put_in(node.services[name], service)
+    {:noreply, node }
+  end
 
 end
 
 
+defprotocol RSMP.Service do
+  def name(service)
+  def status(service, code)
+  def ingoing(service, code, args)
+end
 
-# TLC node
-defmodule RSMP.Node.TLC do
-  defimpl RSMP.Node.Protocol, for: __MODULE__ do
-    def services(node) do
-      [
-        RSMP.Service.TLC,
-        RSMP.Service.Traffic
-      ]
-    end
-
-    def subscribe(node) do
-      node
-    end
-
-    def handle_publish(node, publish)
-      # got an mqtt message
-    end
+defmodule RSMP.Service.TLC do
+  defstruct(
+    cycle: 0,
+    plan: 0
+  )
+  defimpl RSMP.Service, for: __MODULE__ do
+    def name(_service), do: "tlc"
+    def ingoing(service, "2", plan), do: %{service | plan: plan}
+    def status(service, "cycle"), do: service.cycle
+    def status(service, "plan"), do: service.plan
   end
 end
 
-# Usage
-tlc = RSMP.Node.TLC.new
+defmodule RSMP.Service.Traffic do
+  defstruct(
+    since: "yesterday",
+    vehicles: 0
+  )
+  defimpl RSMP.Service, for: __MODULE__ do
+    def name(_service), do: "traffic"
+    def status(service, "since"), do: service.since
+    def status(service, "vehicles"), do: service.vehicles
+  def ingoing(service, _code, _args), do: service
+  end
+end
+
+defmodule RSMP.Node.TLC do
+  @behaviour RSMP.Node.Builder
+
+  def start() do
+    RSMP.Node.start(
+      services: RSMP.Node.mapping([
+        %RSMP.Service.TLC{cycle: 10},
+        %RSMP.Service.Traffic{vehicles: 23}
+      ])
+    )
+  end
+end
+
