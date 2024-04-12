@@ -1,3 +1,18 @@
+defmodule RSMP.Service.TLC do
+  defstruct(
+    cycle: 0,
+    plan: 0
+  )
+  defimpl RSMP.Service, for: __MODULE__ do
+    def name(_service), do: "tlc"
+    def ingoing(service, "2", plan), do: %{service | plan: plan}
+    def status(service, "cycle"), do: service.cycle
+    def status(service, "plan"), do: service.plan
+  end
+end
+
+
+
 defmodule RSMP.Responder.TLC do
   @behaviour RSMP.Responder
   require Logger

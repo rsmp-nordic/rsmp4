@@ -3,6 +3,66 @@
 # Message handling and behaviour are delegated to Services and Managers.
 
 defmodule RSMP.Node do
+  defmodule Builder do
+    @callback start() :: RSMP.Node.t
+  end
+
+  use GenServer
+
+  defstruct(
+    services: {}
+  )
+
+  def new(options \\ %{}), do: __struct__(options)
+
+  # api
+
+  def start(options) do
+    {:ok, node} = GenServer.start_link(RSMP.Node, options)
+    node
+  end
+
+  def status(node, name, code) do
+    GenServer.call(node,{:status, name, code})
+  end
+
+  def ingoing(node, name, message) do
+    GenServer.cast(node,{:status,name,message})
+  end
+
+  def mapping(modules) do
+    for module <- modules, into: %{}, do: {RSMP.Service.name(module), module}
+  end
+
+  # callbacks
+
+  @impl GenServer
+  def init(options) do
+    node = new(options)
+    {:ok, node}
+  end
+
+  @impl GenServer
+  def handle_call({:status, name, code}, _from, node) do
+    status = node.services[name] |> RSMP.Service.status(code)
+    {:reply, status, node}
+  end
+
+  @impl GenServer
+  def handle_cast({:ingoing, name, code, args}, node) do
+    service = node.services[name] |> RSMP.Service.ingoing(code, args)
+    node = put_in(node.services[name], service)
+    {:noreply, node }
+  end
+
+end
+
+
+
+##################
+# previous code
+
+defmodule RSMP.Node do
 
   defprotocol Builder do
     def name()
@@ -117,107 +177,3 @@ defmodule RSMP.Node do
   end
 
 end
-
-#####
-
-defmodule RSMP.Node do
-  defmodule Builder do
-    @callback start() :: RSMP.Node.t
-  end
-
-  use GenServer
-
-  defstruct(
-    services: {}
-  )
-
-  def new(options \\ %{}), do: __struct__(options)
-
-  # api
-
-  def start(options) do
-    {:ok, node} = GenServer.start_link(RSMP.Node, options)
-    node
-  end
-
-  def status(node, name, code) do
-    GenServer.call(node,{:status, name, code})
-  end
-
-  def ingoing(node, name, message) do
-    GenServer.cast(node,{:status,name,message})
-  end
-
-  def mapping(modules) do
-    for module <- modules, into: %{}, do: {RSMP.Service.name(module), module}
-  end
-
-  # callbacks
-
-  @impl GenServer
-  def init(options) do
-    node = new(options)
-    {:ok, node}
-  end
-
-  @impl GenServer
-  def handle_call({:status, name, code}, _from, node) do
-    status = node.services[name] |> RSMP.Service.status(code)
-    {:reply, status, node}
-  end
-
-  @impl GenServer
-  def handle_cast({:ingoing, name, code, args}, node) do
-    service = node.services[name] |> RSMP.Service.ingoing(code, args)
-    node = put_in(node.services[name], service)
-    {:noreply, node }
-  end
-
-end
-
-
-defprotocol RSMP.Service do
-  def name(service)
-  def status(service, code)
-  def ingoing(service, code, args)
-end
-
-defmodule RSMP.Service.TLC do
-  defstruct(
-    cycle: 0,
-    plan: 0
-  )
-  defimpl RSMP.Service, for: __MODULE__ do
-    def name(_service), do: "tlc"
-    def ingoing(service, "2", plan), do: %{service | plan: plan}
-    def status(service, "cycle"), do: service.cycle
-    def status(service, "plan"), do: service.plan
-  end
-end
-
-defmodule RSMP.Service.Traffic do
-  defstruct(
-    since: "yesterday",
-    vehicles: 0
-  )
-  defimpl RSMP.Service, for: __MODULE__ do
-    def name(_service), do: "traffic"
-    def status(service, "since"), do: service.since
-    def status(service, "vehicles"), do: service.vehicles
-  def ingoing(service, _code, _args), do: service
-  end
-end
-
-defmodule RSMP.Node.TLC do
-  @behaviour RSMP.Node.Builder
-
-  def start() do
-    RSMP.Node.start(
-      services: RSMP.Node.mapping([
-        %RSMP.Service.TLC{cycle: 10},
-        %RSMP.Service.Traffic{vehicles: 23}
-      ])
-    )
-  end
-end
-
