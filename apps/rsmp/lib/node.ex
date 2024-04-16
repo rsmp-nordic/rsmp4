@@ -4,30 +4,36 @@
 
 defmodule RSMP.Node do
   defmodule Builder do
+    @callback services() :: list( RSMP.Service.t )
+    @callback managers() :: list( RSMP.Manager.t )
     @callback start() :: RSMP.Node.t
   end
 
   use GenServer
 
   defstruct(
-    services: {}
+    id: nil,
+    builder: nil,
+    mqtt: nil,
+    services: %{},
+    remotes: %{}
   )
 
-  def new(options \\ %{}), do: __struct__(options)
+  def new(options), do: __struct__(options)
 
   # api
 
-  def start(options) do
-    {:ok, node} = GenServer.start_link(RSMP.Node, options)
+  def start(id: id, builder: builder, services: services) do
+    {:ok, node} = GenServer.start_link(RSMP.Node, id: id, builder: builder, services: services)
     node
   end
 
-  def status(node, name, code) do
-    GenServer.call(node,{:status, name, code})
+  def status(node, path) do
+    GenServer.call(node,{:status, path})
   end
 
-  def ingoing(node, name, message) do
-    GenServer.cast(node,{:status,name,message})
+  def command(node, path, payload, properties) do
+    GenServer.cast(node,{:status,path, payload, properties})
   end
 
   def mapping(modules) do
@@ -37,143 +43,53 @@ defmodule RSMP.Node do
   # callbacks
 
   @impl GenServer
-  def init(options) do
-    node = new(options)
+  def init(id: id, builder: builder, services: services) do
+    node = new(id: id, builder: builder, services: services)
     {:ok, node}
   end
 
   @impl GenServer
-  def handle_call({:status, name, code}, _from, node) do
-    status = node.services[name] |> RSMP.Service.status(code)
+  def handle_call({:status, path}, _from, node) do
+    status = node.services[path.module] |> RSMP.Service.status(path.code)
     {:reply, status, node}
   end
 
   @impl GenServer
-  def handle_cast({:ingoing, name, code, args}, node) do
-    service = node.services[name] |> RSMP.Service.ingoing(code, args)
-    node = put_in(node.services[name], service)
+  def handle_cast({:command, path, payload, properties}, node) do
+    node = get_and_update_in(node.services[path.module], fn(service) -> RSMP.Service.command(service, path, payload, properties) end )
     {:noreply, node }
   end
 
-end
-
-
-
-##################
-# previous code
-
-defmodule RSMP.Node do
-
-  defprotocol Builder do
-    def name()
-    def services()
-    def managers()
-  end
-
-  defstruct(
-    id: nil,
-    emqtt: nil,
-    services: %{},
-    managers: %{}
-    remotes: %{}
-  )
-
-  @moduledoc false
-  use GenServer
-  require Logger
-  alias RSMP.{Utility, Topic, Path}
-  
-  def new(options \\ %{}), do: __struct__(options)
-
-  # api
-
-  def start_link(options) do
-    GenServer.start_link(__MODULE__, options)
-  end
-
-  def id(pid) do
-    GenServer.call(pid, :id)
-  end
-
-  def services(pid) do
-    GenServer.call(pid, :services)
-  end
-
-  def managers(pid) do
-    GenServer.call(pid, :services)
-  end
-
-  def remotes() do
-    GenServer.call(pid, :remotes)
-  end
-
-
-  # GenServer callbacks
-
-  @impl GenServer
-  def init(id: id, services: services, managers: managers) do
-    node =
-      new(id: id, services: services, managers: managers) 
-      |> setup()
-      |> start_mqtt()
-      |> subscribe()
-
-    {:ok, node}
-  end
-
-  @impl true
-  def handle_call(:id, _from, node) do
-    {:reply, node.id, node}
-  end
-
-  @impl true
-  def handle_call(:services, _from, node) do
-    {:reply, node.services, node}
-  end
-
-  @impl true
-  def handle_call({:managers, path}, _from, node) do
-    {:reply, node.managers, node}
-  end
-
-  @impl true
-  def handle_call(:remotes, _from, node) do
-    {:reply, node.remotes, node}
-  end
-
-  # emqtt callbacks
-
-  @impl :emqtt
-  def handle_info({:publish, publish}, site) do
-    RSMP.Node.Protocol.handle_publish(node, publish) # dispatch based on type, might end at e.g. RSMP.Node.TLC.receive()
-  end
-
-
   # implementation
 
-  def setup(node) do
-    node
+  def publish_status(node, service, path) do
+    path_string = Path.to_string(path)
+    value = service.statuses[path_string]
+    Logger.info("RSMP: Sending status: #{path_string} #{Kernel.inspect(value)}")
+    status = to_rsmp_status(service, path, value)
+    topic = Topic.new(id: node.id, type: "status", path: path)
+
+    :emqtt.publish_async(
+      node.mqtt,
+      Topic.to_string(topic),
+      Utility.to_payload(status),
+      [retain: true, qos: 1],
+      &publish_done/1
+    )
   end
 
-  def start_mqtt(node) do
-    Logger.info("RSMP: starting emqtt")
-    options =
-      Utility.node_options()
-      |> Map.merge(%{
-        name: String.to_atom(node.id),
-        nodeid: node.id,
-        will_topic: "#{id}/state",
-        will_payload: Utility.to_payload(0),
-        will_retain: true
-      })
+  def publish_alarm(node, service, path) do
+    flags = alarm_flag_string(node, path)
+    path_string = Path.to_string(path)
+    Logger.info("RSMP: Sending alarm: #{path_string} #{flags}")
 
-    {:ok, emqtt} = :emqtt.start_link(options)
-    {:ok, _} = :emqtt.connect(emqtt)
-    Map.put(node, :emqtt, emqtt)
-  end   
-
-  def subscribe(node) do
-    node
+    :emqtt.publish_async(
+      node.pid,
+      "#{site.id}/alarm/#{path_string}",
+      Utility.to_payload(Map.from_struct(node.alarms[path_string])),
+      [retain: true, qos: 1],
+      &publish_done/1
+    )
   end
-
 end
+

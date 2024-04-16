@@ -1,6 +1,9 @@
 defmodule RSMP.Node.TLC do
   @behaviour RSMP.Node.Builder
 
+  def services(), do: [RSMP.Service.TLC, RSMP.Service.Traffic]
+  def managers(), do: []
+
   def start() do
     RSMP.Node.start(
       services: RSMP.Node.mapping([

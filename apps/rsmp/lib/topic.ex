@@ -3,11 +3,13 @@
 
 defmodule RSMP.Topic do
   alias RSMP.Path
-  defstruct [:id, :type, path: %Path{}]
+  defstruct(
+    id: nil,
+    type: nil,
+    path: Path.new()
+  )
 
-  def new() do
-    %__MODULE__{}
-  end
+  def new(), do: %__MODULE__{}
 
   def new(id, type, module, code, component \\ []) do
     %__MODULE__{id: id, type: type, path: Path.new(module, code, component)}

@@ -1,8 +1,6 @@
-defprotocol RSMP.Service do
-  def name(service)
-  def status(service, code)
-  def ingoing(service, code, args)
-
-  def command(service, path, data, properties)
-  def reaction(service, path, data, properties)
+defprotocol RSMP.Service.Protocol do
+  def status(service, node, path)
+  def command(service, node, path, payload, properties)
+  def reaction(service, node, path, payload, properties)
 end
+
