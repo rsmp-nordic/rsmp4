@@ -1,6 +1,19 @@
 defprotocol RSMP.Service.Protocol do
-  def status(service, node, path)
-  def command(service, node, path, payload, properties)
-  def reaction(service, node, path, payload, properties)
+  def alarms(node,path)
+  def status(node, path)
+  def command(node, path, payload, properties)
+  def reaction(node, path, payload, properties)
 end
 
+
+
+defmodule RSMP.Service do
+  def alarm_flag_string(service, path) do
+    service.alarms(path)
+    |> Map.from_struct()
+    |> Enum.filter(fn {_flag, value} -> value == true end)
+    |> Enum.map(fn {flag, _value} -> flag end)
+    |> inspect()
+  end
+
+end

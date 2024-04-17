@@ -1,6 +1,6 @@
 # RSMP Node
-# Acts as a GenServer and has the MQTT connection. 
-# Message handling and behaviour are delegated to Services and Managers.
+# Acts as a GenServer and has the MQTT connection.
+# Keeps a list of services and remote managers, which handles messages and behaviour.
 
 defmodule RSMP.Node do
   defmodule Builder do
@@ -62,11 +62,12 @@ defmodule RSMP.Node do
 
   # implementation
 
-  def publish_status(node, service, path) do
+  def publish_status(node, path) do
+    service = service(node,path)
     path_string = Path.to_string(path)
     value = service.statuses[path_string]
     Logger.info("RSMP: Sending status: #{path_string} #{Kernel.inspect(value)}")
-    status = to_rsmp_status(service, path, value)
+    status = RSMP.Service.Protocol.to_rsmp_status(service, path, value)
     topic = Topic.new(id: node.id, type: "status", path: path)
 
     :emqtt.publish_async(
@@ -78,18 +79,40 @@ defmodule RSMP.Node do
     )
   end
 
-  def publish_alarm(node, service, path) do
-    flags = alarm_flag_string(node, path)
+  def publish_alarm(node, path) do
+    flags = RSMP.Service.alarm_flag_string(node, path)
     path_string = Path.to_string(path)
     Logger.info("RSMP: Sending alarm: #{path_string} #{flags}")
 
     :emqtt.publish_async(
       node.pid,
-      "#{site.id}/alarm/#{path_string}",
+      "#{node.id}/alarm/#{path_string}",
       Utility.to_payload(Map.from_struct(node.alarms[path_string])),
       [retain: true, qos: 1],
       &publish_done/1
     )
   end
+
+  def publish_response(node, path, response: response, properties: properties) do
+    Logger.info("RSMP: Sending result: #{Path.to_string(path)}, #{inspect(response)}")
+    # service, Topic, Properties, Payload, Opts, Timeout, Callback
+    :emqtt.publish_async(
+      node.mqtt,
+      properties[:response_topic],
+      %{ "Correlation-Data": properties[:command_id] },
+      Utility.to_payload(response),
+      [retain: true, qos: 1],
+      :infinity,
+      &Node.publish_done/1
+    )
+  end
+
+  def publish_done(data) do
+    Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
+  end
+
+
+  # helpers
+  def service(node, path), do: node.services[path.module]
 end
 
