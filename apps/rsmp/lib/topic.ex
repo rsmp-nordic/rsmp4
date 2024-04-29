@@ -30,4 +30,6 @@ defmodule RSMP.Topic do
     array = [topic.id, topic.type, topic.path.module, topic.path.code] ++ topic.path.component
     array |> Enum.join("/")
   end
+
+  def id_module(topic), do: [topic.id, topic.path.module] |> Enum.join("/")
 end

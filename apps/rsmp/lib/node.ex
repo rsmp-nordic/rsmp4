@@ -67,16 +67,16 @@ defmodule RSMP.Node do
     path_string = Path.to_string(path)
     value = service.statuses[path_string]
     Logger.info("RSMP: Sending status: #{path_string} #{Kernel.inspect(value)}")
-    status = RSMP.Service.Protocol.to_rsmp_status(service, path, value)
-    topic = Topic.new(id: node.id, type: "status", path: path)
-
-    :emqtt.publish_async(
-      node.mqtt,
-      Topic.to_string(topic),
-      Utility.to_payload(status),
-      [retain: true, qos: 1],
-      &publish_done/1
-    )
+    #status = RSMP.Service.Plug.to_rsmp_status(service, path, value)
+    #topic = Topic.new(id: node.id, type: "status", path: path)
+#
+    #:emqtt.publish_async(
+    #  node.mqtt,
+    #  Topic.to_string(topic),
+    #  Utility.to_payload(status),
+    #  [retain: true, qos: 1],
+    #  &publish_done/1
+    #)
   end
 
   def publish_alarm(node, path) do
