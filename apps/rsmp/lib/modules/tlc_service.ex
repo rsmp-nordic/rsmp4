@@ -1,7 +1,8 @@
 defmodule RSMP.Service.TLC do
+  use RSMP.Service, name: "tlc"
 
-  require Logger
-  alias RSMP.{Utility, Alarm, Path}
+  #require Logger
+  #alias RSMP.{Utility, Alarm, Path}
 
   defstruct(
     cycle: 0,
@@ -9,14 +10,11 @@ defmodule RSMP.Service.TLC do
   )
 
   def new(options \\ []), do: __struct__(options)
-end
 
-defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
-  #def name(), do: "tlc"
   #def status(service, _path), do: service
 
   def action(service) do
-    IO.puts "action!"
+    IO.puts "plan is at #{service.plan}!"
     :perfect
   end
 

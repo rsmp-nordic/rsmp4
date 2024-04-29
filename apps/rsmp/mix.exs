@@ -26,6 +26,7 @@ defmodule RSMP.MixProject do
       {:secure_random, "~> 0.5"},
       {:emqtt, github: "emqx/emqtt", system_env: [{"BUILD_WITHOUT_QUIC", "1"}]},
       {:poison, "~> 5.0"},
+      {:jason, "~> 1.2"},
       {:cbor, "~> 1.0.1"}
     ]
   end
