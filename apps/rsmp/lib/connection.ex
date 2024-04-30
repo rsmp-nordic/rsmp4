@@ -1,7 +1,7 @@
 defmodule RSMP.Connection do
   use GenServer
   require Logger
-  
+
   defstruct(
     emqtt: nil
   )
@@ -9,14 +9,15 @@ defmodule RSMP.Connection do
   def new(options), do: __struct__(options)
 
   # api
-  def start_link(id: id) do
-    GenServer.start_link(__MODULE__, id)
+  def start_link(id) do
+    via = RSMP.Registry.via(id, __MODULE__)
+    GenServer.start_link(__MODULE__, id, name: via)
   end
 
   # callbacks
 
   @impl GenServer
-  def init(id: id) do
+  def init(id) do
     Logger.info("RSMP: starting emqtt")
 
     options =

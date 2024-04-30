@@ -7,10 +7,12 @@ defmodule RSMP.Node do
 
   @impl Supervisor
   def init({id,services}) do
-    children = for {module, args} <- services do
+    children = for {component, module, args} <- services do
       name = module.name()
-      Supervisor.child_spec({module, {id,name,args}}, id: name)
+      Supervisor.child_spec({module, {id,component, name, args}}, id: {component, name})
     end
+    connection = {RSMP.Connection, id}
+    children = [connection | children]
     Supervisor.init(children, strategy: :one_for_one)
   end
 end
