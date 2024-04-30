@@ -1,8 +1,5 @@
 defmodule RSMP.Service do
-  def start_link(module, id, service, data) do
-    via = RSMP.Registry.via(id, service)
-    GenServer.start_link(module, [id, service, data], name: via)
-  end
+
 
   def get(id, service) do
     RSMP.Registry.via(id,service) |> GenServer.call(:get)
@@ -16,6 +13,11 @@ defmodule RSMP.Service do
     # the following code will be injencted into the module using RSMP.Service,
     quote do
       use GenServer
+
+      def start_link({id, service, data}) do
+        via = RSMP.Registry.via(id, service)
+        GenServer.start_link(__MODULE__, [id, service, data], name: via)
+      end
 
       @impl GenServer
       def init([_id, _service, data]) do

@@ -1,119 +1,12 @@
-# RSMP Node
-# Acts as a GenServer and has the MQTT connection.
-# Keeps a list of services and remote managers, which handles messages and behaviour.
-
 defmodule RSMP.Node do
-  defmodule Builder do
-    @callback services() :: list( RSMP.Service.t )
-    @callback managers() :: list( RSMP.Manager.t )
-    @callback start() :: RSMP.Node.t
+  use Supervisor
+
+  def start_link(id, children) do
+    Supervisor.start_link(__MODULE__, children, name: RSMP.Registry.via(id))
   end
 
-  use GenServer
-
-  defstruct(
-    id: nil,
-    builder: nil,
-    mqtt: nil,
-    services: %{},
-    remotes: %{}
-  )
-
-  def new(options), do: __struct__(options)
-
-  # api
-
-  def start(id: id, builder: builder, services: services) do
-    via = RSMP.Registry.via(id)
-    {:ok, node} = GenServer.start_link(__MODULE__, [id: id, builder: builder, services: services], name: via)
-    node
+  @impl Supervisor
+  def init(children) do
+    Supervisor.init(children, strategy: :one_for_one)
   end
-
-  def status(pid, path) do
-    GenServer.call(pid,{:status, path})
-  end
-
-  def command(node, path, payload, properties) do
-    GenServer.cast(node,{:status,path, payload, properties})
-  end
-
-  def mapping(modules) do
-    for module <- modules, into: %{}, do: {RSMP.Service.name(module), module}
-  end
-
-  # callbacks
-
-  @impl GenServer
-  def init(id: id, builder: builder, services: services) do
-    node = new(id: id, builder: builder, services: services)
-    {:ok, node}
-  end
-
-  @impl GenServer
-  def handle_call({:status, path}, _from, node) do
-    status = node.services[path.module] |> RSMP.Service.status(path.code)
-    {:reply, status, node}
-  end
-
-  @impl GenServer
-  def handle_cast({:command, path, payload, properties}, node) do
-    node = get_and_update_in(node.services[path.module], fn(service) -> RSMP.Service.command(service, path, payload, properties) end )
-    {:noreply, node }
-  end
-
-  # implementation
-
-  def publish_status(node, path) do
-    service = service(node,path)
-    path_string = Path.to_string(path)
-    value = service.statuses[path_string]
-    Logger.info("RSMP: Sending status: #{path_string} #{Kernel.inspect(value)}")
-    #status = RSMP.Service.Plug.to_rsmp_status(service, path, value)
-    #topic = Topic.new(id: node.id, type: "status", path: path)
-#
-    #:emqtt.publish_async(
-    #  node.mqtt,
-    #  Topic.to_string(topic),
-    #  Utility.to_payload(status),
-    #  [retain: true, qos: 1],
-    #  &publish_done/1
-    #)
-  end
-
-  def publish_alarm(node, path) do
-    flags = RSMP.Service.alarm_flag_string(node, path)
-    path_string = Path.to_string(path)
-    Logger.info("RSMP: Sending alarm: #{path_string} #{flags}")
-
-    :emqtt.publish_async(
-      node.pid,
-      "#{node.id}/alarm/#{path_string}",
-      Utility.to_payload(Map.from_struct(node.alarms[path_string])),
-      [retain: true, qos: 1],
-      &publish_done/1
-    )
-  end
-
-  def publish_response(node, path, response: response, properties: properties) do
-    Logger.info("RSMP: Sending result: #{Path.to_string(path)}, #{inspect(response)}")
-    # service, Topic, Properties, Payload, Opts, Timeout, Callback
-    :emqtt.publish_async(
-      node.mqtt,
-      properties[:response_topic],
-      %{ "Correlation-Data": properties[:command_id] },
-      Utility.to_payload(response),
-      [retain: true, qos: 1],
-      :infinity,
-      &Node.publish_done/1
-    )
-  end
-
-  def publish_done(data) do
-    Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
-  end
-
-
-  # helpers
-  def service(node, path), do: node.services[path.module]
 end
-
