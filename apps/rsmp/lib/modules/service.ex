@@ -9,10 +9,14 @@ defmodule RSMP.Service do
     RSMP.Registry.via(id,service) |> GenServer.call({:action, args})
   end
 
-  defmacro __using__(_options) do
-    # the following code will be injencted into the module using RSMP.Service,
+  defmacro __using__(options) do
+    # the following code will be injencted into the module using RSMP.Service
+    name = Keyword.get(options, :name)
+
     quote do
       use GenServer
+
+      def name(), do: unquote(name)
 
       def start_link({id, service, data}) do
         via = RSMP.Registry.via(id, service)

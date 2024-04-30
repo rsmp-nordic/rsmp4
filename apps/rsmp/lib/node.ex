@@ -1,12 +1,16 @@
 defmodule RSMP.Node do
   use Supervisor
 
-  def start_link(id, children) do
-    Supervisor.start_link(__MODULE__, children, name: RSMP.Registry.via(id))
+  def start_link(id, services) do
+    Supervisor.start_link(__MODULE__, {id,services}, name: RSMP.Registry.via(id))
   end
 
   @impl Supervisor
-  def init(children) do
+  def init({id,services}) do
+    children = for {module, args} <- services do
+      name = module.name()
+      Supervisor.child_spec({module, {id,name,args}}, id: name)
+    end
     Supervisor.init(children, strategy: :one_for_one)
   end
 end
