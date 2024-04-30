@@ -6,10 +6,11 @@ defmodule RSMP.Registry do
 
   #def register(id,service,module), do: Registry.register(__MODULE__, "#{id}/#{service}", module)
   def lookup(id,service) do
-    [{pid,_value}] = Registry.lookup(RSMP.Registry,"#{id}/#{service}")
+    [{pid,_value}] = Registry.lookup(__MODULE__,{id,service})
     pid
   end
 
   def via(%RSMP.Topic{}=topic), do: {:via, Registry, {__MODULE__, RSMP.Topic.id_module(topic)}}
-  def via(id,service), do: {:via, Registry, {__MODULE__, "#{id}/#{service}"}}
+  def via(id), do: {:via, Registry, {__MODULE__, id}}
+  def via(id,service), do: {:via, Registry, {__MODULE__, {id,service}}}
 end

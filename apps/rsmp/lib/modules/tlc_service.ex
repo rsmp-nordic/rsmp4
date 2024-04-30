@@ -13,9 +13,10 @@ defmodule RSMP.Service.TLC do
 
   #def status(service, _path), do: service
 
-  def action(service) do
-    IO.puts "plan is at #{service.plan}!"
-    :perfect
+  def action(service, args) do
+    service = %{ service | plan: args}
+    IO.puts "switched to plan #{service.plan}!"
+    {:ok, service}
   end
 
 #  def command(service, %Path{code: "2"}=path, plan, properties) do

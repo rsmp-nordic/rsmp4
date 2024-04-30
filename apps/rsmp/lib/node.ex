@@ -24,12 +24,13 @@ defmodule RSMP.Node do
   # api
 
   def start(id: id, builder: builder, services: services) do
-    {:ok, node} = GenServer.start_link(RSMP.Node, id: id, builder: builder, services: services)
+    via = RSMP.Registry.via(id)
+    {:ok, node} = GenServer.start_link(__MODULE__, [id: id, builder: builder, services: services], name: via)
     node
   end
 
-  def status(node, path) do
-    GenServer.call(node,{:status, path})
+  def status(pid, path) do
+    GenServer.call(pid,{:status, path})
   end
 
   def command(node, path, payload, properties) do
