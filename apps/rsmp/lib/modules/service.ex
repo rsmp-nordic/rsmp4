@@ -8,14 +8,9 @@ defmodule RSMP.Service do
     @type properties :: Map.t()
 
     @callback receive_command(service, path, data, properties) :: service
+    @callback receive_reaction(service, path, data, properties) :: service
   end
 
-  def receive_command(topic, data, properties) do
-    case RSMP.Registry.lookup(topic.id, topic.path.module, topic.path.component) do
-      [{pid, _value}] -> GenServer.call(pid, {:receive_command, topic, data, properties})
-      _ -> Logger.warning("No service handling #{RSMP.Topic.to_string(topic)}")
-    end
-  end
 
   defmacro __using__(options) do
     # the following code will be injencted into the module using RSMP.Service
@@ -23,6 +18,7 @@ defmodule RSMP.Service do
 
     quote do
       use GenServer
+      require Logger
       @behaviour RSMP.Service.Behaviour
 
       def name(), do: unquote(name)
@@ -41,8 +37,13 @@ defmodule RSMP.Service do
       def handle_call(:get, _from, service), do: {:reply, service, service}
 
       @impl GenServer
-      def handle_call({:receive_command, topic, data, properties}, _from, service) do
-        {:ok, service} = receive_command(service, topic, data, properties)
+      def handle_call({:dispatch, topic, data, properties}, _from, service) do
+         {:ok, service} = case topic.type do
+          #"status" -> RSMP.Service.receive_status(connection.id, topic.path, data, properties)
+          "command" -> receive_command(service, topic, data, properties)
+          "reaction" -> receive_reaction(service, topic, data, properties)
+          _ -> {:error, "Unknown command type #{RSMP.Topic.to_string(topic)}"}
+        end
         {:reply, :ok, service}
       end
     end

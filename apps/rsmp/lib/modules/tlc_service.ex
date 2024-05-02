@@ -64,9 +64,19 @@ defmodule RSMP.Service.TLC do
 #    service
 #  end
 #
-  def receive_command(service, path, _payload, _properties) do
+  @impl RSMP.Service.Behaviour
+  def receive_command(service, topic, _payload, _properties) do
     Logger.warning(
-      "Unkown command #{Path.to_string(path)}"
+      "Unkown command #{Topic.to_string(topic)}"
+    )
+    {:ok, service}
+  end
+
+
+  @impl RSMP.Service.Behaviour
+  def receive_reaction(service, topic, _payload, _properties) do
+    Logger.warning(
+      "Unkown reaction #{Topic.to_string(topic)}"
     )
     {:ok, service}
   end

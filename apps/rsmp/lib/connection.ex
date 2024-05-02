@@ -47,12 +47,10 @@ defmodule RSMP.Connection do
       response_topic: publish[:properties][:"Response-Topic"],
       command_id: publish[:properties][:"Correlation-Data"]
     }
-    case topic.type do
-      #"status" -> RSMP.Service.receive_status(connection.id, topic.path, data, properties)
-      "command" -> RSMP.Service.receive_command(topic, data, properties)
-      #"reaction" -> Service.receive_reaction(connection.id, topic.path, data, properties)
+    case RSMP.Registry.lookup(topic.id, topic.path.module, topic.path.component) do
+      [{pid, _value}] -> GenServer.call(pid, {:dispatch, topic, data, properties})
+      _ -> Logger.warning("No service handling #{RSMP.Topic.to_string(topic)}")
     end
-
     {:noreply, connection}
   end
 
