@@ -3,7 +3,8 @@ defmodule RSMP.Connection do
   require Logger
 
   defstruct(
-    emqtt: nil
+    emqtt: nil,
+    id: nil
   )
 
   def new(options), do: __struct__(options)
@@ -14,8 +15,7 @@ defmodule RSMP.Connection do
     GenServer.start_link(__MODULE__, id, name: via)
   end
 
-  # callbacks
-
+  # GenServer
   @impl GenServer
   def init(id) do
     Logger.info("RSMP: starting emqtt")
@@ -32,10 +32,53 @@ defmodule RSMP.Connection do
 
     {:ok, emqtt} = :emqtt.start_link(options)
     {:ok, _} = :emqtt.connect(emqtt)
-    {:ok, new(emqtt: emqtt)}
+
+    connection = new(emqtt: emqtt, id: id)
+    subscribe_to_topics(connection)
+    {:ok, connection}
+  end
+
+  # emqtt
+  @impl true
+  def handle_info({:publish, publish}, connection) do
+    topic = RSMP.Topic.from_string(publish.topic)
+    data = RSMP.Utility.from_payload(publish[:payload])
+    properties = %{
+      response_topic: publish[:properties][:"Response-Topic"],
+      command_id: publish[:properties][:"Correlation-Data"]
+    }
+    case topic.type do
+      #"status" -> RSMP.Service.receive_status(connection.id, topic.path, data, properties)
+      "command" -> RSMP.Service.receive_command(topic, data, properties)
+      #"reaction" -> Service.receive_reaction(connection.id, topic.path, data, properties)
+    end
+
+    {:noreply, connection}
+  end
+
+  @impl true
+  def handle_info({:connected, _publish}, connection) do
+    Logger.info("RSMP: Connected")
+    subscribe_to_topics(connection)
+    {:noreply, connection}
+  end
+
+  @impl true
+  def handle_info({:disconnected, _publish}, connection) do
+    Logger.warning("RSMP: Disconnected")
+    {:noreply, connection}
   end
 
   # implementation
+  def subscribe_to_topics(connection) do
+    emqtt = connection.emqtt
+    id = connection.id
+    # subscribe to commands
+    {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/command/#", 1})
+
+    # subscribe to alarm reactions
+    {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/reaction/#", 1})
+  end
 
 # def publish_status(node, path) do
 #   service = service(node,path)

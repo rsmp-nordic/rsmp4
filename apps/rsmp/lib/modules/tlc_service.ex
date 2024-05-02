@@ -1,6 +1,7 @@
 defmodule RSMP.Service.TLC do
   use RSMP.Service, name: "tlc"
-
+  require Logger
+  alias RSMP.{Topic, Path}
   #require Logger
   #alias RSMP.{Utility, Alarm, Path}
 
@@ -11,14 +12,12 @@ defmodule RSMP.Service.TLC do
 
   def new(options \\ []), do: __struct__(options)
 
-  #def status(service, _path), do: service
 
-  def action(service, args) do
-    service = %{ service | plan: args}
-    IO.puts "switched to plan #{service.plan}!"
+  @impl RSMP.Service.Behaviour
+  def receive_command(service, %Topic{path: %Path{code: "2"}}=topic, args, _properties) do
+    Logger.info "#{topic.id}: command #{Path.to_string(topic.path)} with #{inspect(args)}: Switch to plan #{args["plan"]}"
     {:ok, service}
   end
-
 #  def command(service, %Path{code: "2"}=path, plan, properties) do
 #    current_plan_path = Path.new("tlc","14")
 #    current_plan_path_string = Path.to_string(current_plan_path)
@@ -65,12 +64,12 @@ defmodule RSMP.Service.TLC do
 #    service
 #  end
 #
-#  def command(service, path, _payload, _properties) do
-#    Logger.warning(
-#      "Unhandled command, path: #{Path.to_string(path)}"
-#    )
-#    service
-#  end
+  def receive_command(service, path, _payload, _properties) do
+    Logger.warning(
+      "Unkown command #{Path.to_string(path)}"
+    )
+    {:ok, service}
+  end
 #
 #  def reaction(service, %Path{code: "201"}=path, flags, _properties) do
 #    path_string = Path.to_string(path)
