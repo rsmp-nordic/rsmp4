@@ -1,7 +1,7 @@
 defmodule RSMP.Supervisor do
   use GenServer
   require Logger
-  alias RSMP.{Utility,Topic,Path}
+  alias RSMP.{Utility, Topic, Path}
 
   defstruct(
     pid: nil,
@@ -140,6 +140,7 @@ defmodule RSMP.Supervisor do
       path: path,
       alarm: supervisor.sites[site_id].alarms[path_string]
     }
+
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
     {:noreply, supervisor}
@@ -164,6 +165,7 @@ defmodule RSMP.Supervisor do
     topic = Topic.from_string(publish.topic)
     data = Utility.from_payload(publish[:payload])
     properties = publish[:properties]
+
     supervisor =
       case topic.type do
         "state" ->
@@ -192,10 +194,10 @@ defmodule RSMP.Supervisor do
     online = data == 1
     site = %{site | online: online}
     supervisor = put_in(supervisor.sites[id], site)
-    
+
     pub = %{topic: "state", site: id}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-    
+
     supervisor
   end
 
@@ -228,7 +230,10 @@ defmodule RSMP.Supervisor do
     status = from_rsmp_status(site, path, data)
     supervisor = put_in(supervisor.sites[id].statuses[Path.to_string(path)], status)
 
-    Logger.info("RSMP: #{id}: Received status #{Path.to_string(path)}: #{inspect(status)} from #{id}")
+    Logger.info(
+      "RSMP: #{id}: Received status #{Path.to_string(path)}: #{inspect(status)} from #{id}"
+    )
+
     pub = %{topic: "status", site: id, status: %{topic.path => status}}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
@@ -270,10 +275,12 @@ defmodule RSMP.Supervisor do
     site |> Map.put(:num_alarms, num)
   end
 
-  defp get_site(supervisor,id) do
-    supervisor = if supervisor.sites[id],
-      do: supervisor,
-      else: put_in(supervisor.sites[id], RSMP.Remote.Site.new(id: id))
+  defp get_site(supervisor, id) do
+    supervisor =
+      if supervisor.sites[id],
+        do: supervisor,
+        else: put_in(supervisor.sites[id], RSMP.Remote.Site.new(id: id))
+
     {supervisor, supervisor.sites[id]}
   end
 

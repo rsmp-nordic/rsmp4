@@ -74,7 +74,6 @@ defmodule RSMP.Converter.TLC do
 
   def from_rsmp_status("28", data), do: from_rsmp_status("24", data)
 
-
   # setup default command values from statuses
 
   def command_default("2", statuses) do

@@ -1,7 +1,6 @@
 defmodule RSMP.Converter.Traffic do
   @behaviour RSMP.Converter
 
-
   # convert from internal format to sxl format
 
   def to_rsmp_status("201", data) do
@@ -21,6 +20,6 @@ defmodule RSMP.Converter.Traffic do
   end
 
   # setup default command values from statuses
-  
+
   def command_default(_code, _statuses), do: nil
 end

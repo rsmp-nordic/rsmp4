@@ -15,7 +15,7 @@ defmodule RSMP.Remote.Site do
   # api
   def new(options \\ []) do
     remote = __struct__(options)
-    %{remote | modules: module_mapping([RSMP.Module.TLC,RSMP.Module.Traffic])}
+    %{remote | modules: module_mapping([RSMP.Module.TLC, RSMP.Module.Traffic])}
   end
 
   def module(site, name), do: site.modules |> Map.fetch!(name)

@@ -1,9 +1,8 @@
 # RSMP Site
-defmodule RSMP.Site do  
+defmodule RSMP.Site do
   @moduledoc false
   require Logger
   alias RSMP.{Utility, Topic, Path}
-
 
   defstruct(
     id: nil,
@@ -297,10 +296,12 @@ defmodule RSMP.Site do
         topic = Topic.from_string(publish.topic)
         responder = Site.responder(site, topic.path.module)
         data = Utility.from_payload(publish[:payload])
+
         properties = %{
           response_topic: publish[:properties][:"Response-Topic"],
           command_id: publish[:properties][:"Correlation-Data"]
         }
+
         site =
           case topic.type do
             "status" -> responder.receive_status(site, topic.path, data, properties)

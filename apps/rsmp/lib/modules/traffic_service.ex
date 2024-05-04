@@ -1,4 +1,4 @@
-#defmodule RSMP.Service.Traffic do
+# defmodule RSMP.Service.Traffic do
 #  defstruct(
 #    since: "yesterday",
 #    vehicles: 0
@@ -9,5 +9,5 @@
 #    def status(service, "vehicles"), do: service.vehicles
 #  def ingoing(service, _code, _args), do: service
 #  end
-#end
+# end
 #
