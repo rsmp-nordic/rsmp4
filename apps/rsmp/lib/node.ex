@@ -16,7 +16,6 @@ defmodule RSMP.Node do
     helpers = [
       {RSMP.Connection, id},
       {RSMP.Dispatcher, id},
-      {RSMP.Scanner, id},
       {
         DynamicSupervisor,
         name: RSMP.Registry.via(:helper, id, RSMP.RemoteSupervisor), strategy: :one_for_one
