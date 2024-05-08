@@ -18,8 +18,10 @@ defmodule RSMP.Path do
     new(module, code, component)
   end
 
-  def to_string(path) do
-    array = [path.module, path.code] ++ path.component
-    array |> Enum.join("/")
+  defimpl String.Chars do
+    def to_string(path) do
+      array = [path.module, path.code] ++ path.component
+      array |> Enum.join("/")
+    end
   end
 end

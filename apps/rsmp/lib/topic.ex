@@ -27,10 +27,12 @@ defmodule RSMP.Topic do
     end
   end
 
-  def to_string(topic) do
-    array = [topic.id, topic.type, topic.path.module, topic.path.code] ++ topic.path.component
-    array |> Enum.join("/")
-  end
-
   def id_module(topic), do: [topic.id, topic.path.module] |> Enum.join("/")
+
+  defimpl String.Chars do
+    def to_string(topic) do
+      array = [topic.id, topic.type, topic.path.module, topic.path.code] ++ topic.path.component
+      array |> Enum.join("/")
+    end
+  end
 end

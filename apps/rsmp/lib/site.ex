@@ -58,15 +58,15 @@ defmodule RSMP.Site do
   # helpers
 
   def publish_status(site, path) do
-    path_string = Path.to_string(path)
+    path_string = to_string(path)
     value = site.statuses[path_string]
-    Logger.info("RSMP: Sending status: #{path_string} #{Kernel.inspect(value)}")
+    Logger.info("RSMP: Sending status: #{path} #{Kernel.inspect(value)}")
     status = to_rsmp_status(site, path, value)
     topic = %Topic{id: site.id, type: "status", path: path}
 
     :emqtt.publish_async(
       site.pid,
-      Topic.to_string(topic),
+      to_string(topic),
       Utility.to_payload(status),
       [retain: true, qos: 1],
       &publish_done/1
@@ -78,7 +78,7 @@ defmodule RSMP.Site do
   end
 
   def alarm_flag_string(site, path) do
-    site.alarms[Path.to_string(path)]
+    site.alarms[to_string(path)]
     |> Map.from_struct()
     |> Enum.filter(fn {_flag, value} -> value == true end)
     |> Enum.map(fn {flag, _value} -> flag end)
@@ -87,7 +87,7 @@ defmodule RSMP.Site do
 
   def publish_alarm(site, path) do
     flags = alarm_flag_string(site, path)
-    path_string = Path.to_string(path)
+    path_string = to_string(path)
     Logger.info("RSMP: Sending alarm: #{path_string} #{flags}")
 
     :emqtt.publish_async(

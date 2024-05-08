@@ -62,7 +62,7 @@ defmodule RSMP.Service do
   end
 
   def publish_status(topic, data) do
-    Logger.info("RSMP: Sending status: #{RSMP.Topic.to_string(topic)} #{Kernel.inspect(data)}")
+    Logger.info("RSMP: Sending status: #{topic} #{Kernel.inspect(data)}")
     [{pid, _value}] = RSMP.Registry.lookup(topic.id, :connection)
     GenServer.cast(pid, {:publish_status, topic, data})
   end

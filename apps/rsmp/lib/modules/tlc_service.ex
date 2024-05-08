@@ -30,7 +30,7 @@ defmodule RSMP.Service.TLC do
   @impl RSMP.Service.Behaviour
   def receive_command(service, %Topic{path: %Path{code: "2"}} = topic, args, _properties) do
     Logger.info(
-      "#{topic.id}: command #{Path.to_string(topic.path)} with #{inspect(args)}: Switch to plan #{args["plan"]}"
+      "#{topic.id}: command #{topic.path} with #{inspect(args)}: Switch to plan #{args["plan"]}"
     )
     publish_status(service, "14")
     {:ok, service}
@@ -38,13 +38,13 @@ defmodule RSMP.Service.TLC do
 
   @impl RSMP.Service.Behaviour
   def receive_command(service, topic, _payload, _properties) do
-    Logger.warning("Unkown command #{Topic.to_string(topic)}")
+    Logger.warning("Unkown command #{topic}")
     {:ok, service}
   end
 
   @impl RSMP.Service.Behaviour
   def receive_reaction(service, topic, _payload, _properties) do
-    Logger.warning("Unkown reaction #{Topic.to_string(topic)}")
+    Logger.warning("Unkown reaction #{topic}")
     {:ok, service}
   end
 
@@ -100,8 +100,8 @@ defmodule RSMP.Service.TLC do
 
   #
   #  def reaction(service, %Path{code: "201"}=path, flags, _properties) do
-  #    path_string = Path.to_string(path)
-  #    Logger.info("RSMP: Received alarm flag #{Path.to_string(path)}, #{inspect(flags)}")
+  #    path_string = to_string(path)
+  #    Logger.info("RSMP: Received alarm flag #{to_string(path)}, #{inspect(flags)}")
   #
   #    alarm = service.alarms[path_string] |> Alarm.update_from_string_map(flags)
   #    service = put_in(service.alarms[path_string], alarm)

@@ -42,7 +42,7 @@ defmodule RSMP.Connection do
   def handle_cast({:publish_status, topic, data}, connection) do
     :emqtt.publish_async(
       connection.emqtt,
-      RSMP.Topic.to_string(topic),
+      to_string(topic),
       RSMP.Utility.to_payload(data),
       [retain: true, qos: 1],
       &publish_done/1
@@ -80,7 +80,7 @@ defmodule RSMP.Connection do
         dispatch_to_remote(connection, topic, data, publish)
 
       _ ->
-        Logger.warning("Igoring unknown command type #{RSMP.Topic.to_string(topic)}")
+        Logger.warning("Igoring unknown command type topic")
     end
 
     {:noreply, connection}
@@ -116,9 +116,10 @@ defmodule RSMP.Connection do
     end
   end
 
-  def receive_state(_connection, topic, data) do
-    Logger.info("Invalid state #{RSMP.Topic.to_string(topic)}: #{inspect(data)}")
+  def receive_state(_connection, _topic, data) do
+    Logger.info("Invalid state topic: #{inspect(data)}")
   end
+
   def dispatch_to_service(topic, data, publish) do
     properties = %{
       response_topic: publish[:properties][:"Response-Topic"],
@@ -133,7 +134,7 @@ defmodule RSMP.Connection do
         end
 
       _ ->
-        Logger.warning("No service handling #{RSMP.Topic.to_string(topic)}")
+        Logger.warning("No service handling topic")
     end
   end
 
@@ -144,26 +145,25 @@ defmodule RSMP.Connection do
           "status" -> GenServer.cast(pid, {:receive_status, topic, data})
         end
       _ -> nil
-      #  Logger.warning("No remote handling #{RSMP.Topic.to_string(topic)}")
+      #  Logger.warning("No remote handling topic")
     end
   end
 
   # def publish_alarm(node, path) do
   #   flags = RSMP.Service.alarm_flag_string(node, path)
-  #   path_string = Path.to_string(path)
-  #   Logger.info("RSMP: Sending alarm: #{path_string} #{flags}")
+  #   Logger.info("RSMP: Sending alarm: #{path} #{flags}")
 
   #   :emqtt.publish_async(
   #     node.pid,
   #     "#{node.id}/alarm/#{path_string}",
-  #     Utility.to_payload(Map.from_struct(node.alarms[path_string])),
+  #     Utility.to_payload(Map.from_struct(node.alarms[path])),
   #     [retain: true, qos: 1],
   #     &publish_done/1
   #   )
   # end
 
   # def publish_response(node, path, response: response, properties: properties) do
-  #   Logger.info("RSMP: Sending result: #{Path.to_string(path)}, #{inspect(response)}")
+  #   Logger.info("RSMP: Sending result: #{path}, #{inspect(response)}")
   #   # service, Topic, Properties, Payload, Opts, Timeout, Callback
   #   :emqtt.publish_async(
   #     node.mqtt,

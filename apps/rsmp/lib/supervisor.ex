@@ -1,7 +1,7 @@
 defmodule RSMP.Supervisor do
   use GenServer
   require Logger
-  alias RSMP.{Utility, Topic, Path}
+  alias RSMP.{Utility, Topic}
 
   defstruct(
     pid: nil,
@@ -117,7 +117,7 @@ defmodule RSMP.Supervisor do
 
   @impl true
   def handle_cast({:set_alarm_flag, site_id, path, flag, value}, supervisor) do
-    path_string = Path.to_string(path)
+    path_string = to_string(path)
     supervisor = put_in(supervisor.sites[site_id].alarms[path_string][flag], value)
 
     # Send alarm flag to device
@@ -126,7 +126,7 @@ defmodule RSMP.Supervisor do
 
     :emqtt.publish_async(
       supervisor.pid,
-      Topic.to_string(topic),
+      to_string(topic),
       Utility.to_payload(%{flag => value}),
       [retain: true, qos: 1],
       &publish_done/1
@@ -203,7 +203,7 @@ defmodule RSMP.Supervisor do
 
   defp receive_result(supervisor, topic, result, command_id) do
     Logger.info(
-      "RSMP: #{topic.id}: Received result: #{Path.to_string(topic.path)}: #{inspect(result)}"
+      "RSMP: #{topic.id}: Received result: #{topic.path}: #{inspect(result)}"
     )
 
     pub = %{
@@ -228,10 +228,10 @@ defmodule RSMP.Supervisor do
     {supervisor, site} = get_site(supervisor, id)
 
     status = from_rsmp_status(site, path, data)
-    supervisor = put_in(supervisor.sites[id].statuses[Path.to_string(path)], status)
+    supervisor = put_in(supervisor.sites[id].statuses[to_string(path)], status)
 
     Logger.info(
-      "RSMP: #{id}: Received status #{Path.to_string(path)}: #{inspect(status)} from #{id}"
+      "RSMP: #{id}: Received status #{to_string(path)}: #{inspect(status)} from #{id}"
     )
 
     pub = %{topic: "status", site: id, status: %{topic.path => status}}
@@ -242,7 +242,7 @@ defmodule RSMP.Supervisor do
 
   defp receive_alarm(supervisor, topic, alarm) do
     id = topic.id
-    path_string = Path.to_string(topic.path)
+    path_string = to_string(topic.path)
     {supervisor, site} = get_site(supervisor, id)
     alarms = site.alarms |> Map.put(path_string, alarm)
     site = %{site | alarms: alarms} |> set_site_num_alarms()

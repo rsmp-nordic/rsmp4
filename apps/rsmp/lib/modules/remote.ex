@@ -20,8 +20,8 @@ defmodule RSMP.Remote do
 
   @impl GenServer
   def handle_cast({:receive_status, topic, data}, remote) when is_map(data) do
-    Logger.info("Receive status #{RSMP.Topic.to_string(topic)}: #{inspect(data)}")
-    index = RSMP.Path.to_string(topic.path)
+    Logger.info("Receive status topic: #{inspect(data)}")
+    index = to_string(topic.path)
     values = if remote.data[index] do
       remote.data[index] |> Map.merge(data)
     else
@@ -33,7 +33,7 @@ defmodule RSMP.Remote do
 
   @impl GenServer
   def handle_cast({:receive_status, topic, data}, remote)  do
-    Logger.warning("Received invalid status #{RSMP.Topic.to_string(topic)}: must be a map, got #{inspect(data)}")
+    Logger.warning("Received invalid status #{topic}: must be a map, got #{inspect(data)}")
     {:noreply, remote}
   end
 end
