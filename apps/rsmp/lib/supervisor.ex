@@ -202,9 +202,7 @@ defmodule RSMP.Supervisor do
   end
 
   defp receive_result(supervisor, topic, result, command_id) do
-    Logger.info(
-      "RSMP: #{topic.id}: Received result: #{topic.path}: #{inspect(result)}"
-    )
+    Logger.info("RSMP: #{topic.id}: Received result: #{topic.path}: #{inspect(result)}")
 
     pub = %{
       topic: "response",
@@ -230,9 +228,7 @@ defmodule RSMP.Supervisor do
     status = from_rsmp_status(site, path, data)
     supervisor = put_in(supervisor.sites[id].statuses[to_string(path)], status)
 
-    Logger.info(
-      "RSMP: #{id}: Received status #{to_string(path)}: #{inspect(status)} from #{id}"
-    )
+    Logger.info("RSMP: #{id}: Received status #{to_string(path)}: #{inspect(status)} from #{id}")
 
     pub = %{topic: "status", site: id, status: %{topic.path => status}}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)

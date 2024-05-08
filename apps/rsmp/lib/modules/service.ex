@@ -1,22 +1,21 @@
+defprotocol RSMP.Service.Protocol do
+  def name(service)
+  def id(service)
+  def get_status(service, path)
+  def converter(service)
+
+  def receive_command(service, path, data, properties)
+  def receive_reaction(service, path, data, properties)
+end
+
 defmodule RSMP.Service do
   require Logger
 
   defmodule Behaviour do
     @type id :: String.t()
-    @type service :: RSMP.Service.t()
-    @type path :: RSMP.Path.t()
     @type data :: Map.t()
-    @type properties :: Map.t()
 
     @callback new(id, data) :: __MODULE__
-
-    @callback id(service) :: id
-    @callback get_status(service, path) :: any
-
-    @callback converter() :: RSMP.Converter
-
-    @callback receive_command(service, path, data, properties) :: service
-    @callback receive_reaction(service, path, data, properties) :: service
   end
 
   defmacro __using__(options) do
@@ -36,33 +35,30 @@ defmodule RSMP.Service do
       end
 
       @impl GenServer
-      def init({id,data}) do
+      def init({id, data}) do
         {:ok, new(id, data)}
       end
 
       @impl GenServer
       def handle_call({:receive_command, topic, data, properties}, _from, service) do
-        receive_command(service, topic, data, properties)
+        RSMP.Service.Protocol.receive_command(service, topic, data, properties)
         {:reply, :ok, service}
       end
 
       @impl GenServer
       def handle_call({:receive_reaction, topic, data, properties}, _from, service) do
-        receive_reaction(service, topic, data, properties)
+        RSMP.Service.Protocol.receive_reaction(service, topic, data, properties)
         {:reply, :ok, service}
       end
-
-      def publish_status(service, code) do
-        topic = RSMP.Topic.new( id(service), "status", name(), code)
-        data = converter().to_rsmp_status(topic.path.code, service)
-        RSMP.Service.publish_status(topic, data)
-      end
-
     end
   end
 
-  def publish_status(topic, data) do
-    Logger.info("RSMP: Sending status: #{topic} #{Kernel.inspect(data)}")
+  def publish_status(service, code) do
+    id = RSMP.Service.Protocol.id(service)
+    name = RSMP.Service.Protocol.name(service)
+    topic = RSMP.Topic.new(id, "status", name, code)
+    converter = RSMP.Service.Protocol.converter(service)
+    data = converter.to_rsmp_status(topic.path.code, service)
     [{pid, _value}] = RSMP.Registry.lookup(topic.id, :connection)
     GenServer.cast(pid, {:publish_status, topic, data})
   end

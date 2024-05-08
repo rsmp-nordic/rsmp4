@@ -2,9 +2,7 @@ defmodule RSMP.Remote do
   use GenServer
   require Logger
 
-  defstruct(
-    data: %{}
-  )
+  defstruct(data: %{})
 
   def new(options \\ []), do: __struct__(options)
 
@@ -22,17 +20,20 @@ defmodule RSMP.Remote do
   def handle_cast({:receive_status, topic, data}, remote) when is_map(data) do
     Logger.info("Receive status topic: #{inspect(data)}")
     index = to_string(topic.path)
-    values = if remote.data[index] do
-      remote.data[index] |> Map.merge(data)
-    else
-      data
-    end
-    remote = put_in(remote.data[index],values)
+
+    values =
+      if remote.data[index] do
+        remote.data[index] |> Map.merge(data)
+      else
+        data
+      end
+
+    remote = put_in(remote.data[index], values)
     {:noreply, remote}
   end
 
   @impl GenServer
-  def handle_cast({:receive_status, topic, data}, remote)  do
+  def handle_cast({:receive_status, topic, data}, remote) do
     Logger.warning("Received invalid status #{topic}: must be a map, got #{inspect(data)}")
     {:noreply, remote}
   end

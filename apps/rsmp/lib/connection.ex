@@ -40,6 +40,7 @@ defmodule RSMP.Connection do
 
   @impl GenServer
   def handle_cast({:publish_status, topic, data}, connection) do
+    Logger.info("RSMP: Sending status: #{topic} #{Kernel.inspect(data)}")
     :emqtt.publish_async(
       connection.emqtt,
       to_string(topic),
@@ -47,6 +48,7 @@ defmodule RSMP.Connection do
       [retain: true, qos: 1],
       &publish_done/1
     )
+
     {:noreply, connection}
   end
 
@@ -86,7 +88,6 @@ defmodule RSMP.Connection do
     {:noreply, connection}
   end
 
-
   # implementation
   def subscribe_to_topics(connection) do
     emqtt = connection.emqtt
@@ -103,13 +104,16 @@ defmodule RSMP.Connection do
     {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/result/#", qos})
   end
 
-  def receive_state(connection, topic, %{"online" => _online, "modules" =>  modules}) do
+  def receive_state(connection, topic, %{"online" => _online, "modules" => modules}) do
     unless topic.id == connection.id do
       case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
         [] ->
           Logger.info("Adding remote for #{topic.id} with modules: #{inspect(modules)}")
           via = RSMP.Registry.via(connection.id, :remote_supervisor)
-          {:ok, _pid} = DynamicSupervisor.start_child(via, {RSMP.Remote, {connection.id, topic.id}})
+
+          {:ok, _pid} =
+            DynamicSupervisor.start_child(via, {RSMP.Remote, {connection.id, topic.id}})
+
         [{_pid, _}] ->
           Logger.info("Updating remote for #{topic.id} with modules: #{inspect(modules)}")
       end
@@ -144,8 +148,10 @@ defmodule RSMP.Connection do
         case topic.type do
           "status" -> GenServer.cast(pid, {:receive_status, topic, data})
         end
-      _ -> nil
-      #  Logger.warning("No remote handling topic")
+
+      _ ->
+        nil
+        #  Logger.warning("No remote handling topic")
     end
   end
 
