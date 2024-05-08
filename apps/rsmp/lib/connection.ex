@@ -11,7 +11,7 @@ defmodule RSMP.Connection do
 
   # api
   def start_link(id) do
-    via = RSMP.Registry.via(:helper, id, __MODULE__)
+    via = RSMP.Registry.via(id, :connection)
     GenServer.start_link(__MODULE__, id, name: via)
   end
 
@@ -36,6 +36,18 @@ defmodule RSMP.Connection do
     connection = new(emqtt: emqtt, id: id)
     subscribe_to_topics(connection)
     {:ok, connection}
+  end
+
+  @impl GenServer
+  def handle_cast({:publish_status, topic, data}, connection) do
+    :emqtt.publish_async(
+      connection.emqtt,
+      RSMP.Topic.to_string(topic),
+      RSMP.Utility.to_payload(data),
+      [retain: true, qos: 1],
+      &publish_done/1
+    )
+    {:noreply, connection}
   end
 
   # emqtt
@@ -93,10 +105,10 @@ defmodule RSMP.Connection do
 
   def receive_state(connection, topic, %{"online" => _online, "modules" =>  modules}) do
     unless topic.id == connection.id do
-      case RSMP.Registry.lookup(:remote, connection.id, topic.id) do
+      case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
         [] ->
           Logger.info("Adding remote for #{topic.id} with modules: #{inspect(modules)}")
-          via = RSMP.Registry.via(:helper, connection.id, RSMP.RemoteSupervisor)
+          via = RSMP.Registry.via(connection.id, :remote_supervisor)
           {:ok, _pid} = DynamicSupervisor.start_child(via, {RSMP.Remote, {connection.id, topic.id}})
         [{_pid, _}] ->
           Logger.info("Updating remote for #{topic.id} with modules: #{inspect(modules)}")
@@ -113,7 +125,7 @@ defmodule RSMP.Connection do
       command_id: publish[:properties][:"Correlation-Data"]
     }
 
-    case RSMP.Registry.lookup(:service, topic.id, topic.path.module, topic.path.component) do
+    case RSMP.Registry.lookup(topic.id, :service, topic.path.module, topic.path.component) do
       [{pid, _value}] ->
         case topic.type do
           "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
@@ -126,33 +138,15 @@ defmodule RSMP.Connection do
   end
 
   def dispatch_to_remote(connection, topic, data, _publish) do
-    case RSMP.Registry.lookup(:remote, connection.id, topic.id) do
+    case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
       [{pid, _value}] ->
         case topic.type do
           "status" -> GenServer.cast(pid, {:receive_status, topic, data})
         end
-
-      _ ->
-        Logger.warning("No remote handling #{RSMP.Topic.to_string(topic)}")
+      _ -> nil
+      #  Logger.warning("No remote handling #{RSMP.Topic.to_string(topic)}")
     end
   end
-
-  # def publish_status(node, path) do
-  #   service = service(node,path)
-  #   path_string = Path.to_string(path)
-  #   value = service.statuses[path_string]
-  #   Logger.info("RSMP: Sending status: #{path_string} #{Kernel.inspect(value)}")
-  #   status = RSMP.Service.Plug.to_rsmp_status(service, path, value)
-  #   topic = Topic.new(id: node.id, type: "status", path: path)
-
-  #   :emqtt.publish_async(
-  #     node.mqtt,
-  #     Topic.to_string(topic),
-  #     Utility.to_payload(status),
-  #     [retain: true, qos: 1],
-  #     &publish_done/1
-  #   )
-  # en
 
   # def publish_alarm(node, path) do
   #   flags = RSMP.Service.alarm_flag_string(node, path)
@@ -182,9 +176,9 @@ defmodule RSMP.Connection do
   #   )
   # end
 
-  # def publish_done(data) do
-  #   Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
-  # end
+  def publish_done(data) do
+    Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
+  end
 
   # # helpers
   # def service(node, path), do: node.services[path.module]

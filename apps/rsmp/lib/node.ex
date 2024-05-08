@@ -2,7 +2,7 @@ defmodule RSMP.Node do
   use Supervisor
 
   def start_link(id, services) do
-    Supervisor.start_link(__MODULE__, {id, services}, name: RSMP.Registry.via(:node, id))
+    Supervisor.start_link(__MODULE__, {id, services}, name: RSMP.Registry.via(id, :node))
   end
 
   @impl Supervisor
@@ -15,10 +15,9 @@ defmodule RSMP.Node do
 
     helpers = [
       {RSMP.Connection, id},
-      {RSMP.Dispatcher, id},
       {
         DynamicSupervisor,
-        name: RSMP.Registry.via(:helper, id, RSMP.RemoteSupervisor), strategy: :one_for_one
+        name: RSMP.Registry.via(id, :remote_supervisor, id), strategy: :one_for_one
       }
     ]
 

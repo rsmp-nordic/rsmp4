@@ -6,11 +6,50 @@ defmodule RSMP.Service.TLC do
   # alias RSMP.{Utility, Alarm, Path}
 
   defstruct(
+    id: nil,
     cycle: 0,
-    plan: 0
+    plan: 0,
+    source: "startup"
   )
 
-  def new(options \\ []), do: __struct__(options)
+  @impl RSMP.Service.Behaviour
+  def new(id, data \\ []), do: __struct__(Map.merge(data, %{id: id}))
+
+  @impl RSMP.Service.Behaviour
+  def id(service), do: service.id
+
+  @impl RSMP.Service.Behaviour
+  def converter(), do: RSMP.Converter.TLC
+
+  @impl RSMP.Service.Behaviour
+  def get_status(service, %RSMP.Path{code: "14"}) do
+    service.plan
+  end
+
+
+  @impl RSMP.Service.Behaviour
+  def receive_command(service, %Topic{path: %Path{code: "2"}} = topic, args, _properties) do
+    Logger.info(
+      "#{topic.id}: command #{Path.to_string(topic.path)} with #{inspect(args)}: Switch to plan #{args["plan"]}"
+    )
+    publish_status(service, "14")
+    {:ok, service}
+  end
+
+  @impl RSMP.Service.Behaviour
+  def receive_command(service, topic, _payload, _properties) do
+    Logger.warning("Unkown command #{Topic.to_string(topic)}")
+    {:ok, service}
+  end
+
+  @impl RSMP.Service.Behaviour
+  def receive_reaction(service, topic, _payload, _properties) do
+    Logger.warning("Unkown reaction #{Topic.to_string(topic)}")
+    {:ok, service}
+  end
+
+
+
 
   #  def command(service, %Path{code: "2"}=path, plan, properties) do
   #    current_plan_path = Path.new("tlc","14")
@@ -58,27 +97,6 @@ defmodule RSMP.Service.TLC do
   #    service
   #  end
   #
-
-  @impl RSMP.Service.Behaviour
-  def receive_command(service, %Topic{path: %Path{code: "2"}} = topic, args, _properties) do
-    Logger.info(
-      "#{topic.id}: command #{Path.to_string(topic.path)} with #{inspect(args)}: Switch to plan #{args["plan"]}"
-    )
-
-    {:ok, service}
-  end
-
-  @impl RSMP.Service.Behaviour
-  def receive_command(service, topic, _payload, _properties) do
-    Logger.warning("Unkown command #{Topic.to_string(topic)}")
-    {:ok, service}
-  end
-
-  @impl RSMP.Service.Behaviour
-  def receive_reaction(service, topic, _payload, _properties) do
-    Logger.warning("Unkown reaction #{Topic.to_string(topic)}")
-    {:ok, service}
-  end
 
   #
   #  def reaction(service, %Path{code: "201"}=path, flags, _properties) do

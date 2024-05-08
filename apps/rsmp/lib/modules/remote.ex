@@ -9,7 +9,7 @@ defmodule RSMP.Remote do
   def new(options \\ []), do: __struct__(options)
 
   def start_link({id, remote_id}) do
-    via = RSMP.Registry.via(:remote, id, remote_id)
+    via = RSMP.Registry.via(id, :remote, remote_id)
     GenServer.start_link(__MODULE__, remote_id, name: via)
   end
 
