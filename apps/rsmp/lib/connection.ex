@@ -109,7 +109,7 @@ defmodule RSMP.Connection do
       case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
         [] ->
           Logger.info("Adding remote for #{topic.id} with modules: #{inspect(modules)}")
-          via = RSMP.Registry.via(connection.id, :remote_supervisor)
+          via = RSMP.Registry.via(connection.id, :remotes)
 
           {:ok, _pid} =
             DynamicSupervisor.start_child(via, {RSMP.Remote, {connection.id, topic.id}})
@@ -138,7 +138,7 @@ defmodule RSMP.Connection do
         end
 
       _ ->
-        Logger.warning("No service handling topic")
+        Logger.warning("No service handling topic: #{topic}")
     end
   end
 

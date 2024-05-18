@@ -7,20 +7,12 @@ defmodule RSMP.Node do
 
   @impl Supervisor
   def init({id, services}) do
-    services =
-      for {component, service, args} <- services do
-        name = service.name()
-        Supervisor.child_spec({service, {id, component, name, args}}, id: {component, name})
-      end
-
-    helpers = [
+    children = [
       {RSMP.Connection, id},
-      {
-        DynamicSupervisor,
-        name: RSMP.Registry.via(id, :remote_supervisor, id), strategy: :one_for_one
-      }
+      {RSMP.Services, {id, services} },
+      {RSMP.Remotes, id}
     ]
 
-    Supervisor.init(helpers ++ services, strategy: :one_for_one)
+    Supervisor.init(children, strategy: :one_for_one)
   end
 end

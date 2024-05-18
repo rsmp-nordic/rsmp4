@@ -49,13 +49,15 @@ Converter: converts service data between internal representation and rsmp sxl fo
 ## Supervision tree
 Application
 	Registry	
-	NodesSupervisor (to do)
-		[Node]  (supervisor)
-			Connection
+	Nodes (dynamic supervisor)
+		[Node] (supervisor)
+			Node State (genserver)
 				emqtt
-			[Services]
-			RemotesSupervisor (dynamic supervisor)
-				[Remotes]
+			Services (supervisor)
+				[Service] (genserver)
+			Remotes (dynamic supervisor)
+				[Remote]
+
 
 
 RSMP.Node.TLC is not a process, it just starts a Node with the relevant services.
@@ -77,4 +79,8 @@ We want a general way to send out a status message for some module/code.
 	send_status(service,code)
 
 This function should fetch the data form the service, convert it and have deliver it via the connection
+
+
+
+## Behaviours
 

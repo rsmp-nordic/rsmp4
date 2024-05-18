@@ -11,6 +11,11 @@ defmodule RSMP.Remote do
     GenServer.start_link(__MODULE__, remote_id, name: via)
   end
 
+  def get_data(id, remote_id) do
+    via = RSMP.Registry.via(id, :remote, remote_id)
+    GenServer.call(via, :get_data)
+  end
+
   @impl GenServer
   def init(_remote_id) do
     {:ok, new()}
@@ -36,5 +41,10 @@ defmodule RSMP.Remote do
   def handle_cast({:receive_status, topic, data}, remote) do
     Logger.warning("Received invalid status #{topic}: must be a map, got #{inspect(data)}")
     {:noreply, remote}
+  end
+
+  @impl GenServer
+  def handle_call(:get_data, _from, remote) do
+    {:reply, remote.data, remote}
   end
 end
