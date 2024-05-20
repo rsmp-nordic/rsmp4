@@ -30,7 +30,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
 
     site_id = params["site_id"]
 
-    #id = RSMP.Site.TLC.make_site_id()
+    # id = RSMP.Site.TLC.make_site_id()
 
     {:ok, pid} = Site.TLC.start_link(site_id: site_id)
 
@@ -47,6 +47,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   @impl true
   def handle_params(params, _url, socket) do
     site_id = params["site_id"]
+
     if site_id do
       {:noreply, socket}
     else

@@ -31,8 +31,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
     assign(socket,
       sites:
         RSMP.Supervisor.sites()
-          |> Map.to_list()
-          |> Enum.sort_by(fn {id, state} -> {state.online == false, id} end, :asc)
+        |> Map.to_list()
+        |> Enum.sort_by(fn {id, state} -> {state.online == false, id} end, :asc)
     )
   end
 

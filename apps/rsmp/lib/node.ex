@@ -9,7 +9,7 @@ defmodule RSMP.Node do
   def init({id, services}) do
     children = [
       {RSMP.Connection, id},
-      {RSMP.Services, {id, services} },
+      {RSMP.Services, {id, services}},
       {RSMP.Remotes, id}
     ]
 

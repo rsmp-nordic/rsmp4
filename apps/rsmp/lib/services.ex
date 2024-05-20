@@ -12,6 +12,7 @@ defmodule RSMP.Services do
         name = service.name()
         Supervisor.child_spec({service, {id, component, name, args}}, id: {component, name})
       end
+
     Supervisor.init(services, strategy: :one_for_one)
   end
 end

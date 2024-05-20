@@ -80,7 +80,14 @@ We want a general way to send out a status message for some module/code.
 
 This function should fetch the data form the service, convert it and have deliver it via the connection
 
+## Converters
+Service
+	receive command - parse
+	send result - format
+Remote
+	receive status - parse
+	send command - format
 
-
-## Behaviours
+Is there any overlap regarding conversion between service and remote?
+If not we might not need the converter, but could instead split parse/format
 

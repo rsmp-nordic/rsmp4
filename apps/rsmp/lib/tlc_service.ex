@@ -1,96 +1,124 @@
 defmodule RSMP.Service.TLC do
   use RSMP.Service, name: "tlc"
-  alias RSMP.{Topic, Path}
   require Logger
 
   defstruct(
     id: nil,
+    base: 0,
     cycle: 0,
+    groups: [],
+    plans: %{
+      1 => %{},
+      2 => %{}
+    },
+    stage: 0,
     plan: 0,
     source: "startup"
   )
 
   @impl RSMP.Service.Behaviour
   def new(id, data \\ []), do: __struct__(Map.merge(data, %{id: id}))
-
-  defimpl RSMP.Service.Protocol do
-    def name(_service), do: RSMP.Service.TLC.name()
-    def id(service), do: service.id
-    def converter(_service), do: RSMP.Converter.TLC
-
-    def get_status(service, %RSMP.Path{code: "14"}) do
-      service.plan
-    end
-
-    def receive_command(service, %Topic{path: %Path{code: "2"}} = topic, args, _properties) do
-      Logger.info(
-        "#{topic.id}: command #{topic.path} with #{inspect(args)}: Switch to plan #{args["plan"]}"
-      )
-
-      RSMP.Service.publish_status(service, "14")
-      {:ok, service}
-    end
-
-    def receive_command(service, topic, _payload, _properties) do
-      Logger.warning("Unkown command #{topic}")
-      {:ok, service}
-    end
-
-    def receive_reaction(service, topic, _payload, _properties) do
-      Logger.warning("Unkown reaction #{topic}")
-      {:ok, service}
-    end
-  end
 end
 
-#  def command(service, %Path{code: "2"}=path, plan, properties) do
-#    current_plan_path = Path.new("tlc","14")
-#    current_plan_path_string = Path.to_string(current_plan_path)
-#    current_plan = service.statuses[current_plan_path_string][:plan]
-#
-#    {response, service} =
-#      cond do
-#        plan == current_plan ->
-#          Logger.info("RSMP: Already using plan: #{plan}")
-#
-#          {
-#            %{status: "already", plan: plan, reason: "Already using plan #{plan}"},
-#            service
-#          }
-#
-#        service.plans[plan] != nil ->
-#          Logger.info("RSMP: Switching to plan: #{plan}")
-#          service = put_in(service.statuses[current_plan_path_string], %{plan: plan, source: "forced"})
-#          {
-#            %{status: "ok", plan: plan, reason: ""},
-#            service
-#          }
-#
-#        true ->
-#          Logger.info("RSMP: Unknown plan: #{plan}")
-#
-#          {
-#            %{status: "unknown", plan: current_plan, reason: "Plan #{plan} not found"},
-#            service
-#          }
-#      end
-#
-#    if properties[:response_topic] do
-#      Node.publish_result(service, path, response: response, properties: properties )
-#    end
-#
-#    if response[:status] == "ok" do
-#      Node.publish_status(service, current_plan_path)
-#
-#      pub = %{topic: "status", changes: [path]}
-#      Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-#    end
-#
-#    service
-#  end
-#
+defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
+  require Logger
 
-#
+  def name(_service), do: "tlc"
+  def id(service), do: service.id
+
+  def get_status(service, %RSMP.Path{code: "14"}) do
+    service.plan
+  end
+
+  def receive_command(
+        service,
+        %RSMP.Topic{path: %RSMP.Path{code: "2"}},
+        %{"plan" => plan},
+        properties
+      ) do
+    # Logger.info(
+    #  "#{topic.id}: command #{topic.path} with #{inspect(args)}: Switch to plan #{plan}"
+    # )
+
+    current_plan_code = "14"
+
+    cond do
+      plan == service.plan ->
+        Logger.info("RSMP: Already using plan: #{plan}")
+        # %{status: "already", plan: plan, reason: "Already using plan #{plan}"},
+        {:ok, service}
+
+      service.plans[plan] != nil ->
+        Logger.info("RSMP: Switching to plan: #{plan}")
+        service = %{service | plan: plan, source: "forced"}
+
+        if properties[:response_topic] do
+          # RSMP.Node.publish_result(service, path, response: response, properties: properties )
+        end
+
+        RSMP.Service.publish_status(service, current_plan_code)
+
+        # pub = %{topic: "status", changes: [current_plan_path_string]}
+        # Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+        # %{status: "ok", plan: plan, reason: ""}, service}
+        {:ok, service}
+
+      true ->
+        Logger.info("RSMP: Unknown plan: #{plan}")
+        # %{status: "unknown", plan: current_plan, reason: "Plan #{plan} not found"},
+        {:ok, service}
+    end
+  end
+
+  def receive_command(service, topic, _payload, _properties) do
+    Logger.warning("Unkown command #{topic}")
+    {:ok, service}
+  end
+
+  def receive_reaction(service, topic, _payload, _properties) do
+    Logger.warning("Unkown reaction #{topic}")
+    {:ok, service}
+  end
+
+  # convert from internal format to sxl format
+  def format_status(service, "1") do
+    %{
+      "basecyclecounter" => service.base,
+      "cyclecounter" => service.cycle,
+      "signalgroupstatus" => service.groups,
+      "stage" => service.stage
+    }
+  end
+
+  def format_status(service, "14") do
+    %{
+      "status" => service.plan,
+      "source" => service.source
+    }
+  end
+
+  def format_status(service, "22") do
+    items =
+      service
+      |> Enum.join(",")
+
+    %{"status" => items}
+  end
+
+  def format_status(service, "24") do
+    items =
+      service
+      |> Enum.map(fn {plan, value} -> "#{plan}-#{value}" end)
+      |> Enum.join(",")
+
+    %{"status" => items}
+  end
+
+  def format_status(service, "28"), do: format_status(service, "24")
+end
+
+# ----
+
 #  def reaction(service, %Path{code: "201"}=path, flags, _properties) do
 #    path_string = to_string(path)
 #    Logger.info("RSMP: Received alarm flag #{to_string(path)}, #{inspect(flags)}")
@@ -114,4 +142,4 @@ end
 #    service
 #  end
 #
-#  def alarm(service, _path, _flags, _properties), do: service
+#  def alarm(service, _path, _flags, _properties), do: service#

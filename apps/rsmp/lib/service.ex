@@ -1,11 +1,11 @@
 defprotocol RSMP.Service.Protocol do
   def name(service)
   def id(service)
-  def get_status(service, path)
-  def converter(service)
 
   def receive_command(service, path, data, properties)
   def receive_reaction(service, path, data, properties)
+
+  def format_status(service, code)
 end
 
 defmodule RSMP.Service do
@@ -16,6 +16,7 @@ defmodule RSMP.Service do
     @type data :: Map.t()
 
     @callback new(id, data) :: __MODULE__
+    @callback name() :: String.t()
   end
 
   defmacro __using__(options) do
@@ -57,8 +58,7 @@ defmodule RSMP.Service do
     id = RSMP.Service.Protocol.id(service)
     name = RSMP.Service.Protocol.name(service)
     topic = RSMP.Topic.new(id, "status", name, code)
-    converter = RSMP.Service.Protocol.converter(service)
-    data = converter.to_rsmp_status(topic.path.code, service)
+    data = RSMP.Service.Protocol.format_status(service, topic.path.code)
     [{pid, _value}] = RSMP.Registry.lookup(topic.id, :connection)
     GenServer.cast(pid, {:publish_status, topic, data})
   end

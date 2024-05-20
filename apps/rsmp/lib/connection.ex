@@ -41,6 +41,7 @@ defmodule RSMP.Connection do
   @impl GenServer
   def handle_cast({:publish_status, topic, data}, connection) do
     Logger.info("RSMP: Sending status: #{topic} #{Kernel.inspect(data)}")
+
     :emqtt.publish_async(
       connection.emqtt,
       to_string(topic),
