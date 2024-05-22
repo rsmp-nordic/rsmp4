@@ -34,39 +34,25 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
         service,
         %RSMP.Topic{path: %RSMP.Path{code: "2"}},
         %{"plan" => plan},
-        properties
+        _properties
       ) do
-    # Logger.info(
-    #  "#{topic.id}: command #{topic.path} with #{inspect(args)}: Switch to plan #{plan}"
-    # )
 
-    current_plan_code = "14"
-
-    cond do
+     cond do
       plan == service.plan ->
-        Logger.info("RSMP: Already using plan: #{plan}")
-        # %{status: "already", plan: plan, reason: "Already using plan #{plan}"},
-        {:ok, service}
+        Logger.info("RSMP: Switching to plan #{plan} skipped: Already in use")
+        {service, %{status: "already", plan: plan, reason: "Already using plan #{plan}"}}
 
       service.plans[plan] != nil ->
-        Logger.info("RSMP: Switching to plan: #{plan}")
+        Logger.info("RSMP: Switching to plan #{plan}")
         service = %{service | plan: plan, source: "forced"}
-
-        if properties[:response_topic] do
-          # RSMP.Node.publish_result(service, path, response: response, properties: properties )
-        end
-
-        RSMP.Service.publish_status(service, current_plan_code)
-
+        RSMP.Service.publish_status(service, "14")
         # pub = %{topic: "status", changes: [current_plan_path_string]}
         # Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-        # %{status: "ok", plan: plan, reason: ""}, service}
-        {:ok, service}
+        {service, %{status: "ok", plan: plan}}
 
       true ->
-        Logger.info("RSMP: Unknown plan: #{plan}")
-        # %{status: "unknown", plan: current_plan, reason: "Plan #{plan} not found"},
-        {:ok, service}
+        Logger.info("RSMP: Switching to plan: #{plan} failed: Unknown plan")
+        {service, %{status: "unknown", plan: plan, reason: "Plan #{plan} not found"}}
     end
   end
 

@@ -10,6 +10,10 @@ defmodule RSMP.Topic do
     path: Path.new()
   )
 
+  def new(id, type, %RSMP.Path{}=path) do
+    %__MODULE__{id: id, type: type, path: path}
+  end
+
   def new(id, type, module, code, component \\ []) do
     %__MODULE__{id: id, type: type, path: Path.new(module, code, component)}
   end

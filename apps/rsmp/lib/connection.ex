@@ -15,6 +15,11 @@ defmodule RSMP.Connection do
     GenServer.start_link(__MODULE__, id, name: via)
   end
 
+  def publish_message(id, topic, data, %{}=options) do
+    [{pid, _value}] = RSMP.Registry.lookup(id, :connection)
+    GenServer.cast(pid, {:publish_message, topic, data, options})
+  end
+
   # GenServer
   @impl GenServer
   def init(id) do
@@ -39,14 +44,14 @@ defmodule RSMP.Connection do
   end
 
   @impl GenServer
-  def handle_cast({:publish_status, topic, data}, connection) do
-    Logger.info("RSMP: Sending status: #{topic} #{Kernel.inspect(data)}")
+  def handle_cast({:publish_message, topic, data, %{retain: retain, qos: qos}=options}, connection) do
+    Logger.info("RSMP: Publishing #{topic} with flags #{inspect(options)}: #{Kernel.inspect(data)}")
 
     :emqtt.publish_async(
       connection.emqtt,
       to_string(topic),
       RSMP.Utility.to_payload(data),
-      [retain: true, qos: 1],
+      [retain: retain, qos: qos],
       &publish_done/1
     )
 
@@ -134,7 +139,7 @@ defmodule RSMP.Connection do
     case RSMP.Registry.lookup(topic.id, :service, topic.path.module, topic.path.component) do
       [{pid, _value}] ->
         case topic.type do
-          "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
+           "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
           "reaction" -> GenServer.call(pid, {:receive_reaction, topic, data, properties})
         end
 
@@ -186,7 +191,4 @@ defmodule RSMP.Connection do
   def publish_done(data) do
     Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
   end
-
-  # # helpers
-  # def service(node, path), do: node.services[path.module]
 end

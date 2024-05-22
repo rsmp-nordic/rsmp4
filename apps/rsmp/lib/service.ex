@@ -19,6 +19,7 @@ defmodule RSMP.Service do
     @callback name() :: String.t()
   end
 
+  # macro
   defmacro __using__(options) do
     # the following code will be injencted into the module using RSMP.Service
     name = Keyword.get(options, :name)
@@ -42,25 +43,37 @@ defmodule RSMP.Service do
 
       @impl GenServer
       def handle_call({:receive_command, topic, data, properties}, _from, service) do
-        RSMP.Service.Protocol.receive_command(service, topic, data, properties)
-        {:reply, :ok, service}
+        {service,result} = RSMP.Service.Protocol.receive_command(service, topic, data, properties)
+        if result do
+          RSMP.Service.publish_result(service, topic.path.code, topic.path.component, result)
+        end
+        {:reply, result, service}
       end
 
       @impl GenServer
       def handle_call({:receive_reaction, topic, data, properties}, _from, service) do
-        RSMP.Service.Protocol.receive_reaction(service, topic, data, properties)
+        service = RSMP.Service.Protocol.receive_reaction(service, topic, data, properties)
         {:reply, :ok, service}
       end
     end
   end
 
-  def publish_status(service, code) do
+  # api
+  def publish_status(service, code, component \\ []) do
+    topic = make_topic(service, "status", code, component)
+    data = RSMP.Service.Protocol.format_status(service, code)
+    RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 1})
+  end
+
+  def publish_result(service, code, component \\ [], data) do
+    topic = make_topic(service, "result", code, component)
+    RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 2})
+  end
+
+  defp make_topic(service, type, code, component) do
     id = RSMP.Service.Protocol.id(service)
-    name = RSMP.Service.Protocol.name(service)
-    topic = RSMP.Topic.new(id, "status", name, code)
-    data = RSMP.Service.Protocol.format_status(service, topic.path.code)
-    [{pid, _value}] = RSMP.Registry.lookup(topic.id, :connection)
-    GenServer.cast(pid, {:publish_status, topic, data})
+    module = RSMP.Service.Protocol.name(service)
+    RSMP.Topic.new(id, type, module, code, component)
   end
 
   #  def alarm_flag_string(service, path) do

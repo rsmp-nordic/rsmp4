@@ -84,9 +84,12 @@ This function should fetch the data form the service, convert it and have delive
 Service
 	receive command - parse
 	send result - format
+	send status - format
 Remote
 	receive status - parse
 	send command - format
+	receive status - parse
+	show status - no conversion
 
 Is there any overlap regarding conversion between service and remote?
 If not we might not need the converter, but could instead split parse/format
