@@ -77,15 +77,7 @@ defmodule RSMP.Connection do
     topic = RSMP.Topic.from_string(publish.topic)
     data = RSMP.Utility.from_payload(publish.payload)
     properties = publish.properties
-    handle_publish(connection, topic, data, properties)
-  end
 
-  def handle_publish(connection, topic, _data, _properties) when topic.id == connection.id do
-    # ingore our own state messages
-    {:noreply, connection}
-  end
-
-  def handle_publish(connection, topic, data, properties) do
     case topic.type do
       "state" ->
         dispatch_state(connection, topic, data)
@@ -119,7 +111,7 @@ defmodule RSMP.Connection do
     {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/result/#", qos})
   end
 
-  def dispatch_state(connection, topic, online_status) do
+  def dispatch_state(connection, topic, %{"online" => _}=online_status) do
     pid = case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
       [] ->
         via = RSMP.Registry.via(connection.id, :remotes)
@@ -130,6 +122,10 @@ defmodule RSMP.Connection do
         pid
     end
     RSMP.Remote.update_online_status(pid, online_status)
+  end
+
+  def dispatch_state(_connection, _topic, online_status) do
+    Logger.warning("Igoring status with invalid state: #{online_status}")
   end
 
   def dispatch_to_service(_connection, topic, data, properties) do
@@ -148,6 +144,10 @@ defmodule RSMP.Connection do
       _ ->
         Logger.warning("No service handling topic: #{topic}")
     end
+  end
+
+  def dispatch_to_remote(connection, topic, _data, _properties) when topic.id == connection.id do
+    #ignore message send by us
   end
 
   def dispatch_to_remote(connection, topic, data, _properties) do
