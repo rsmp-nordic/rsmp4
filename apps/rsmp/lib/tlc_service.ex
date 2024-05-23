@@ -51,7 +51,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
         {service, %{status: "ok", plan: plan}}
 
       true ->
-        Logger.info("RSMP: Switching to plan: #{plan} failed: Unknown plan")
+        Logger.info("RSMP: Switching to plan #{plan} failed: Unknown plan")
         {service, %{status: "unknown", plan: plan, reason: "Plan #{plan} not found"}}
     end
   end

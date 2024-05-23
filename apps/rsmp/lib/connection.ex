@@ -75,17 +75,26 @@ defmodule RSMP.Connection do
   @impl true
   def handle_info({:publish, publish}, connection) do
     topic = RSMP.Topic.from_string(publish.topic)
-    data = RSMP.Utility.from_payload(publish[:payload])
+    data = RSMP.Utility.from_payload(publish.payload)
+    properties = publish.properties
+    handle_publish(connection, topic, data, properties)
+  end
 
+  def handle_publish(connection, topic, _data, _properties) when topic.id == connection.id do
+    # ingore our own state messages
+    {:noreply, connection}
+  end
+
+  def handle_publish(connection, topic, data, properties) do
     case topic.type do
       "state" ->
-        receive_state(connection, topic, data)
+        dispatch_state(connection, topic, data)
 
       type when type in ["command", "reaction"] ->
-        dispatch_to_service(topic, data, publish)
+        dispatch_to_service(connection ,topic, data, properties)
 
       type when type in ["status", "alarm", "result"] ->
-        dispatch_to_remote(connection, topic, data, publish)
+        dispatch_to_remote(connection, topic, data, properties)
 
       _ ->
         Logger.warning("Igoring unknown command type topic")
@@ -110,36 +119,31 @@ defmodule RSMP.Connection do
     {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/result/#", qos})
   end
 
-  def receive_state(connection, topic, %{"online" => _online, "modules" => modules}) do
-    unless topic.id == connection.id do
-      case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
-        [] ->
-          Logger.info("Adding remote for #{topic.id} with modules: #{inspect(modules)}")
-          via = RSMP.Registry.via(connection.id, :remotes)
+  def dispatch_state(connection, topic, online_status) do
+    pid = case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
+      [] ->
+        Logger.info("Adding remote for #{topic.id}")
+        via = RSMP.Registry.via(connection.id, :remotes)
+        {:ok, pid} =
+          DynamicSupervisor.start_child(via, {RSMP.Remote, {connection.id, topic.id}})
+        pid
 
-          {:ok, _pid} =
-            DynamicSupervisor.start_child(via, {RSMP.Remote, {connection.id, topic.id}})
-
-        [{_pid, _}] ->
-          Logger.info("Updating remote for #{topic.id} with modules: #{inspect(modules)}")
-      end
+      [{pid, _}] ->
+        pid
     end
+    RSMP.Remote.update_online_status(pid, online_status)
   end
 
-  def receive_state(_connection, _topic, data) do
-    Logger.info("Invalid state topic: #{inspect(data)}")
-  end
-
-  def dispatch_to_service(topic, data, publish) do
+  def dispatch_to_service(_connection, topic, data, properties) do
     properties = %{
-      response_topic: publish[:properties][:"Response-Topic"],
-      command_id: publish[:properties][:"Correlation-Data"]
+      response_topic: properties[:"Response-Topic"],
+      command_id: properties[:"Correlation-Data"]
     }
 
     case RSMP.Registry.lookup(topic.id, :service, topic.path.module, topic.path.component) do
       [{pid, _value}] ->
         case topic.type do
-           "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
+          "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
           "reaction" -> GenServer.call(pid, {:receive_reaction, topic, data, properties})
         end
 
@@ -148,7 +152,7 @@ defmodule RSMP.Connection do
     end
   end
 
-  def dispatch_to_remote(connection, topic, data, _publish) do
+  def dispatch_to_remote(connection, topic, data, _properties) do
     case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
       [{pid, _value}] ->
         case topic.type do
@@ -156,8 +160,7 @@ defmodule RSMP.Connection do
         end
 
       _ ->
-        nil
-        #  Logger.warning("No remote handling topic")
+        Logger.warning("No remote handling topic #{topic}")
     end
   end
 
