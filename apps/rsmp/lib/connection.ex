@@ -122,10 +122,8 @@ defmodule RSMP.Connection do
   def dispatch_state(connection, topic, online_status) do
     pid = case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
       [] ->
-        Logger.info("Adding remote for #{topic.id}")
         via = RSMP.Registry.via(connection.id, :remotes)
-        {:ok, pid} =
-          DynamicSupervisor.start_child(via, {RSMP.Remote, {connection.id, topic.id}})
+        {:ok, pid} = DynamicSupervisor.start_child(via, {RSMP.Remote, {connection.id, topic.id}})
         pid
 
       [{pid, _}] ->

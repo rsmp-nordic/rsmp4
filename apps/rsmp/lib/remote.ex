@@ -64,15 +64,11 @@ defmodule RSMP.Remote do
 
   @impl GenServer
   def handle_cast({:update_online_status, online_status}, remote) do
-    was = remote
     remote = %{remote | online: online_status["online"], modules: online_status["modules"]}
-    cond do
-      remote.online && !was.online ->
-        Logger.info("Remote #{remote.id} is online with modules #{inspect(remote.modules)}")
-      !remote.online && was.online ->
-        Logger.info("Remote #{remote.id} is offline")
-      remote.online ->
-        Logger.info("Remote #{remote.id} has modules #{inspect(remote.modules)}")
+    if remote.online do
+      Logger.info("Remote #{remote.id} is online with modules #{inspect(remote.modules)}")
+    else
+      Logger.info("Remote #{remote.id} is offline")
     end
     {:noreply, remote}
   end
