@@ -43,16 +43,15 @@ defmodule RSMP.Remote do
   @impl GenServer
   def handle_cast({:receive_status, topic, data}, remote) when is_map(data) do
     Logger.info("Receive status #{topic}: #{inspect(data)}")
-    index = to_string(topic.path)
 
     values =
-      if remote.data[index] do
-        remote.data[index] |> Map.merge(data)
+      if remote.data[topic.path] do
+        remote.data[topic.path] |> Map.merge(data)
       else
         data
       end
 
-    remote = put_in(remote.data[index], values)
+    remote = put_in(remote.data[topic.path], values)
     {:noreply, remote}
   end
 
