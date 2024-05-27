@@ -15,9 +15,9 @@ defmodule RSMP.Connection do
     GenServer.start_link(__MODULE__, id, name: via)
   end
 
-  def publish_message(id, topic, data, %{}=options) do
+  def publish_message(id, topic, data, %{}=options, %{}=properties) do
     [{pid, _value}] = RSMP.Registry.lookup(id, :connection)
-    GenServer.cast(pid, {:publish_message, topic, data, options})
+    GenServer.cast(pid, {:publish_message, topic, data, options, properties})
   end
 
   # GenServer
@@ -44,14 +44,23 @@ defmodule RSMP.Connection do
   end
 
   @impl GenServer
-  def handle_cast({:publish_message, topic, data, %{retain: retain, qos: qos}=options}, connection) do
-    Logger.info("RSMP: Publishing #{topic} with flags #{inspect(options)}: #{Kernel.inspect(data)}")
+  def handle_cast({:publish_message, topic, data, %{retain: retain, qos: qos}=options, %{}=properties}, connection) do
+    Logger.info("RSMP: Publishing #{topic} with flags #{inspect(options)}: #{inspect(data)}")
+
+    properties = 
+      if properties[:command_id] do
+        %{"Correlation-Data": options[:command_id]}
+      else
+        %{}
+      end
 
     :emqtt.publish_async(
       connection.emqtt,
       to_string(topic),
+      properties,
       RSMP.Utility.to_payload(data),
       [retain: retain, qos: qos],
+      :infinity,
       &publish_done/1
     )
 
@@ -83,13 +92,13 @@ defmodule RSMP.Connection do
         dispatch_state(connection, topic, data)
 
       type when type in ["command", "reaction"] ->
-        dispatch_to_service(connection ,topic, data, properties)
+        dispatch_to_service(connection, topic, data, properties)
 
       type when type in ["status", "alarm", "result"] ->
         dispatch_to_remote(connection, topic, data, properties)
 
       _ ->
-        Logger.warning("Igoring unknown command type topic")
+        Logger.warning("Igoring unknown command type topic: '#{publish.topic}' => #{topic}")
     end
 
     {:noreply, connection}

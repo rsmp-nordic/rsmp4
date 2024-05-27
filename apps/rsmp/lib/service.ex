@@ -59,15 +59,19 @@ defmodule RSMP.Service do
   end
 
   # api
-  def publish_status(service, code, component \\ []) do
-    topic = make_topic(service, "status", code, component)
-    data = RSMP.Service.Protocol.format_status(service, code)
-    RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 1})
+  def publish_status(service, code) do
+    publish_status(service, code, [])
   end
 
-  def publish_result(service, code, component \\ [], data) do
+  def publish_status(service, code, component, properties \\ %{}) do
+    topic = make_topic(service, "status", code, component)
+    data = RSMP.Service.Protocol.format_status(service, code)
+    RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 1}, properties)
+  end
+
+  def publish_result(service, code, component, data, properties \\ %{}) do
     topic = make_topic(service, "result", code, component)
-    RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 2})
+    RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 2}, properties)
   end
 
   defp make_topic(service, type, code, component) do

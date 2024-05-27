@@ -52,18 +52,29 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
 
       true ->
         Logger.info("RSMP: Switching to plan #{plan} failed: Unknown plan")
-        {service, %{status: "unknown", plan: plan, reason: "Plan #{plan} not found"}}
+        {service, %{status: "missing", plan: plan, reason: "Plan #{plan} not found"}}
     end
   end
 
+  def receive_command(
+        service,
+        %RSMP.Topic{path: %RSMP.Path{code: "2"}=path},
+        %{}=params,
+        _properties
+      ) do
+    Logger.warning("Invalid params fo command #{path}: #{inspect(params)}" )
+    {service,nil}
+  end    
+
   def receive_command(service, topic, _payload, _properties) do
+    IO.inspect(topic)
     Logger.warning("Unkown command #{topic}")
-    {:ok, service}
+    {service,nil}
   end
 
   def receive_reaction(service, topic, _payload, _properties) do
     Logger.warning("Unkown reaction #{topic}")
-    {:ok, service}
+    {service, nil}
   end
 
   # convert from internal format to sxl format
