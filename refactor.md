@@ -51,12 +51,13 @@ Application
 	Registry	
 	Nodes (dynamic supervisor)
 		[Node] (supervisor)
-			Node State (genserver)
+			Connection (genserver)
 				emqtt
 			Services (supervisor)
 				[Service] (genserver)
 			Remotes (dynamic supervisor)
 				[Remote]
+					[Remote.Service]
 
 
 

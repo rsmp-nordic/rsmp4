@@ -275,7 +275,7 @@ defmodule RSMP.Supervisor do
     supervisor =
       if supervisor.sites[id],
         do: supervisor,
-        else: put_in(supervisor.sites[id], RSMP.Remote.Site.new(id: id))
+        else: put_in(supervisor.sites[id], RSMP.Remote.Node.Site.new(id: id))
 
     {supervisor, supervisor.sites[id]}
   end

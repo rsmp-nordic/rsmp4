@@ -32,7 +32,7 @@ defmodule RSMP.Service do
       def name(), do: unquote(name)
 
       def start_link({id, component, service, data}) do
-        via = RSMP.Registry.via(id, :service, service, component)
+        via = RSMP.Registry.via_service(id, service, component)
         GenServer.start_link(__MODULE__, {id, data}, name: via)
       end
 

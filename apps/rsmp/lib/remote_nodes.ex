@@ -1,8 +1,8 @@
-defmodule RSMP.Remotes do
+defmodule RSMP.Remote.Nodes do
   use DynamicSupervisor
 
   def start_link(id) do
-    DynamicSupervisor.start_link(__MODULE__, [], name: RSMP.Registry.via(id, :remotes))
+    DynamicSupervisor.start_link(__MODULE__, [], name: RSMP.Registry.via_remotes(id))
   end
 
   @impl DynamicSupervisor

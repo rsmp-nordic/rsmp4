@@ -2,7 +2,7 @@ defmodule RSMP.Node do
   use Supervisor
 
   def start_link(id, services) do
-    Supervisor.start_link(__MODULE__, {id, services}, name: RSMP.Registry.via(id, :node))
+    Supervisor.start_link(__MODULE__, {id, services}, name: RSMP.Registry.via_node(id))
   end
 
   @impl Supervisor
@@ -10,7 +10,7 @@ defmodule RSMP.Node do
     children = [
       {RSMP.Connection, id},
       {RSMP.Services, {id, services}},
-      {RSMP.Remotes, id}
+      {RSMP.Remote.Nodes, id}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

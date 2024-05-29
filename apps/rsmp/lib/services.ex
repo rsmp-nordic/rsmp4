@@ -2,7 +2,7 @@ defmodule RSMP.Services do
   use Supervisor
 
   def start_link({id, services}) do
-    Supervisor.start_link(__MODULE__, {id, services}, name: RSMP.Registry.via(id, :services))
+    Supervisor.start_link(__MODULE__, {id, services}, name: RSMP.Registry.via_services(id))
   end
 
   @impl Supervisor

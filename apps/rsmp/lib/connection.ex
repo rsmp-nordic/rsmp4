@@ -11,12 +11,12 @@ defmodule RSMP.Connection do
 
   # api
   def start_link(id) do
-    via = RSMP.Registry.via(id, :connection)
+    via = RSMP.Registry.via_connection(id)
     GenServer.start_link(__MODULE__, id, name: via)
   end
 
   def publish_message(id, topic, data, %{}=options, %{}=properties) do
-    [{pid, _value}] = RSMP.Registry.lookup(id, :connection)
+    [{pid, _value}] = RSMP.Registry.lookup_connection(id)
     GenServer.cast(pid, {:publish_message, topic, data, options, properties})
   end
 
@@ -95,7 +95,7 @@ defmodule RSMP.Connection do
         dispatch_to_service(connection, topic, data, properties)
 
       type when type in ["status", "alarm", "result"] ->
-        dispatch_to_remote(connection, topic, data, properties)
+        dispatch_to_remote_service(connection, topic, data, properties)
 
       _ ->
         Logger.warning("Igoring unknown command type topic: '#{publish.topic}' => #{topic}")
@@ -121,20 +121,20 @@ defmodule RSMP.Connection do
   end
 
   def dispatch_state(connection, topic, %{"online" => _}=online_status) do
-    pid = case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
+    pid = case RSMP.Registry.lookup_remote(connection.id, topic.id) do
       [] ->
-        via = RSMP.Registry.via(connection.id, :remotes)
-        {:ok, pid} = DynamicSupervisor.start_child(via, {RSMP.Remote, {connection.id, topic.id}})
+        via = RSMP.Registry.via_remotes(connection.id)
+        {:ok, pid} = DynamicSupervisor.start_child(via, {RSMP.Remote.Node, {connection.id, topic.id}})
         pid
 
       [{pid, _}] ->
         pid
     end
-    RSMP.Remote.update_online_status(pid, online_status)
+    RSMP.Remote.Node.update_online_status(pid, online_status)
   end
 
   def dispatch_state(_connection, _topic, online_status) do
-    Logger.warning("Igoring status with invalid state: #{online_status}")
+    Logger.warning("Igoring status with invalid state: #{inspect(online_status)}")
   end
 
   def dispatch_to_service(_connection, topic, data, properties) do
@@ -143,7 +143,7 @@ defmodule RSMP.Connection do
       command_id: properties[:"Correlation-Data"]
     }
 
-    case RSMP.Registry.lookup(topic.id, :service, topic.path.module, topic.path.component) do
+    case RSMP.Registry.lookup_service(topic.id, topic.path.module, topic.path.component) do
       [{pid, _value}] ->
         case topic.type do
           "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
@@ -155,20 +155,24 @@ defmodule RSMP.Connection do
     end
   end
 
-  def dispatch_to_remote(connection, topic, _data, _properties) when topic.id == connection.id do
+  def dispatch_to_remote_service(connection, topic, _data, _properties) when topic.id == connection.id do
     #ignore message send by us
   end
 
-  def dispatch_to_remote(connection, topic, data, _properties) do
-    case RSMP.Registry.lookup(connection.id, :remote, topic.id) do
-      [{pid, _value}] ->
-        case topic.type do
-          "status" -> GenServer.cast(pid, {:receive_status, topic, data})
-        end
+  def dispatch_to_remote_service(connection, topic, data, properties) do
+    pid = case RSMP.Registry.lookup_remote_service(connection.id, topic.id, topic.path.module, topic.path.component) do
+      [] ->
+        via = RSMP.Registry.via_remote_services(connection.id)
+        {:ok, pid} = DynamicSupervisor.start_child(
+          via,
+          {RSMP.Remote.Service, {connection.id, topic.id, topic.path.module, topic.path.component}}
+        )
+        pid
 
-      _ ->
-        Logger.warning("No remote handling topic #{topic}")
+      [{pid, _}] ->
+        pid
     end
+    GenServer.cast(pid, {:receive_status, topic, data, properties})
   end
 
   # def publish_alarm(node, path) do

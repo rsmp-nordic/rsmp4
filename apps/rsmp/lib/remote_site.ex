@@ -1,5 +1,5 @@
 # RSMP Site
-defmodule RSMP.Remote.Site do
+defmodule RSMP.Remote.Node.Site do
   @moduledoc false
   require Logger
 
