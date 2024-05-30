@@ -47,6 +47,8 @@ Handler: A reference to a service runnining on a remote node, sends commands to 
 Converter: converts service data between internal representation and rsmp sxl format
 
 ## Supervision tree
+Tree of processes and supervisors:
+
 Application
 	Registry	
 	Nodes (dynamic supervisor)
@@ -60,9 +62,6 @@ Application
 					[Remote.Service]
 
 
-
-RSMP.Node.TLC is not a process, it just starts a Node with the relevant services.
-RSMP.Service.TLC uses RSMP.Service, which makes it a GenServer process.
 
 
 ## Sending data
