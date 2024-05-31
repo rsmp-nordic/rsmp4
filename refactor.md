@@ -58,8 +58,8 @@ Application
 			Services (supervisor)
 				[Service] (genserver)
 			Remotes (dynamic supervisor)
-				[Remote]
-					[Remote.Service]
+				[Remote] (dynamic supervisor)
+					[Remote.ServiceType] (genserver, keeps data for all components of a specific type)
 
 
 

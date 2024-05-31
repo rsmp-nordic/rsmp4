@@ -160,7 +160,7 @@ defmodule RSMP.Connection do
   end
 
   def dispatch_to_remote_service(connection, topic, data, properties) do
-    pid = case RSMP.Registry.lookup_remote_service(connection.id, topic.id, topic.path.module, topic.path.component) do
+    pid = case RSMP.Registry.lookup_remote_service_type(connection.id, topic.id, topic.path.module, topic.path.component) do
       [] ->
         via = RSMP.Registry.via_remote_services(connection.id)
         {:ok, pid} = DynamicSupervisor.start_child(
