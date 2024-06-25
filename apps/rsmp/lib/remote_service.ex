@@ -3,7 +3,6 @@ defprotocol RSMP.Remote.Service.Protocol do
   def id(service)
 
   def receive_status(service, path, data, properties)
-  #def format_status(service, code)
 end
 
 defmodule RSMP.Remote.Service do
@@ -31,12 +30,12 @@ defmodule RSMP.Remote.Service do
 
       def start_link({id, remote_id, service, component, data}) do
         via = RSMP.Registry.via_remote_service(id, remote_id, service, component)
-        GenServer.start_link(__MODULE__, {id, data}, name: via)
+        GenServer.start_link(__MODULE__, {remote_id, data}, name: via)
       end
 
       @impl GenServer
-      def init({id, data}) do
-        {:ok, new(id, data)}
+      def init({remote_id, data}) do
+        {:ok, new(remote_id, data)}
       end
 
       @impl GenServer

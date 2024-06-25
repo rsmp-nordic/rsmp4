@@ -51,17 +51,17 @@ Tree of processes and supervisors:
 
 Application
 	Registry	
-	Nodes (dynamic supervisor)
-		[Node] (supervisor)
-			Connection (genserver)
+	Nodes - dynamic supervisor, list of nodes
+		Node = supervisor
+			Connection - genserver
 				emqtt
-			Services (supervisor)
-				[Service] (genserver)
-			Remotes (dynamic supervisor)
-				[Remote] (dynamic supervisor)
-					[Remote.ServiceType] (genserver, keeps data for all components of a specific type)
-
-
+			Services - supervisor, list of services
+				Service = genserver, keeps state for a service for a componen
+			Remote.Nodes - dynamic supervisor, list of remote nodes
+				Remote.Node = supervisor
+					Remote.Node.State - genserver, keeps state for a remote node
+					Remote.Services = dynamic supervisor, list services
+						Remote.Service - genserver, keeps state for all service for a remote component
 
 
 ## Sending data
