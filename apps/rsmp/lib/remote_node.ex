@@ -1,7 +1,7 @@
 defmodule RSMP.Remote.Node do
   use Supervisor
 
-  def start_link(id, remote_id, services) do
+  def start_link({id, remote_id, services}) do
     Supervisor.start_link(__MODULE__, {id, remote_id, services}, name: RSMP.Registry.via_remote(id, remote_id))
   end
 

@@ -40,9 +40,9 @@ defmodule RSMP.Remote.Node.State do
   def handle_cast({:update_online_status, online_status}, remote) do
     remote = %{remote | online: online_status["online"], modules: online_status["modules"]}
     if remote.online do
-      Logger.info("Remote #{remote.id} is online with modules #{inspect(remote.modules)}")
+      Logger.info("Remote #{remote.remote_id} is online with modules #{inspect(remote.modules)}")
     else
-      Logger.info("Remote #{remote.id} is offline")
+      Logger.info("Remote #{remote.remote_id} is offline")
     end
     {:noreply, remote}
   end

@@ -121,16 +121,11 @@ defmodule RSMP.Connection do
   end
 
   def dispatch_state(connection, topic, %{"online" => _}=online_status) do
-    pid = case RSMP.Registry.lookup_remote(connection.id, topic.id) do
-      [] ->
-        via = RSMP.Registry.via_remotes(connection.id)
-        {:ok, pid} = DynamicSupervisor.start_child(via, {RSMP.Remote.Node, {connection.id, topic.id, []}})
-        pid
-
-      [{pid, _}] ->
-        pid
+    if RSMP.Registry.lookup_remote(connection.id, topic.id) == [] do
+      via = RSMP.Registry.via_remotes(connection.id)
+      {:ok, _pid} = DynamicSupervisor.start_child(via, {RSMP.Remote.Node, {connection.id, topic.id, []}})
     end
-    RSMP.Remote.Node.State.update_online_status(pid, online_status)
+    RSMP.Remote.Node.State.update_online_status(connection.id, topic.id, online_status)
   end
 
   def dispatch_state(_connection, _topic, online_status) do
@@ -162,10 +157,11 @@ defmodule RSMP.Connection do
   def dispatch_to_remote_service(connection, topic, data, properties) do
     pid = case RSMP.Registry.lookup_remote_service(connection.id, topic.id, topic.path.module, topic.path.component) do
       [] ->
-        via = RSMP.Registry.via_remote_service(connection.id, topic.id, topic.path.module, topic.path.component)
+        via = RSMP.Registry.via_remote_services(connection.id, topic.id)
+        data = %{}
         {:ok, pid} = DynamicSupervisor.start_child(
           via,
-          {RSMP.Remote.Service, {connection.id, topic.id, topic.path.module, topic.path.component}}
+          {RSMP.Remote.Service.Generic, {connection.id, topic.id, topic.path.module, topic.path.component, data}}
         )
         pid
 

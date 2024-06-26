@@ -67,7 +67,6 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
   end    
 
   def receive_command(service, topic, _payload, _properties) do
-    IO.inspect(topic)
     Logger.warning("Unkown command #{topic}")
     {service,nil}
   end

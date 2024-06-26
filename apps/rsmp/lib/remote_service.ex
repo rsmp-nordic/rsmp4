@@ -3,6 +3,8 @@ defprotocol RSMP.Remote.Service.Protocol do
   def id(service)
 
   def receive_status(service, path, data, properties)
+
+  def parse_status(code, data)
 end
 
 defmodule RSMP.Remote.Service do
@@ -39,12 +41,10 @@ defmodule RSMP.Remote.Service do
       end
 
       @impl GenServer
-      def handle_call({:receive_status, topic, data, properties}, _from, service) do
-        {service,result} = RSMP.Remote.Service.Protocol.receive_command(service, topic, data, properties)
-        if result do
-          RSMP.Remote.Service.publish_result(service, topic.path.code, topic.path.component, result)
-        end
-        {:reply, result, service}
+      def handle_cast({:receive_status, topic, data, properties}, service) do
+        data = RSMP.Remote.Service.Protocol.parse_status(topic.path.code, data)
+        service = RSMP.Remote.Service.Protocol.receive_status(service, topic, data, properties)
+        {:noreply, service}
       end
 
     end
