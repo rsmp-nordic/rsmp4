@@ -4,15 +4,16 @@ defmodule RSMP.Connection do
 
   defstruct(
     emqtt: nil,
-    id: nil
+    id: nil,
+    managers: %{}
   )
 
   def new(options), do: __struct__(options)
 
   # api
-  def start_link(id) do
+  def start_link({id,managers}) do
     via = RSMP.Registry.via_connection(id)
-    GenServer.start_link(__MODULE__, id, name: via)
+    GenServer.start_link(__MODULE__, {id, managers}, name: via)
   end
 
   def publish_message(id, topic, data, %{}=options, %{}=properties) do
@@ -22,7 +23,7 @@ defmodule RSMP.Connection do
 
   # GenServer
   @impl GenServer
-  def init(id) do
+  def init({id,managers}) do
     Logger.info("RSMP: starting emqtt")
 
     options =
@@ -38,7 +39,7 @@ defmodule RSMP.Connection do
     {:ok, emqtt} = :emqtt.start_link(options)
     {:ok, _} = :emqtt.connect(emqtt)
 
-    connection = new(emqtt: emqtt, id: id)
+    connection = new(emqtt: emqtt, id: id, managers: managers)
     subscribe_to_topics(connection)
     {:ok, connection}
   end
@@ -166,16 +167,17 @@ defmodule RSMP.Connection do
       Logger.warning("Ignoring message for offline remote: #{topic}")
     else
       pid = case RSMP.Registry.lookup_remote_service(connection.id, topic.id, topic.path.module, topic.path.component) do
+        [{pid, _}] ->
+          pid
+
         [] ->
           via = RSMP.Registry.via_remote_services(connection.id, topic.id)
           data = %{}
+          manager_module = connection.managers[topic.path.module] || RSMP.Remote.Service.Generic
           {:ok, pid} = DynamicSupervisor.start_child(
             via,
-            {RSMP.Remote.Service.Generic, {connection.id, topic.id, topic.path.module, topic.path.component, data}}
+            {manager_module, {connection.id, topic.id, topic.path.module, topic.path.component, data}}
           )
-          pid
-
-        [{pid, _}] ->
           pid
       end
 

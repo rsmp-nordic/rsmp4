@@ -29,9 +29,8 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
         %{plan: plan, source: source},
         _properties
       ) do
-    Logger.info("RSMP: Remote TLC Switched to plan #{plan}")
-    service = %{service | plan: plan, source: source}
-    {service,nil}
+    Logger.info("RSMP: Remote TLC #{service.id} was switched to plan '#{plan}' by '#{source}'")
+    %{service | plan: plan, source: source}
   end
 
   def receive_command(
@@ -41,7 +40,7 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
         _properties
       ) do
     Logger.warning("Unknown status #{path}: #{inspect(params)}" )
-    {service,nil}
+    service
   end    
 
   # convert from sxl format to internal format
