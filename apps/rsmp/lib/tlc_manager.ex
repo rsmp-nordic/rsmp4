@@ -45,10 +45,11 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
   end    
 
   # convert from sxl format to internal format
-  def parse_status("14", data) do
+  def parse_status(_service, "14", data) do
     %{
       plan: data["status"],
       source: data["source"]
     }
   end
+
 end

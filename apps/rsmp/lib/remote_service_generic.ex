@@ -24,12 +24,11 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.Generic do
         _properties
       ) do
     Logger.info("RSMP: Received status #{path}: #{inspect(data)}")
-    service = %{service | data: Map.merge(service.data, data)}
-    {service,nil}
+    %{service | data: Map.merge(service.data, data)}
   end
 
   # convert from sxl format to internal format
-  def parse_status(_code, data) do
+  def parse_status(_service, _code, data) do
     data
   end
 end

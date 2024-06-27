@@ -4,7 +4,7 @@ defprotocol RSMP.Remote.Service.Protocol do
 
   def receive_status(service, path, data, properties)
 
-  def parse_status(code, data)
+  def parse_status(service, code, data)
 end
 
 defmodule RSMP.Remote.Service do
@@ -42,7 +42,7 @@ defmodule RSMP.Remote.Service do
 
       @impl GenServer
       def handle_cast({:receive_status, topic, data, properties}, service) do
-        data = RSMP.Remote.Service.Protocol.parse_status(topic.path.code, data)
+        data = RSMP.Remote.Service.Protocol.parse_status(service, topic.path.code, data)
         service = RSMP.Remote.Service.Protocol.receive_status(service, topic, data, properties)
         {:noreply, service}
       end

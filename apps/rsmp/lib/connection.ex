@@ -31,7 +31,7 @@ defmodule RSMP.Connection do
         name: String.to_atom(id),
         clientid: id,
         will_topic: "#{id}/state",
-        will_payload: RSMP.Utility.to_payload(0),
+        will_payload: RSMP.Utility.to_payload(%{"online" => false}),
         will_retain: true
       })
 
@@ -86,7 +86,11 @@ defmodule RSMP.Connection do
     topic = RSMP.Topic.from_string(publish.topic)
     data = RSMP.Utility.from_payload(publish.payload)
     properties = publish.properties
+    handle_publish(publish, topic, data, properties, connection)
+    {:noreply, connection}
+  end
 
+  def handle_publish(publish, topic, data, properties, connection) do
     case topic.type do
       "state" ->
         dispatch_state(connection, topic, data)
@@ -101,7 +105,6 @@ defmodule RSMP.Connection do
         Logger.warning("Igoring unknown command type topic: '#{publish.topic}' => #{topic}")
     end
 
-    {:noreply, connection}
   end
 
   # implementation
@@ -120,6 +123,10 @@ defmodule RSMP.Connection do
     {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/result/#", qos})
   end
 
+  def dispatch_state(connection, topic, _data) when topic.id == connection.id do
+    #ignore message send by us
+  end
+
   def dispatch_state(connection, topic, %{"online" => _}=online_status) do
     if RSMP.Registry.lookup_remote(connection.id, topic.id) == [] do
       via = RSMP.Registry.via_remotes(connection.id)
@@ -128,8 +135,8 @@ defmodule RSMP.Connection do
     RSMP.Remote.Node.State.update_online_status(connection.id, topic.id, online_status)
   end
 
-  def dispatch_state(_connection, _topic, online_status) do
-    Logger.warning("Igoring status with invalid state: #{inspect(online_status)}")
+  def dispatch_state(_connection, topic, online_status) do
+    Logger.warning("Igoring state #{topic} with invalid state: #{inspect(online_status)}")
   end
 
   def dispatch_to_service(_connection, topic, data, properties) do
@@ -155,20 +162,37 @@ defmodule RSMP.Connection do
   end
 
   def dispatch_to_remote_service(connection, topic, data, properties) do
-    pid = case RSMP.Registry.lookup_remote_service(connection.id, topic.id, topic.path.module, topic.path.component) do
-      [] ->
-        via = RSMP.Registry.via_remote_services(connection.id, topic.id)
-        data = %{}
-        {:ok, pid} = DynamicSupervisor.start_child(
-          via,
-          {RSMP.Remote.Service.Generic, {connection.id, topic.id, topic.path.module, topic.path.component, data}}
-        )
-        pid
+    if RSMP.Registry.lookup_remote(connection.id, topic.id) == [] do
+      Logger.warning("Ignoring message for offline remote: #{topic}")
+    else
+      pid = case RSMP.Registry.lookup_remote_service(connection.id, topic.id, topic.path.module, topic.path.component) do
+        [] ->
+          via = RSMP.Registry.via_remote_services(connection.id, topic.id)
+          data = %{}
+          {:ok, pid} = DynamicSupervisor.start_child(
+            via,
+            {RSMP.Remote.Service.Generic, {connection.id, topic.id, topic.path.module, topic.path.component, data}}
+          )
+          pid
 
-      [{pid, _}] ->
-        pid
+        [{pid, _}] ->
+          pid
+      end
+
+      case topic.type do
+        "status" ->
+          GenServer.cast(pid, {:receive_status, topic, data, properties})
+
+        "alarm" ->
+          GenServer.cast(pid, {:receive_alarm, topic, data, properties})
+
+        "result" ->
+          GenServer.cast(pid, {:receive_result, topic, data, properties})
+
+        _ ->
+          Logger.warning("Igoring unknown command type topic: '#{topic}'")
+      end
     end
-    GenServer.cast(pid, {:receive_status, topic, data, properties})
   end
 
   # def publish_alarm(node, path) do
