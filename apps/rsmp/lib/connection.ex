@@ -102,7 +102,7 @@ defmodule RSMP.Connection do
         dispatch_to_remote_service(connection, topic, data, properties)
 
       _ ->
-        Logger.warning("Igoring unknown command type topic: '#{publish.topic}' => #{topic}")
+        Logger.warning("Ignoring unknown command type topic: '#{publish.topic}' => #{topic}")
     end
 
   end
@@ -136,7 +136,7 @@ defmodule RSMP.Connection do
   end
 
   def dispatch_state(_connection, topic, online_status) do
-    Logger.warning("Igoring state #{topic} with invalid state: #{inspect(online_status)}")
+    Logger.warning("Ignoring state #{topic} with invalid state: #{inspect(online_status)}")
   end
 
   def dispatch_to_service(_connection, topic, data, properties) do
@@ -190,7 +190,7 @@ defmodule RSMP.Connection do
           GenServer.cast(pid, {:receive_result, topic, data, properties})
 
         _ ->
-          Logger.warning("Igoring unknown command type topic: '#{topic}'")
+          Logger.warning("Ignoring unknown command type topic: '#{topic}'")
       end
     end
   end
