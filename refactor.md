@@ -56,12 +56,12 @@ Application
 			Connection - genserver
 				emqtt
 			Services - supervisor, list of services
-				Service = genserver, keeps state for a service for a componen
+				Service = genserver, keeps state for a service for a component
 			Remote.Nodes - dynamic supervisor, list of remote nodes
 				Remote.Node = supervisor
 					Remote.Node.State - genserver, keeps state for a remote node
 					Remote.Services = dynamic supervisor, list services
-						Remote.Service - genserver, keeps state for all service for a remote component
+						Remote.Service - genserver, keeps state for a service for a remote component
 
 
 ## Sending data
@@ -95,4 +95,32 @@ Is there any overlap regarding conversion between service and remote?
 If not we might not need the converter, but could instead split parse/format
 
 
+### Modules, components, services and handlers
+The relation between modules, components, services and handlers is not clear.
+
+A module is a kind of API, a set of statuses, comamnds, etc.
+But these can operate on different types of components. E.g the 'tlc' modules operates on components of type tc, dl and sg.
+
+Does a service reflect a module or a component? A component. A component can implement one or more modules (APIs).
+
+Suppose we have a TLC with one controller and two detector logics:
+
+af34/tc/1
+af34/dl/1
+af34/dl/2
+
+This would correspond to three services, a "tc" service, and two "dl" services.
+As a minium both tc and dl components implement the 'tlc' modules.
+Dl component might also implement the 'traffic' module.
+
+When a supervisor sees this TLC, it should setup handlers (remote services) that corresponds one-to-one to the services on the TLC.
+Currently all remotes use the generic module RSMP.Remote.Node. If the remote type should reflect the actual type,  the node type (e.g "tlc") should be in the initial state message.
+
+A particular module always act an a set of component types:
+tlc => tc, dl and sg components
+traffic => dl components
+
+Unfortunately, this means component types must be unqiue across modules, ie. two modules can't define 'sg' to mean two different types of components.
+
+The type of handler is determined by the the component type, which can be derived from the component path. The ["dl","1"] indicate the type "dl".
 

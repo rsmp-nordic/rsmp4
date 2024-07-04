@@ -130,6 +130,7 @@ defmodule RSMP.Connection do
 
   def dispatch_state(connection, topic, %{"online" => _}=online_status) do
     if RSMP.Registry.lookup_remote(connection.id, topic.id) == [] do
+      Logger.warning("#{connection.id}: Adding remote for #{topic.id}")
       via = RSMP.Registry.via_remotes(connection.id)
       remote_services = []
       {:ok, _pid} = DynamicSupervisor.start_child(via, {RSMP.Remote.Node, {connection.id, topic.id, remote_services}})
@@ -137,11 +138,11 @@ defmodule RSMP.Connection do
     RSMP.Remote.Node.State.update_online_status(connection.id, topic.id, online_status)
   end
 
-  def dispatch_state(_connection, topic, online_status) do
-    Logger.warning("Ignoring state #{topic} with invalid state: #{inspect(online_status)}")
+  def dispatch_state(connection, topic, online_status) do
+    Logger.warning("#{connection.id}: Ignoring state #{topic} with invalid state: #{inspect(online_status)}")
   end
 
-  def dispatch_to_service(_connection, topic, data, properties) do
+  def dispatch_to_service(connection, topic, data, properties) do
     properties = %{
       response_topic: properties[:"Response-Topic"],
       command_id: properties[:"Correlation-Data"]
@@ -155,7 +156,7 @@ defmodule RSMP.Connection do
         end
 
       _ ->
-        Logger.warning("No service handling topic: #{topic}")
+        Logger.warning("#{connection.id}: No service handling topic: #{topic}")
     end
   end
 
@@ -165,7 +166,7 @@ defmodule RSMP.Connection do
 
   def dispatch_to_remote_service(connection, topic, data, properties) do
     if RSMP.Registry.lookup_remote(connection.id, topic.id) == [] do
-      Logger.warning("Ignoring message for offline remote: #{topic}")
+      Logger.warning("#{connection.id}: Ignoring message for unknown remote: #{topic}")
     else
       pid = case RSMP.Registry.lookup_remote_service(connection.id, topic.id, topic.path.module, topic.path.component) do
         [{pid, _}] ->
@@ -182,7 +183,7 @@ defmodule RSMP.Connection do
             {manager_module, {connection.id, topic.id, topic.path.module, topic.path.component, data}}
           )
 
-          Logger.warning("Added remote service #{manager_module} for remote node #{topic.id}, component #{Enum.join(topic.path.component, "/")}")
+          Logger.info("#{connection.id}: Added remote service #{manager_module} for remote node #{topic.id}, component #{Enum.join(topic.path.component, "/")}")
           pid
       end
 
@@ -197,7 +198,7 @@ defmodule RSMP.Connection do
           GenServer.cast(pid, {:receive_result, topic, data, properties})
 
         _ ->
-          Logger.warning("Ignoring unknown command type topic: '#{topic}'")
+          Logger.warning("#{connection.id}: Ignoring unknown command type topic: '#{topic}'")
       end
     end
   end
@@ -229,7 +230,7 @@ defmodule RSMP.Connection do
   #   )
   # end
 
-  def publish_done(data) do
-    Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
+  def publish_done(_data) do
+    #Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
   end
 end

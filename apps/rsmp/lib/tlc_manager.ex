@@ -25,11 +25,11 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
 
   def receive_status(
         service,
-        %RSMP.Topic{path: %RSMP.Path{code: "14"}},
+        %RSMP.Topic{path: %RSMP.Path{code: "14"}=path},
         %{plan: plan, source: source},
         _properties
       ) do
-    Logger.info("RSMP: Remote TLC #{service.id} was switched to plan '#{plan}' by '#{source}'")
+    Logger.info("Remote TLC #{service.id} component #{RSMP.Path.component_string(path)} was switched to plan '#{plan}' by '#{source}'")
     %{service | plan: plan, source: source}
   end
 
@@ -39,7 +39,7 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
         data,
         _properties
       ) do
-    Logger.warning("Remote TLC #{service.id} send unknown status #{path}: #{inspect(data)}" )
+    Logger.warning("Remote TLC #{service.id} component #{RSMP.Path.component_string(path)} send unknown status #{path}: #{inspect(data)}" )
     service
   end    
 

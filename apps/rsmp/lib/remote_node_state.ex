@@ -6,6 +6,7 @@ defmodule RSMP.Remote.Node.State do
   defstruct(
     id: nil,
     remote_id: nil,
+    type: nil,
     online: false,
     modules: []
   )
@@ -38,9 +39,9 @@ defmodule RSMP.Remote.Node.State do
 
   @impl GenServer
   def handle_cast({:update_online_status, online_status}, remote) do
-    remote = %{remote | online: online_status["online"], modules: online_status["modules"]}
+    remote = %{remote | type: online_status["type"], online: online_status["online"], modules: online_status["modules"]}
     if remote.online do
-      Logger.info("Remote #{remote.remote_id} is online with modules #{inspect(remote.modules)}")
+      Logger.info("Remote #{remote.remote_id} is online with type '#{remote.type}' and modules #{inspect(remote.modules)}")
     else
       Logger.info("Remote #{remote.remote_id} is offline")
     end
