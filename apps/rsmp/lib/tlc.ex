@@ -1,9 +1,10 @@
 defmodule RSMP.Node.TLC do
   def start_link(id) do
     services = [
-      {["tc"], RSMP.Service.TLC, %{plan: 1}}
+      {["tc","1"], RSMP.Service.TLC, %{plan: 1}}
     ]
-    managers = %{}
+    managers = %{
+    }
 
     RSMP.Node.start_link(id, services, managers)
   end

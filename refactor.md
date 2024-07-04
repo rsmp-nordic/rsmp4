@@ -42,7 +42,7 @@ Node: An RSMP node, can have services that run locally
 Remote: A reference to a remote node
 
 Service: runs a service, receives commands from a remote handler, sends the handler results and status
-Handler: A reference to a service runnining on a remote node, sends commands to a remote service, receives results and status from the remote service
+Handler: A reference to a service runnning on a remote node, sends commands to a remote service, receives results and status from the remote service
 
 Converter: converts service data between internal representation and rsmp sxl format
 
@@ -93,4 +93,6 @@ Remote
 
 Is there any overlap regarding conversion between service and remote?
 If not we might not need the converter, but could instead split parse/format
+
+
 

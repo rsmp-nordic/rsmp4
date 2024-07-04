@@ -1,5 +1,5 @@
 # A topic paths of the form:
-# id/type/module/method/component/...
+# id/type/module/code/component/...
 
 defmodule RSMP.Topic do
   alias RSMP.Path

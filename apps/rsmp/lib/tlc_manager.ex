@@ -33,13 +33,13 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
     %{service | plan: plan, source: source}
   end
 
-  def receive_command(
+  def receive_status(
         service,
         %RSMP.Topic{path: path},
-        params,
+        data,
         _properties
       ) do
-    Logger.warning("Unknown status #{path}: #{inspect(params)}" )
+    Logger.warning("Remote TLC #{service.id} send unknown status #{path}: #{inspect(data)}" )
     service
   end    
 
@@ -51,4 +51,7 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
     }
   end
 
+  def parse_status(_service, _code, data) do
+    data
+  end
 end

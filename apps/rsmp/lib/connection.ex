@@ -131,7 +131,8 @@ defmodule RSMP.Connection do
   def dispatch_state(connection, topic, %{"online" => _}=online_status) do
     if RSMP.Registry.lookup_remote(connection.id, topic.id) == [] do
       via = RSMP.Registry.via_remotes(connection.id)
-      {:ok, _pid} = DynamicSupervisor.start_child(via, {RSMP.Remote.Node, {connection.id, topic.id, []}})
+      remote_services = []
+      {:ok, _pid} = DynamicSupervisor.start_child(via, {RSMP.Remote.Node, {connection.id, topic.id, remote_services}})
     end
     RSMP.Remote.Node.State.update_online_status(connection.id, topic.id, online_status)
   end
@@ -173,11 +174,15 @@ defmodule RSMP.Connection do
         [] ->
           via = RSMP.Registry.via_remote_services(connection.id, topic.id)
           data = %{}
-          manager_module = connection.managers[topic.path.module] || RSMP.Remote.Service.Generic
+          component_type = List.first(topic.path.component)
+          manager_module = connection.managers[component_type] || RSMP.Remote.Service.Generic
+
           {:ok, pid} = DynamicSupervisor.start_child(
             via,
             {manager_module, {connection.id, topic.id, topic.path.module, topic.path.component, data}}
           )
+
+          Logger.warning("Added remote service #{manager_module} for remote node #{topic.id}, component #{Enum.join(topic.path.component, "/")}")
           pid
       end
 
