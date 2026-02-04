@@ -1,5 +1,5 @@
 # A topic paths of the form:
-# id/type/module/code/component/...
+# type/module/code/id/component/... or presence/id
 
 defmodule RSMP.Topic do
   alias RSMP.Path
@@ -21,13 +21,17 @@ defmodule RSMP.Topic do
   def component(topic), do: topic.path.component
 
   def from_string(string) do
-    {topic, component} = string |> String.split("/") |> Enum.split(4)
+    parts = String.split(string, "/")
 
-    case topic do
-      [id, type, module, code] -> new(id, type, module, code, component)
-      [id, type, module] -> new(id, type, module, nil, [])
-      [id, type] -> new(id, type, nil, nil, [])
-      [id | _] -> new(id, nil, nil, nil, [])
+    case parts do
+      ["presence", id] ->
+        new(id, "presence", nil, nil, [])
+
+      [type, module, code, id | component] ->
+        new(id, type, module, code, component)
+
+      _ ->
+        new(nil, nil, nil, nil, [])
     end
   end
 
@@ -35,8 +39,13 @@ defmodule RSMP.Topic do
 
   defimpl String.Chars do
     def to_string(topic) do
-      array = [topic.id, topic.type, topic.path.module, topic.path.code] ++ topic.path.component
-      array |> Enum.join("/")
+      case topic.type do
+        "presence" ->
+          "presence/#{topic.id}"
+        _ ->
+          array = [topic.type, topic.path.module, topic.path.code, topic.id] ++ topic.path.component
+          array |> Enum.join("/")
+      end
     end
   end
 end

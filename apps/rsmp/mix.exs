@@ -9,7 +9,6 @@ defmodule RSMP.MixProject do
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
-      elixir: "~> 1.20.0-rc.1",
       deps: deps(),
       consolidate_protocols: false
     ]

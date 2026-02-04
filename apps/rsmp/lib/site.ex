@@ -90,9 +90,11 @@ defmodule RSMP.Site do
     path_string = to_string(path)
     Logger.info("RSMP: Sending alarm: #{path_string} #{flags}")
 
+    topic = %Topic{id: site.id, type: "alarm", path: path}
+
     :emqtt.publish_async(
       site.pid,
-      "#{site.id}/alarm/#{path_string}",
+      to_string(topic),
       Utility.to_payload(Map.from_struct(site.alarms[path_string])),
       [retain: true, qos: 1],
       &publish_done/1
@@ -107,7 +109,7 @@ defmodule RSMP.Site do
   def publish_state(site, state) do
     :emqtt.publish_async(
       site.pid,
-      "#{site.id}/state",
+      "presence/#{site.id}",
       Utility.to_payload(state),
       [retain: true, qos: 1],
       &publish_done/1
@@ -116,10 +118,10 @@ defmodule RSMP.Site do
 
   def subscribe_to_topics(%{pid: pid, id: id}) do
     # subscribe to commands
-    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/command/#", 1})
+    {:ok, _, _} = :emqtt.subscribe(pid, {"command/+/+/#{id}/#", 1})
 
     # subscribe to alarm reactions
-    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/reaction/#", 1})
+    {:ok, _, _} = :emqtt.subscribe(pid, {"reaction/+/+/#{id}/#", 1})
   end
 
   def handle_publish(topic, _module, data, site) do
@@ -184,8 +186,8 @@ defmodule RSMP.Site do
           |> Map.merge(%{
             name: String.to_atom(site.id),
             clientid: site.id,
-            will_topic: "#{site.id}/state",
-            will_payload: Utility.to_payload(0),
+            will_topic: "presence/#{site.id}",
+            will_payload: Utility.to_payload("offline"),
             will_retain: true
           })
 
@@ -209,7 +211,7 @@ defmodule RSMP.Site do
            {:ok, _} ->
               Logger.info("RSMP: Connected to MQTT broker")
               Site.subscribe_to_topics(site)
-              Site.publish_state(site, 1)
+              Site.publish_state(site, "online")
               Site.publish_all(site)
               if function_exported?(__MODULE__, :continue_client, 0) do
                 continue_client()

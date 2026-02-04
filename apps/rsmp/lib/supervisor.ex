@@ -69,16 +69,16 @@ defmodule RSMP.Supervisor do
 
   def subscribe_to_topics(%{pid: pid, id: _id}) do
     # Subscribe to statuses
-    {:ok, _, _} = :emqtt.subscribe(pid, "+/status/#")
+    {:ok, _, _} = :emqtt.subscribe(pid, {"status/#", 2})
 
     # Subscribe to online/offline state
-    {:ok, _, _} = :emqtt.subscribe(pid, "+/state/#")
+    {:ok, _, _} = :emqtt.subscribe(pid, {"presence/#", 2})
 
     # Subscribe to alamrs
-    {:ok, _, _} = :emqtt.subscribe(pid, "+/alarm/#")
+    {:ok, _, _} = :emqtt.subscribe(pid, {"alarm/#", 2})
 
     # Subscribe to our response topics
-    {:ok, _, _} = :emqtt.subscribe(pid, "+/result/#")
+    {:ok, _, _} = :emqtt.subscribe(pid, {"result/#", 2})
   end
 
   @impl true
@@ -101,7 +101,7 @@ defmodule RSMP.Supervisor do
     # Send command to device
     # set current time plan
     path = "tlc/2"
-    topic = "#{site_id}/command/#{path}"
+    topic = RSMP.Topic.new(site_id, "command", "tlc", "2")
     command_id = SecureRandom.hex(2)
 
     Logger.info(
@@ -109,7 +109,7 @@ defmodule RSMP.Supervisor do
     )
 
     properties = %{
-      "Response-Topic": "#{site_id}/result/#{path}",
+      "Response-Topic": "result/tlc/2/#{site_id}",
       "Correlation-Data": command_id
     }
 
@@ -118,7 +118,7 @@ defmodule RSMP.Supervisor do
     :ok =
       :emqtt.publish_async(
         supervisor.pid,
-        topic,
+        to_string(topic),
         properties,
         Utility.to_payload(%{"plan" => plan}),
         [retain: true, qos: 1],
@@ -221,8 +221,8 @@ defmodule RSMP.Supervisor do
 
     supervisor =
       case topic.type do
-        "state" ->
-          receive_state(supervisor, topic.id, data)
+        "presence" ->
+          receive_presence(supervisor, topic.id, data)
 
         "status" ->
           receive_status(supervisor, topic, data)
@@ -242,13 +242,14 @@ defmodule RSMP.Supervisor do
   end
 
   # helpers
-  defp receive_state(supervisor, id, data) do
+  defp receive_presence(supervisor, id, data) do
     {supervisor, site} = get_site(supervisor, id)
-    online = data == 1
+    online = data == "online"
     site = %{site | online: online}
     supervisor = put_in(supervisor.sites[id], site)
+    Logger.info("RSMP: Supervisor received presence from #{id}: #{data}")
 
-    pub = %{topic: "state", site: id}
+    pub = %{topic: "presence", site: id, online: online}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{id}", pub)
 
@@ -317,7 +318,7 @@ defmodule RSMP.Supervisor do
   # catch-all in case old retained messages are received from the broker
   defp receive_unknown(supervisor, topic, publish) do
     Logger.warning("Unhandled publish, topic: #{inspect(topic)}, publish: #{inspect(publish)}")
-    {:noreply, supervisor}
+    supervisor
   end
 
   def publish_done(data) do

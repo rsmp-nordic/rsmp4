@@ -34,8 +34,8 @@ defmodule RSMP.Connection do
       |> Map.merge(%{
         name: String.to_atom(id),
         clientid: id,
-        will_topic: "#{id}/state",
-        will_payload: RSMP.Utility.to_payload(0),
+        will_topic: "presence/#{id}",
+        will_payload: RSMP.Utility.to_payload("offline"),
         will_retain: true
       })
 
@@ -112,8 +112,8 @@ defmodule RSMP.Connection do
 
   def handle_publish(publish, topic, data, properties, connection) do
     case topic.type do
-      "state" ->
-        dispatch_state(connection, topic, data)
+      "presence" ->
+        dispatch_presence(connection, topic, data)
 
       type when type in ["command", "reaction"] ->
         dispatch_to_service(connection, topic, data, properties)
@@ -134,9 +134,9 @@ defmodule RSMP.Connection do
     # Publish Online state
     :emqtt.publish_async(
       connection.emqtt,
-      "#{connection.id}/state",
+      "presence/#{connection.id}",
       %{},
-      RSMP.Utility.to_payload(1),
+      RSMP.Utility.to_payload("online"),
       [retain: true, qos: 1],
       :infinity,
       &publish_done/1
@@ -161,34 +161,34 @@ defmodule RSMP.Connection do
     qos = 2
 
     if connection.type == :site do
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/command/#", qos})
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/reaction/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"command/+/+/#{id}/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"reaction/+/+/#{id}/#", qos})
     end
 
     if connection.type == :supervisor do
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/state/#", qos})
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/status/#", qos})
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/alarm/#", qos})
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/result/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"presence/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"status/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"alarm/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"result/#", qos})
     end
   end
 
-  def dispatch_state(connection, topic, _data) when topic.id == connection.id do
+  def dispatch_presence(connection, topic, _data) when topic.id == connection.id do
     #ignore message send by us
   end
 
-  def dispatch_state(connection, topic, %{"online" => _}=online_status) do
+  def dispatch_presence(connection, topic, status) when is_binary(status) do
     if RSMP.Registry.lookup_remote(connection.id, topic.id) == [] do
       Logger.warning("#{connection.id}: Adding remote for #{topic.id}")
       via = RSMP.Registry.via_remotes(connection.id)
       remote_services = []
       {:ok, _pid} = DynamicSupervisor.start_child(via, {RSMP.Remote.Node, {connection.id, topic.id, remote_services}})
     end
-    RSMP.Remote.Node.State.update_online_status(connection.id, topic.id, online_status)
+    RSMP.Remote.Node.State.update_online_status(connection.id, topic.id, status)
   end
 
-  def dispatch_state(connection, topic, online_status) do
-    Logger.warning("#{connection.id}: Ignoring state #{topic} with invalid state: #{inspect(online_status)}")
+  def dispatch_presence(connection, topic, online_status) do
+    Logger.warning("#{connection.id}: Ignoring presence #{topic} with invalid state: #{inspect(online_status)}")
   end
 
   def dispatch_to_service(connection, topic, data, properties) do
