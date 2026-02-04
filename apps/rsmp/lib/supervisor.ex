@@ -161,6 +161,31 @@ defmodule RSMP.Supervisor do
   end
 
   @impl true
+  def handle_info({:EXIT, pid, reason}, %{pid: pid} = state) do
+    Logger.warning("RSMP: Supervisor MQTT connection process exited: #{inspect(reason)}. Restarting in 5s...")
+    Process.send_after(self(), :restart_mqtt, 5_000)
+    {:noreply, %{state | pid: nil}}
+  end
+
+  def handle_info({:EXIT, _pid, _reason}, state) do
+    {:noreply, state}
+  end
+
+  def handle_info(:restart_mqtt, state) do
+    emqtt_opts = Application.get_env(:rsmp, :emqtt)
+    emqtt_opts = emqtt_opts |> Keyword.put(:clientid, state.id)
+
+    Logger.info("RSMP: Restarting emqtt with options: #{inspect(emqtt_opts)}")
+    {:ok, pid} = :emqtt.start_link(emqtt_opts)
+    send(self(), :connect)
+    {:noreply, %{state | pid: pid}}
+  end
+
+  @impl true
+  def handle_info(:connect, %{pid: nil} = state) do
+    {:noreply, state}
+  end
+
   def handle_info(:connect, state) do
     case :emqtt.connect(state.pid) do
       {:ok, _} ->

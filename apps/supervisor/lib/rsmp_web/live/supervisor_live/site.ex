@@ -12,7 +12,13 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     end
 
     site_id = params["site_id"]
-    site = RSMP.Supervisor.site(site_id)
+    site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, alarms: %{}}
+    plan =
+      get_in(site, [
+        Access.key(:statuses, %{}),
+        Access.key("tlc/14", %{}),
+        Access.key(:plan, 0)
+      ])
 
     {:ok,
      assign(socket,
@@ -20,15 +26,17 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
        site: site,
        alarm_flags: Enum.sort(["active", "acknowledged", "blocked"]),
        commands: %{
-         "tlc/2" => site.statuses["tlc/14"][:plan]
+         "tlc/2" => plan
        },
-       responses: %{}
+       responses: %{
+         "tlc/2" => %{"phase" => "idle", "symbol" => "", "reason" => ""}
+       }
      )}
   end
 
   def assign_site(socket) do
     site_id = socket.assigns.site_id
-    site = RSMP.Supervisor.site(site_id)
+    site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, alarms: %{}}
     assign(socket, site: site)
   end
 
@@ -79,7 +87,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   # If we still haven't received a responds, show a spinner
   @impl true
   def handle_info({:command_waiting, path}, socket) do
-    if socket.assigns.responses[path]["phase"] == "sent" do
+    response = Map.get(socket.assigns.responses, path, %{})
+
+    if response["phase"] == "sent" do
       responses =
         socket.assigns.responses
         |> Map.put("tlc/2", %{"phase" => "waiting"})

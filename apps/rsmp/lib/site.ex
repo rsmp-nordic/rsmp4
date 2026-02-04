@@ -165,6 +165,7 @@ defmodule RSMP.Site do
       @impl true
       def init(site_id: id) do
         Logger.info("RSMP: starting emqtt")
+        Process.flag(:trap_exit, true)
 
         site =
           %RSMP.Site{
@@ -173,28 +174,62 @@ defmodule RSMP.Site do
           }
           |> setup()
 
-        options =
+        send(self(), :start_mqtt)
+        {:ok, site}
+      end
+
+      def handle_info(:start_mqtt, site) do
+         options =
           Utility.client_options()
           |> Map.merge(%{
-            name: String.to_atom(id),
-            clientid: id,
-            will_topic: "#{id}/state",
+            name: String.to_atom(site.id),
+            clientid: site.id,
+            will_topic: "#{site.id}/state",
             will_payload: Utility.to_payload(0),
             will_retain: true
           })
 
         {:ok, pid} = :emqtt.start_link(options)
-        {:ok, _} = :emqtt.connect(pid)
         site = Map.put(site, :pid, pid)
-        {:ok, site, {:continue, :start_emqtt}}
+        send(self(), :connect)
+        {:noreply, site}
+      end
+
+      def handle_info(:restart_mqtt, site) do
+         send(self(), :start_mqtt)
+         {:noreply, site}
+      end
+
+      def handle_info(:connect, %{pid: nil} = site) do
+        {:noreply, site}
+      end
+
+      def handle_info(:connect, %{pid: pid} = site) do
+        case :emqtt.connect(pid) do
+           {:ok, _} ->
+              Logger.info("RSMP: Connected to MQTT broker")
+              Site.subscribe_to_topics(site)
+              Site.publish_state(site, 1)
+              Site.publish_all(site)
+              if function_exported?(__MODULE__, :continue_client, 0) do
+                continue_client()
+              end
+              {:noreply, site}
+           {:error, reason} ->
+              Logger.warning("RSMP: Failed to connect: #{inspect(reason)}. Retrying in 5s...")
+              Process.send_after(self(), :connect, 5_000)
+              {:noreply, site}
+        end
       end
 
       @impl true
-      def handle_continue(:start_emqtt, %{pid: pid, id: _} = site) do
-        Site.subscribe_to_topics(site)
-        Site.publish_state(site, 1)
-        Site.publish_all(site)
-        continue_client()
+      def handle_info({:EXIT, pid, reason}, %{pid: pid} = site) do
+        Logger.warning("RSMP: Site MQTT connection process exited: #{inspect(reason)}. Restarting in 5s...")
+        Process.send_after(self(), :restart_mqtt, 5_000)
+        {:noreply, %{site | pid: nil}}
+      end
+
+      def handle_info({:EXIT, _pid, _reason}, site) do
         {:noreply, site}
       end
 
