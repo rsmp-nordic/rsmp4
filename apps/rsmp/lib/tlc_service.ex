@@ -2,6 +2,9 @@ defmodule RSMP.Service.TLC do
   use RSMP.Service, name: "tlc"
   require Logger
 
+  @impl true
+  def status_codes(), do: ["1", "14"]
+
   defstruct(
     id: nil,
     base: 0,
@@ -64,7 +67,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
       ) do
     Logger.warning("Invalid params fo command #{path}: #{inspect(params)}" )
     {service,nil}
-  end    
+  end
 
   def receive_command(service, topic, _payload, _properties) do
     Logger.warning("Unkown command #{topic}")

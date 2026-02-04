@@ -16,6 +16,7 @@ defmodule RSMP.Service do
 
     @callback new(id, data) :: __MODULE__
     @callback name() :: String.t()
+    @callback status_codes() :: [String.t()]
   end
 
   # macro
@@ -46,6 +47,23 @@ defmodule RSMP.Service do
       end
 
       @impl GenServer
+      def handle_cast(:publish_all, service) do
+        for code <- status_codes() do
+          RSMP.Service.publish_status(service, code)
+        end
+        {:noreply, service}
+      end
+
+      @impl GenServer
+      def handle_call({:get_statuses}, _from, service) do
+        statuses =
+          for code <- status_codes(), into: %{} do
+             {code, RSMP.Service.Protocol.format_status(service, code)}
+          end
+        {:reply, statuses, service}
+      end
+
+      @impl GenServer
       def handle_call({:receive_command, topic, data, properties}, _from, service) do
         {service,result} = RSMP.Service.Protocol.receive_command(service, topic, data, properties)
         if result do
@@ -65,6 +83,10 @@ defmodule RSMP.Service do
   # api
   def publish_status(service, code) do
     publish_status(service, code, [])
+  end
+
+  def get_statuses(pid) do
+    GenServer.call(pid, {:get_statuses})
   end
 
   def publish_status(service, code, component, properties \\ %{}) do

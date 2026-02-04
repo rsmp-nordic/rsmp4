@@ -34,18 +34,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
 
     {:ok, pid} = TLC.start_link(site_id)
 
-    # TODO: Fix Site state retrieval. RSMP.Node is a supervisor and doesn't handle calls.
-    # id = Site.get_id(pid)
-    # statuses = Site.get_statuses(pid)
-    statuses = case RSMP.Registry.lookup_service(site_id, "tlc", ["tc", "1"]) do
-      [{service_pid, _}] ->
-        state = GenServer.call(service_pid, :get_state)
-        %{
-          "S0001" => RSMP.Converter.TLC.to_rsmp_status("1", state),
-          "S0014" => RSMP.Converter.TLC.to_rsmp_status("14", state)
-        }
-      [] -> %{}
-    end
+    statuses = TLC.get_statuses(site_id)
 
     # alarms = alarm_map(Site.get_alarms(pid))
 

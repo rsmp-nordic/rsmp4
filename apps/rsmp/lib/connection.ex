@@ -32,7 +32,7 @@ defmodule RSMP.Connection do
         name: String.to_atom(id),
         clientid: id,
         will_topic: "#{id}/state",
-        will_payload: RSMP.Utility.to_payload(%{"online" => false}),
+        will_payload: RSMP.Utility.to_payload(0),
         will_retain: true
       })
 
@@ -76,8 +76,7 @@ defmodule RSMP.Connection do
   def handle_info(:connect, state) do
     case :emqtt.connect(state.emqtt) do
       {:ok, _} ->
-        Logger.info("RSMP: Connection #{state.id} connected to MQTT broker")
-        subscribe_to_topics(state)
+        on_connected(state)
         {:noreply, state}
 
       {:error, reason} ->
@@ -89,8 +88,7 @@ defmodule RSMP.Connection do
 
   @impl true
   def handle_info({:connected, _publish}, connection) do
-    Logger.info("RSMP: Connected")
-    subscribe_to_topics(connection)
+    on_connected(connection)
     {:noreply, connection}
   end
 
@@ -124,6 +122,32 @@ defmodule RSMP.Connection do
         Logger.warning("Ignoring unknown command type topic: '#{publish.topic}' => #{topic}")
     end
 
+  end
+
+  defp on_connected(connection) do
+    Logger.info("RSMP: Connection #{connection.id} connected")
+    subscribe_to_topics(connection)
+
+    # Publish Online state
+    :emqtt.publish_async(
+      connection.emqtt,
+      "#{connection.id}/state",
+      %{},
+      RSMP.Utility.to_payload(1),
+      [retain: true, qos: 1],
+      :infinity,
+      &publish_done/1
+    )
+
+    trigger_services(connection.id)
+  end
+
+  defp trigger_services(id) do
+    match_pattern = {{ {id, :service, :_, :_}, :"$1", :_}, [], [:"$1"]}
+    Registry.select(RSMP.Registry, [match_pattern])
+    |> Enum.each(fn pid ->
+       GenServer.cast(pid, :publish_all)
+    end)
   end
 
   # implementation

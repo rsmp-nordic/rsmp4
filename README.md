@@ -9,6 +9,8 @@ The repo is an Elixir umbrella project, containing three apps:
 - site: a Phoenix web app running on port 3000 that acts as a TLC site.
 - supervisor: a Phoenix web app running on port 4000 that acts as a supervisor system.
 
+See apps/rsmp/docs/architecture.md for explanations on the modules that handle RSMP 4 communication.
+
 ## Dependencies
 You need Elixir And Erlang installed. The recommended way is to install via `mise`.
 Once `mise` is installed, you can run `mise install` to install the correct versions of the tools, specified in the file `.tool-versions`.
