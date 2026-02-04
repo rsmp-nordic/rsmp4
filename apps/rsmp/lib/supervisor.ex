@@ -146,8 +146,6 @@ defmodule RSMP.Supervisor do
       &publish_done/1
     )
 
-    {:noreply, supervisor}
-
     pub = %{
       topic: "alarm",
       id: site_id,
@@ -156,6 +154,7 @@ defmodule RSMP.Supervisor do
     }
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{site_id}", pub)
 
     {:noreply, supervisor}
   end
@@ -293,7 +292,13 @@ defmodule RSMP.Supervisor do
     supervisor
   end
 
-  defp receive_alarm(supervisor, topic, alarm) do
+  defp receive_alarm(supervisor, topic, data) do
+    alarm = %{
+      "active" => data["aSt"] == "Active",
+      "acknowledged" => data["ack"],
+      "blocked" => data["sS"]
+    }
+
     id = topic.id
     path_string = to_string(topic.path)
     {supervisor, site} = get_site(supervisor, id)

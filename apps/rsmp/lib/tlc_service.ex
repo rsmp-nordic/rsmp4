@@ -5,6 +5,9 @@ defmodule RSMP.Service.TLC do
   @impl true
   def status_codes(), do: ["1", "14", "22"]
 
+  @impl true
+  def alarm_codes(), do: ["1", "2"]
+
   defstruct(
     id: nil,
     base: 0,
@@ -16,11 +19,19 @@ defmodule RSMP.Service.TLC do
     },
     stage: 0,
     plan: 0,
-    source: "startup"
+    source: "startup",
+    alarms: %{}
   )
 
   @impl RSMP.Service.Behaviour
-  def new(id, data \\ []), do: __struct__(Map.merge(data, %{id: id}))
+  def new(id, data \\ []) do
+     alarms =
+       for code <- alarm_codes(), into: %{} do
+         {code, RSMP.Alarm.new()}
+       end
+
+     __struct__(Map.merge(data, %{id: id, alarms: alarms}))
+  end
 end
 
 defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
@@ -92,9 +103,27 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
     {service,nil}
   end
 
+  def receive_reaction(service, %RSMP.Topic{path: %RSMP.Path{code: code}}, payload, _properties) do
+     alarms = service.alarms
+     if Map.has_key?(alarms, code) do
+        alarm = alarms[code]
+        alarm = RSMP.Alarm.update_from_string_map(alarm, payload)
+        alarms = Map.put(alarms, code, alarm)
+        service = %{service | alarms: alarms}
+
+        RSMP.Service.publish_alarm(service, code)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "alarm"})
+
+        service
+     else
+        Logger.warning("Unknown reaction for alarm #{code}")
+        service
+     end
+  end
+
   def receive_reaction(service, topic, _payload, _properties) do
     Logger.warning("Unknown reaction #{topic}")
-    {service, nil}
+    service
   end
 
   # convert from internal format to sxl format

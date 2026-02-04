@@ -25,7 +25,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
      assign(socket,
        site_id: site_id,
        site: site,
-       alarm_flags: Enum.sort(["active", "acknowledged", "blocked"]),
+       alarm_flags: ["active", "acknowledged", "blocked"],
        commands: %{
          "tlc/2" => plan
        },
@@ -80,7 +80,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
-  def handle_info(%{topic: "alarm"}, socket) do
+  def handle_info(%{topic: "alarm", alarm: alarm}, socket) do
+    Logger.info("Supervisor LiveView received alarm update: #{inspect(alarm)}")
     {:noreply, socket |> assign_site()}
   end
 

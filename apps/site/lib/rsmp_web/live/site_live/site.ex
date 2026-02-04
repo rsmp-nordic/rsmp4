@@ -22,7 +22,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        statuses: %{},
        alarms: %{},
        command_logs: [],
-       alarm_flags: RSMP.Alarm.get_flag_keys()
+       alarm_flags: [:active, :acknowledged, :blocked]
      )}
   end
 
@@ -35,17 +35,16 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     {:ok, pid} = TLC.start_link(site_id)
 
     statuses = TLC.get_statuses(site_id)
-
-    # alarms = alarm_map(Site.get_alarms(pid))
+    alarms = TLC.get_alarms(site_id)
 
     {:ok,
      assign(socket,
        rsmp_site_id: pid,
        id: site_id,
        statuses: statuses,
-       alarms: %{},
+       alarms: alarm_map(alarms),
        command_logs: [],
-       alarm_flags: RSMP.Alarm.get_flag_keys()
+       alarm_flags: [:active, :acknowledged, :blocked]
      )}
   end
 
@@ -89,20 +88,18 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
-  def handle_event("increase", data, socket) do
-    change_status(data, socket, 1)
-  end
+  def handle_event("alarm", data, socket) do
+     path = data["path"]
+     flag = data["value"]
+     site_id = socket.assigns[:id]
 
-  @impl true
-  def handle_event("decrease", data, socket) do
-    change_status(data, socket, -1)
-  end
+     alarms = TLC.get_alarms(site_id)
+     current_alarm = alarms[path]
+     new_value = not Map.get(current_alarm, String.to_atom(flag))
+     TLC.set_alarm(site_id, path, %{flag => new_value})
 
-  @impl true
-  def handle_event("alarm", %{"path" => path, "value" => flag} = _data, socket) do
-    pid = socket.assigns[:rsmp_site_id]
-    Site.toggle_alarm_flag(pid, path, RSMP.Alarm.flag_atom_from_string(flag))
-    {:noreply, socket}
+     alarms = TLC.get_alarms(site_id)
+     {:noreply, assign(socket, alarms: alarm_map(alarms))}
   end
 
   @impl true
@@ -111,24 +108,24 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
-  def handle_info(%{topic: "command_log", id: id, message: message}, socket) do
-    logs = socket.assigns.command_logs
-    new_logs = logs ++ [%{id: id, message: message}]
-    new_logs = if length(new_logs) > 5, do: Enum.drop(new_logs, length(new_logs) - 5), else: new_logs
-    {:noreply, assign(socket, command_logs: new_logs)}
+  def handle_info(%{topic: "alarm"}, socket) do
+    site_id = socket.assigns[:id]
+    alarms = TLC.get_alarms(site_id)
+    {:noreply, assign(socket, alarms: alarm_map(alarms))}
   end
 
   @impl true
-  def handle_info(%{topic: "status", changes: _changes}, socket) do
+  def handle_info(%{topic: "status"}, socket) do
     statuses = TLC.get_statuses(socket.assigns.id)
     {:noreply, assign(socket, statuses: statuses)}
   end
 
   @impl true
-  def handle_info(%{topic: "alarm", changes: _changes}, socket) do
-    pid = socket.assigns[:rsmp_site_id]
-    alarms = Site.get_alarms(pid)
-    {:noreply, assign(socket, alarms: alarm_map(alarms))}
+  def handle_info(%{topic: "command_log", id: id, message: message}, socket) do
+    logs = socket.assigns.command_logs
+    new_logs = logs ++ [%{id: id, message: message}]
+    new_logs = if length(new_logs) > 5, do: Enum.drop(new_logs, length(new_logs) - 5), else: new_logs
+    {:noreply, assign(socket, command_logs: new_logs)}
   end
 
   # Change tracking on assigns only works with simple data, we

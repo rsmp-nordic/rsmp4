@@ -49,11 +49,12 @@
         <%= for flag <- @alarm_flags do %>
           <td class="px-1 py-1">
             <button
-              class={"text-white rounded-lg px-2 " <> if alarm[flag], do: "bg-purple-900", else: "bg-stone-600"}
+              class={"text-white rounded-lg px-2 " <> if(alarm[flag], do: "bg-purple-900", else: "bg-stone-600") <> if(flag == "active", do: " opacity-20", else: "")}
               phx-click="alarm"
               phx-value-path={path}
               phx-value-flag={flag}
               value={to_string(alarm[flag])}
+              disabled={flag == "active"}
             >
               <%= if alarm[flag], do: ~c"Yes", else: ~c"No" %>
             </button>

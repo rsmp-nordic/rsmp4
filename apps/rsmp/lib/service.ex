@@ -17,6 +17,7 @@ defmodule RSMP.Service do
     @callback new(id, data) :: __MODULE__
     @callback name() :: String.t()
     @callback status_codes() :: [String.t()]
+    @callback alarm_codes() :: [String.t()]
   end
 
   # macro
@@ -51,6 +52,25 @@ defmodule RSMP.Service do
         for code <- status_codes() do
           RSMP.Service.publish_status(service, code)
         end
+        for code <- alarm_codes() do
+          RSMP.Service.publish_alarm(service, code)
+        end
+        {:noreply, service}
+      end
+
+      @impl GenServer
+      def handle_call({:get_alarms}, _from, service) do
+        {:reply, service.alarms, service}
+      end
+
+      @impl GenServer
+      def handle_cast({:set_alarm, code, flags}, service) do
+        alarm = service.alarms[code]
+        alarm = RSMP.Alarm.update_from_string_map(alarm, flags)
+        alarms = Map.put(service.alarms, code, alarm)
+        service = %{service | alarms: alarms}
+        RSMP.Service.publish_alarm(service, code)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "alarm"})
         {:noreply, service}
       end
 
@@ -81,6 +101,14 @@ defmodule RSMP.Service do
   end
 
   # api
+  def get_alarms(pid) do
+    GenServer.call(pid, {:get_alarms})
+  end
+
+  def set_alarm(pid, code, flags) do
+    GenServer.cast(pid, {:set_alarm, code, flags})
+  end
+
   def publish_status(service, code) do
     publish_status(service, code, [])
   end
@@ -92,6 +120,20 @@ defmodule RSMP.Service do
   def publish_status(service, code, component, properties \\ %{}) do
     topic = make_topic(service, "status", code, component)
     data = RSMP.Service.Protocol.format_status(service, code)
+    RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 1}, properties)
+  end
+
+  def publish_alarm(service, code, component \\ [], properties \\ %{}) do
+    topic = make_topic(service, "alarm", code, component)
+    alarm = service.alarms[code]
+
+    data = %{
+      "aSp" => "Issue",
+      "aSt" => if(alarm.active, do: "Active", else: "Inactive"),
+      "ack" => alarm.acknowledged,
+      "sS" => alarm.blocked,
+      "aTs" => RSMP.Time.timestamp()
+    }
     RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 1}, properties)
   end
 

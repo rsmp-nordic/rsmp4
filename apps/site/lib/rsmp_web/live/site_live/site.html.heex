@@ -59,7 +59,8 @@
         <%= for flag <- @alarm_flags do %>
           <td class="px-1 py-1">
             <button
-              class={"text-white rounded-lg px-2 " <> if alarm[flag], do: "bg-purple-900", else: "bg-stone-600"}
+              class={"text-white rounded-lg px-2 " <> if(alarm[flag], do: "bg-purple-900", else: "bg-stone-600") <> if(flag != :active, do: " opacity-20", else: "")}
+              disabled={flag != :active}
               phx-click="alarm"
               phx-value-path={path}
               value={flag}
@@ -81,7 +82,7 @@
 
     <thead>
       <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Command</th>
+        <th class="px-1 py-1">Path</th>
         <th class="px-1 py-1">Log</th>
       </tr>
     </thead>

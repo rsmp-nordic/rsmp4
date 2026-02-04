@@ -2,7 +2,7 @@ defmodule RSMP.Alarm do
   defstruct(
     active: false,
     acknowledged: false,
-    blocked: true
+    blocked: false
   )
 
   def new(options \\ []), do: __struct__(options)
@@ -21,7 +21,7 @@ defmodule RSMP.Alarm do
     mapping[flag]
   end
 
-  # update from 
+  # update from
   def update_from_string_map(alarm, flags) do
     updates = for {key, value} <- flags, into: %{}, do: {flag_atom_from_string(key), value}
     updates = updates |> Map.delete(nil)
