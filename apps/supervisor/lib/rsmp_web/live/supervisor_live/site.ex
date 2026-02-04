@@ -96,6 +96,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
+  def handle_info(%{topic: "presence"}, socket) do
+    {:noreply, socket |> assign_site()}
+  end
+
+  @impl true
   def handle_info(%{topic: "alarm", alarm: alarm}, socket) do
     Logger.info("Supervisor LiveView received alarm update: #{inspect(alarm)}")
     {:noreply, socket |> assign_site()}

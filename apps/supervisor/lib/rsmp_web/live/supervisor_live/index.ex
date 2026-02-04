@@ -69,6 +69,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   end
 
   @impl true
+  def handle_info(%{topic: "presence"}, socket) do
+    {:noreply, sort_sites(socket)}
+  end
+
+  @impl true
   def handle_info(%{topic: "alarm"}, socket) do
     {:noreply, sort_sites(socket)}
   end
