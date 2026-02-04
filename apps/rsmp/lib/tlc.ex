@@ -3,7 +3,7 @@ defmodule RSMP.Node.TLC do
 
   def start_link(id) do
     services = [
-      {["tc","1"], RSMP.Service.TLC, %{plan: 1}}
+      {[], RSMP.Service.TLC, %{plan: 1}}
     ]
     managers = %{
     }
@@ -12,7 +12,7 @@ defmodule RSMP.Node.TLC do
   end
 
   def get_statuses(site_id) do
-    case RSMP.Registry.lookup_service(site_id, "tlc", ["tc", "1"]) do
+    case RSMP.Registry.lookup_service(site_id, "tlc", []) do
       [{service_pid, _}] ->
         statuses = RSMP.Service.get_statuses(service_pid)
         for {code, data} <- statuses, into: %{} do

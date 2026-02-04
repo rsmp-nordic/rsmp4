@@ -111,8 +111,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
 
   @impl true
   def handle_info(%{topic: "status", changes: _changes}, socket) do
-    pid = socket.assigns[:rsmp_site_id]
-    statuses = Site.get_statuses(pid)
+    statuses = TLC.get_statuses(socket.assigns.id)
     {:noreply, assign(socket, statuses: statuses)}
   end
 

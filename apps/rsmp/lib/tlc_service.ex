@@ -3,7 +3,7 @@ defmodule RSMP.Service.TLC do
   require Logger
 
   @impl true
-  def status_codes(), do: ["1", "14"]
+  def status_codes(), do: ["1", "14", "22"]
 
   defstruct(
     id: nil,
@@ -49,8 +49,8 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
         Logger.info("RSMP: Switching to plan #{plan}")
         service = %{service | plan: plan, source: "forced"}
         RSMP.Service.publish_status(service, "14")
-        # pub = %{topic: "status", changes: [current_plan_path_string]}
-        # Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+        pub = %{topic: "status", changes: []}
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
         {service, %{status: "ok", plan: plan}}
 
       true ->
@@ -98,7 +98,9 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
 
   def format_status(service, "22") do
     items =
-      service
+      service.plans
+      |> Map.keys()
+      |> Enum.sort()
       |> Enum.join(",")
 
     %{"status" => items}

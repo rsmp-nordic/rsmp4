@@ -120,7 +120,7 @@ defmodule RSMP.Supervisor do
         supervisor.pid,
         topic,
         properties,
-        Utility.to_payload(plan),
+        Utility.to_payload(%{"plan" => plan}),
         [retain: true, qos: 1],
         :infinity,
         &publish_done/1
