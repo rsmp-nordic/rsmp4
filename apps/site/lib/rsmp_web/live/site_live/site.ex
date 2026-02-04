@@ -21,6 +21,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        id: "",
        statuses: %{},
        alarms: %{},
+       command_logs: [],
        alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
   end
@@ -44,6 +45,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        id: site_id,
        statuses: statuses,
        alarms: %{},
+       command_logs: [],
        alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
   end
@@ -107,6 +109,14 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   @impl true
   def handle_event(_name, _data, socket) do
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(%{topic: "command_log", id: id, message: message}, socket) do
+    logs = socket.assigns.command_logs
+    new_logs = logs ++ [%{id: id, message: message}]
+    new_logs = if length(new_logs) > 5, do: Enum.drop(new_logs, length(new_logs) - 5), else: new_logs
+    {:noreply, assign(socket, command_logs: new_logs)}
   end
 
   @impl true

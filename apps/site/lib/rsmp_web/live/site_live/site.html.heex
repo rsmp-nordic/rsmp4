@@ -72,3 +72,24 @@
     <% end %>
   </table>
 </div>
+
+<div class="overflow-x-auto rounded-md my-4">
+  <table id="commands" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Commands
+    </caption>
+
+    <thead>
+      <tr class="text-base bg-stone-100">
+        <th class="px-1 py-1">Command</th>
+        <th class="px-1 py-1">Log</th>
+      </tr>
+    </thead>
+    <%= for log <- @command_logs do %>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top"><%= log.id %></td>
+        <td class="px-1 py-1 align-top"><%= log.message %></td>
+      </tr>
+    <% end %>
+  </table>
+</div>
