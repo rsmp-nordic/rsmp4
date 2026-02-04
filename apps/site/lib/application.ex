@@ -12,15 +12,13 @@ defmodule RSMP.Site.Application do
       RSMP.Site.Web.Telemetry,
       # Start Finch
       {Finch, name: RSMP.Site.Finch},
-      # Start the PubSub system
-      {Phoenix.PubSub, name: RSMP.PubSub},
       # Start the Endpoint (http/https)
       RSMP.Site.Web.Endpoint
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: RSMP.Supervisor]
+    opts = [strategy: :one_for_one, name: RSMP.Site.Supervisor]
     Supervisor.start_link(children, opts)
   end
 

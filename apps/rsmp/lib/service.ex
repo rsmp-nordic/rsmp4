@@ -9,7 +9,6 @@ defprotocol RSMP.Service.Protocol do
 end
 
 defmodule RSMP.Service do
-  require Logger
 
   defmodule Behaviour do
     @type id :: String.t()
@@ -39,6 +38,11 @@ defmodule RSMP.Service do
       @impl GenServer
       def init({id, data}) do
         {:ok, new(id, data)}
+      end
+
+      @impl GenServer
+      def handle_call(:get_state, _from, service) do
+        {:reply, service, service}
       end
 
       @impl GenServer

@@ -1,7 +1,7 @@
 defmodule RSMP.Site.Web.SiteLive.Site do
   use RSMP.Site.Web, :live_view
   alias RSMP.Site
-  require Logger
+  alias RSMP.Node.TLC
 
   @impl true
   def mount(params, session, socket) do
@@ -30,16 +30,31 @@ defmodule RSMP.Site.Web.SiteLive.Site do
 
     site_id = params["site_id"]
 
-    # id = RSMP.Site.TLC.make_site_id()
+    # id = TLC.make_site_id()
 
-    {:ok, pid} = Site.TLC.start_link(site_id: site_id)
+    {:ok, pid} = TLC.start_link(site_id)
+
+    # TODO: Fix Site state retrieval. RSMP.Node is a supervisor and doesn't handle calls.
+    # id = Site.get_id(pid)
+    # statuses = Site.get_statuses(pid)
+    statuses = case RSMP.Registry.lookup_service(site_id, "tlc", ["tc", "1"]) do
+      [{service_pid, _}] ->
+        state = GenServer.call(service_pid, :get_state)
+        %{
+          "S0001" => RSMP.Converter.TLC.to_rsmp_status("1", state),
+          "S0014" => RSMP.Converter.TLC.to_rsmp_status("14", state)
+        }
+      [] -> %{}
+    end
+
+    # alarms = alarm_map(Site.get_alarms(pid))
 
     {:ok,
      assign(socket,
        rsmp_site_id: pid,
-       id: Site.get_id(pid),
-       statuses: Site.get_statuses(pid),
-       alarms: alarm_map(Site.get_alarms(pid)),
+       id: site_id,
+       statuses: statuses,
+       alarms: %{},
        alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
   end
@@ -51,7 +66,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     if site_id do
       {:noreply, socket}
     else
-      site_id = RSMP.Site.TLC.make_site_id()
+      site_id = TLC.make_site_id()
       {:noreply, push_patch(socket, to: ~p"/site/#{site_id}")}
     end
   end

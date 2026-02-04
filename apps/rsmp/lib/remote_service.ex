@@ -8,7 +8,6 @@ defprotocol RSMP.Remote.Service.Protocol do
 end
 
 defmodule RSMP.Remote.Service do
-  require Logger
 
   defmodule Behaviour do
     @type id :: String.t()

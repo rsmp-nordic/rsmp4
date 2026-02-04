@@ -41,16 +41,30 @@ defmodule RSMP.Supervisor do
 
   @impl true
   def init(_rsmp) do
-    emqtt_opts = Application.get_env(:rsmp, :emqtt)
-    id = "super_#{SecureRandom.hex(4)}"
-    emqtt_opts = emqtt_opts |> Keyword.put(:clientid, id)
+    Logger.info("RSMP: Supervisor GenServer init")
+    Process.flag(:trap_exit, true)
 
-    {:ok, pid} = :emqtt.start_link(emqtt_opts)
-    {:ok, _} = :emqtt.connect(pid)
+    if Application.get_env(:rsmp, :emqtt_connect, true) do
+      emqtt_opts = Application.get_env(:rsmp, :emqtt)
+      id = "super_#{SecureRandom.hex(4)}"
+      emqtt_opts = emqtt_opts |> Keyword.put(:clientid, id)
 
-    subscribe_to_topics(%{pid: pid, id: id})
-    supervisor = new(pid: pid, id: id)
-    {:ok, supervisor}
+      Logger.info("RSMP: Starting emqtt with options: #{inspect(emqtt_opts)}")
+      {:ok, pid} = :emqtt.start_link(emqtt_opts)
+      # {:ok, _} = :emqtt.connect(pid)
+
+      # subscribe_to_topics(%{pid: pid, id: id})
+      supervisor = new(pid: pid, id: id)
+      send(self(), :connect)
+      {:ok, supervisor}
+    else
+      {:ok, new(id: "test_supervisor")}
+    end
+  end
+
+  @impl true
+  def terminate(reason, _state) do
+    Logger.error("RSMP: Supervisor GenServer terminating: #{inspect(reason)}")
   end
 
   def subscribe_to_topics(%{pid: pid, id: _id}) do
@@ -144,6 +158,21 @@ defmodule RSMP.Supervisor do
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
 
     {:noreply, supervisor}
+  end
+
+  @impl true
+  def handle_info(:connect, state) do
+    case :emqtt.connect(state.pid) do
+      {:ok, _} ->
+        Logger.info("RSMP: Supervisor connected to MQTT broker")
+        subscribe_to_topics(state)
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.warning("RSMP: Supervisor failed to connect to MQTT broker: #{inspect(reason)}. Retrying in 5s...")
+        Process.send_after(self(), :connect, 5_000)
+        {:noreply, state}
+    end
   end
 
   # mqtt

@@ -1,7 +1,6 @@
 # RSMP Site
 defmodule RSMP.Remote.Node.Site do
   @moduledoc false
-  require Logger
 
   defstruct(
     id: nil,

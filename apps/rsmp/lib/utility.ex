@@ -1,6 +1,5 @@
 defmodule RSMP.Utility do
   # helpers
-  require Logger
 
   def client_options do
     Application.get_env(:rsmp, :emqtt) |> Enum.into(%{})

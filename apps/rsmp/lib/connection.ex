@@ -37,10 +37,13 @@ defmodule RSMP.Connection do
       })
 
     {:ok, emqtt} = :emqtt.start_link(options)
-    {:ok, _} = :emqtt.connect(emqtt)
+    # {:ok, _} = :emqtt.connect(emqtt)
 
     connection = new(emqtt: emqtt, id: id, managers: managers)
-    subscribe_to_topics(connection)
+    # subscribe_to_topics(connection)
+
+    send(self(), :connect)
+
     {:ok, connection}
   end
 
@@ -48,7 +51,7 @@ defmodule RSMP.Connection do
   def handle_cast({:publish_message, topic, data, %{retain: retain, qos: qos}=options, %{}=properties}, connection) do
     Logger.info("RSMP: Publishing #{topic} with flags #{inspect(options)}: #{inspect(data)}")
 
-    properties = 
+    properties =
       if properties[:command_id] do
         %{"Correlation-Data": options[:command_id]}
       else
@@ -69,6 +72,21 @@ defmodule RSMP.Connection do
   end
 
   # emqtt
+  @impl true
+  def handle_info(:connect, state) do
+    case :emqtt.connect(state.emqtt) do
+      {:ok, _} ->
+        Logger.info("RSMP: Connection #{state.id} connected to MQTT broker")
+        subscribe_to_topics(state)
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.warning("RSMP: Connection #{state.id} failed to connect to MQTT broker: #{inspect(reason)}. Retrying in 5s...")
+        Process.send_after(self(), :connect, 5_000)
+        {:noreply, state}
+    end
+  end
+
   @impl true
   def handle_info({:connected, _publish}, connection) do
     Logger.info("RSMP: Connected")

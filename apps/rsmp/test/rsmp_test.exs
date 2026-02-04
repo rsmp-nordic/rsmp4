@@ -1,6 +1,6 @@
-defmodule RsmpTest do
+defmodule RSMPTest do
   use ExUnit.Case
-  doctest Rsmp
+  doctest RSMP
 
   test "example test" do
     assert 1 + 1 == 2

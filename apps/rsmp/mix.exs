@@ -15,6 +15,16 @@ defmodule RSMP.MixProject do
     ]
   end
 
+  # Configuration for the OTP application.
+  #
+  # Type `mix help compile.app` for more information.
+  def application do
+    [
+      mod: {RSMP.Application, []},
+      extra_applications: [:logger]
+    ]
+  end
+
   # Specifies your project dependencies.
   #
   # Type `mix help deps` for examples and options.

@@ -10,9 +10,14 @@ defmodule RSMP.Site.MixProject do
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
       elixir: "~> 1.20.0-rc.1",
-      deps: deps()
+      deps: deps(),
+      elixirc_paths: elixirc_paths(Mix.env()),
+      listeners: [Phoenix.CodeReloader]
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   # Configuration for the OTP application.
   #

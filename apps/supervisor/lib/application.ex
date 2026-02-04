@@ -12,8 +12,6 @@ defmodule RSMP.Supervisor.Application do
       RSMP.Supervisor.Web.Telemetry,
       # Start Finch
       {Finch, name: RSMP.Supervisor.Finch},
-      # Start the PubSub system
-      {Phoenix.PubSub, name: RSMP.PubSub},
       # Start the Endpoint (http/https)
       RSMP.Supervisor.Web.Endpoint,
       # Start our RSMP supervisor
