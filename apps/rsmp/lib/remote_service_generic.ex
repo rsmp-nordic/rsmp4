@@ -31,4 +31,18 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.Generic do
   def parse_status(_service, _code, data) do
     data
   end
+
+  def receive_alarm(
+        service,
+        %RSMP.Topic{path: path},
+        data,
+        _properties
+      ) do
+    Logger.info("RSMP: Received alarm #{path}: #{inspect(data)}")
+    service
+  end
+
+  def parse_alarm(_service, _code, data) do
+    data
+  end
 end

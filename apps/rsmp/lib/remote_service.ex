@@ -5,6 +5,10 @@ defprotocol RSMP.Remote.Service.Protocol do
   def receive_status(service, path, data, properties)
 
   def parse_status(service, code, data)
+
+  def receive_alarm(service, path, data, properties)
+
+  def parse_alarm(service, code, data)
 end
 
 defmodule RSMP.Remote.Service do
@@ -43,6 +47,13 @@ defmodule RSMP.Remote.Service do
       def handle_cast({:receive_status, topic, data, properties}, service) do
         data = RSMP.Remote.Service.Protocol.parse_status(service, topic.path.code, data)
         service = RSMP.Remote.Service.Protocol.receive_status(service, topic, data, properties)
+        {:noreply, service}
+      end
+
+      @impl GenServer
+      def handle_cast({:receive_alarm, topic, data, properties}, service) do
+        data = RSMP.Remote.Service.Protocol.parse_alarm(service, topic.path.code, data)
+        service = RSMP.Remote.Service.Protocol.receive_alarm(service, topic, data, properties)
         {:noreply, service}
       end
 
