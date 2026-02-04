@@ -6,7 +6,7 @@ defmodule RSMP.Site.Web.Endpoint do
   # Set :encryption_salt if you would also like to encrypt it.
   @session_options [
     store: :cookie,
-    key: "_rsmp_key",
+    key: "_site_key",
     signing_salt: "KavY7D2r",
     same_site: "Lax"
   ]

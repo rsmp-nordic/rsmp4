@@ -61,10 +61,6 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-# Import environment specific config. This must remain at the bottom
-# of this file so it overrides the configuration defined above.
-import_config "#{config_env()}.exs"
-
 config :rsmp, :emqtt,
   host: ~c"127.0.0.1",
   port: 1883,
@@ -74,3 +70,7 @@ config :rsmp, :emqtt,
   reconnect: :infinity
 
 config :logger, level: :debug
+
+# Import environment specific config. This must remain at the bottom
+# of this file so it overrides the configuration defined above.
+import_config "#{config_env()}.exs"

@@ -1,14 +1,14 @@
 defmodule RSMP.Node.TLC do
   def make_site_id(), do: SecureRandom.hex(4)
 
-  def start_link(id) do
+  def start_link(id, options \\ []) do
     services = [
       {[], RSMP.Service.TLC, %{plan: 1}}
     ]
     managers = %{
     }
 
-    RSMP.Node.start_link(id, services, managers)
+    RSMP.Node.start_link(id, services, managers, options)
   end
 
   def get_statuses(site_id) do

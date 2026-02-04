@@ -30,6 +30,6 @@ defmodule RSMP.Remote.Node.Site do
   end
 
   def module_mapping(module_list) do
-    for module <- module_list, into: %{}, do: {module.name, module}
+    for module <- module_list, into: %{}, do: {module.name(), module}
   end
 end

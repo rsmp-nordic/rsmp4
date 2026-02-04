@@ -1,6 +1,9 @@
 # Test environment configuration
 import Config
 
+# Print only warnings and errors during test
+config :logger, level: :error
+
 # Disable Swoosh API client in test environment (no external HTTP adapters needed)
 config :swoosh, :api_client, false
 

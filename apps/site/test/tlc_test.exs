@@ -1,6 +1,26 @@
 defmodule RSMP.Site.TLCTest do
   use ExUnit.Case
 
+  # MockConnection to intercept messages published via RSMP.Connection
+  defmodule MockConnection do
+    use GenServer
+
+    def start_link({id, test_pid}) do
+      via = RSMP.Registry.via_connection(id)
+      GenServer.start_link(__MODULE__, test_pid, name: via)
+    end
+
+    def init(test_pid) do
+      {:ok, test_pid}
+    end
+
+    # Handle the cast from RSMP.Connection.publish_message
+    def handle_cast({:publish_message, topic, data, _options, _properties}, test_pid) do
+      send(test_pid, {:published, topic, data})
+      {:noreply, test_pid}
+    end
+  end
+
   setup do
     # Ensure RSMP.Registry is running
     if Process.whereis(RSMP.Registry) == nil do
@@ -12,8 +32,11 @@ defmodule RSMP.Site.TLCTest do
   test "TLC service handles plan switch command" do
     site_id = "site_integration_test_1"
 
-    # Start the TLC node
-    {:ok, _pid} = RSMP.Node.TLC.start_link(site_id)
+    # Start MockConnection acting as the connection
+    start_supervised!({MockConnection, {site_id, self()}})
+
+    # Start the TLC node, but skip the real connection (since we provided a mock)
+    {:ok, _pid} = RSMP.Node.TLC.start_link(site_id, connection_module: nil)
 
     # Wait for service to be registered
     Process.sleep(10)
@@ -38,7 +61,11 @@ defmodule RSMP.Site.TLCTest do
 
   test "TLC service rejects invalid payload" do
          site_id = "site_integration_test_bad"
-         {:ok, _pid} = RSMP.Node.TLC.start_link(site_id)
+
+         # Start MockConnection acting as the connection
+         start_supervised!({MockConnection, {site_id, self()}})
+
+         {:ok, _pid} = RSMP.Node.TLC.start_link(site_id, connection_module: nil)
          [{service_pid, _}] = RSMP.Registry.lookup_service(site_id, "tlc", [])
          topic = RSMP.Topic.new(site_id, "command", "tlc", "2")
          payload = 2 # Invalid payload (integer instead of map)

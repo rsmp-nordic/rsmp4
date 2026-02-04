@@ -65,17 +65,22 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
         %{}=params,
         _properties
       ) do
-    Logger.warning("Invalid params fo command #{path}: #{inspect(params)}" )
+    Logger.warning("Invalid params for command #{path}: #{inspect(params)}" )
+    {service,nil}
+  end
+
+  def receive_command(service, topic, payload, _properties) when not is_map(payload) do
+    Logger.warning("Invalid payload for command #{topic}: #{inspect(payload)}")
     {service,nil}
   end
 
   def receive_command(service, topic, _payload, _properties) do
-    Logger.warning("Unkown command #{topic}")
+    Logger.warning("Unknown command #{topic}")
     {service,nil}
   end
 
   def receive_reaction(service, topic, _payload, _properties) do
-    Logger.warning("Unkown reaction #{topic}")
+    Logger.warning("Unknown reaction #{topic}")
     {service, nil}
   end
 

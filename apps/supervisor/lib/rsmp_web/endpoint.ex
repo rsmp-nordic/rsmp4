@@ -6,8 +6,8 @@ defmodule RSMP.Supervisor.Web.Endpoint do
   # Set :encryption_salt if you would also like to encrypt it.
   @session_options [
     store: :cookie,
-    key: "_rsmp_key",
-    signing_salt: "KavY7D2r",
+    key: "_supervisor_key",
+    signing_salt: "SupSalty",
     same_site: "Lax"
   ]
 
