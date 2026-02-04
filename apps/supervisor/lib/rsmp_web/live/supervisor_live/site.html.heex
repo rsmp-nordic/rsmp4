@@ -83,21 +83,47 @@
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
         <td class="px-1 py-1"><%= command %></td>
         <td class="px-1 py-1">
-          <form phx-submit="command">
-            <input
-              type="number"
-              name="value"
-              value={status}
-              class="bg-stone-600 text-white rounded-lg px-2 w-20"
-            />
-            <input type="hidden" name="path" value={command} />
-            <input
-              type="submit"
-              name="submit"
-              value="Send"
-              class="bg-stone-600 hover:bg-orange-600 text-white rounded-lg px-2"
-            />
-          </form>
+          <%= if command == "tlc/2" do %>
+            <div class="flex gap-2 flex-wrap">
+              <%= for plan <- @plans do %>
+                <button
+                  type="button"
+                  phx-click="command"
+                  phx-value-path={command}
+                  phx-value-plan={plan}
+                  class={"rounded-lg px-2 text-white " <> if(status == plan, do: "bg-purple-900", else: "bg-stone-600 hover:bg-orange-600")}
+                >
+                  <%= plan %>
+                </button>
+              <% end %>
+              <button
+                type="button"
+                phx-click="command"
+                phx-value-path={command}
+                phx-value-plan={(List.last(@plans) || 0) + 1}
+                class="bg-red-600 hover:bg-red-800 text-white rounded-lg px-2"
+                title="Send invalid plan"
+              >
+                <%= (List.last(@plans) || 0) + 1 %>
+              </button>
+            </div>
+          <% else %>
+            <form phx-submit="command">
+              <input
+                type="number"
+                name="value"
+                value={status}
+                class="bg-stone-600 text-white rounded-lg px-2 w-20"
+              />
+              <input type="hidden" name="path" value={command} />
+              <input
+                type="submit"
+                name="submit"
+                value="Send"
+                class="bg-stone-600 hover:bg-orange-600 text-white rounded-lg px-2"
+              />
+            </form>
+          <% end %>
         </td>
         <td>
           <span class={"inline-block h-5 w-5 animate-spin rounded-full border-4 border-solid border-purple-900 border-r-transparent " <> if @responses[command]["phase"] == "waiting", do: "shown", else: "hidden"}>

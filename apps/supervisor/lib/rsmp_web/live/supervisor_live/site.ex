@@ -25,7 +25,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
      assign(socket,
        site_id: site_id,
        site: site,
-       alarm_flags: ["active", "acknowledged", "blocked"],
+       plans: get_plans(site),
+       alarm_flags: Enum.sort(["active", "acknowledged", "blocked"]),
        commands: %{
          "tlc/2" => plan
        },
@@ -38,7 +39,14 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def assign_site(socket) do
     site_id = socket.assigns.site_id
     site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, alarms: %{}}
-    assign(socket, site: site)
+    assign(socket, site: site, plans: get_plans(site))
+  end
+
+  defp get_plans(site) do
+    case get_in(site, [Access.key(:statuses, %{}), Access.key("tlc/22")]) do
+      plans when is_list(plans) -> Enum.sort(plans)
+      _ -> []
+    end
   end
 
   # UI events
@@ -53,8 +61,16 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
-  def handle_event("command", %{"path" => path, "value" => plan}, socket) do
-    plan = String.to_integer(plan)
+  def handle_event("command", params, socket) do
+    path = params["path"]
+    plan = params["plan"] || params["value"]
+    plan =
+      if is_integer(plan) do
+        plan
+      else
+        String.to_integer(plan)
+      end
+
     site_id = socket.assigns[:site_id]
     RSMP.Supervisor.set_plan(site_id, plan)
     Process.send_after(self(), {:command_waiting, path}, 1000)

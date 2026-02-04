@@ -22,7 +22,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        statuses: %{},
        alarms: %{},
        command_logs: [],
-       alarm_flags: [:active, :acknowledged, :blocked]
+       alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
   end
 
@@ -44,7 +44,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        statuses: statuses,
        alarms: alarm_map(alarms),
        command_logs: [],
-       alarm_flags: [:active, :acknowledged, :blocked]
+       alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
   end
 
@@ -103,11 +103,6 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
-  def handle_event(_name, _data, socket) do
-    {:noreply, socket}
-  end
-
-  @impl true
   def handle_info(%{topic: "alarm"}, socket) do
     site_id = socket.assigns[:id]
     alarms = TLC.get_alarms(site_id)
@@ -118,6 +113,11 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   def handle_info(%{topic: "status"}, socket) do
     statuses = TLC.get_statuses(socket.assigns.id)
     {:noreply, assign(socket, statuses: statuses)}
+  end
+
+  @impl true
+  def handle_event(_name, _data, socket) do
+    {:noreply, socket}
   end
 
   @impl true
