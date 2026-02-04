@@ -10,7 +10,7 @@ defmodule RSMP.Node do
     connection_spec =
       case Keyword.get(options, :connection_module, RSMP.Connection) do
         nil -> []
-        module -> [{module, {id, managers}}]
+        module -> [{module, {id, managers, options}}]
       end
 
     children =

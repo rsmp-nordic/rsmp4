@@ -4,6 +4,6 @@ defmodule RSMP.Node.Monitor do
     managers = %{
       "tc" => RSMP.Remote.Service.TLC
     }
-    RSMP.Node.start_link(id, services, managers)
+    RSMP.Node.start_link(id, services, managers, [type: :supervisor])
   end
 end

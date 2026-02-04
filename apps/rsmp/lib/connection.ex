@@ -5,15 +5,16 @@ defmodule RSMP.Connection do
   defstruct(
     emqtt: nil,
     id: nil,
-    managers: %{}
+    managers: %{},
+    type: :site
   )
 
   def new(options), do: __struct__(options)
 
   # api
-  def start_link({id,managers}) do
+  def start_link({id, managers, options}) do
     via = RSMP.Registry.via_connection(id)
-    GenServer.start_link(__MODULE__, {id, managers}, name: via)
+    GenServer.start_link(__MODULE__, {id, managers, options}, name: via)
   end
 
   def publish_message(id, topic, data, %{}=options, %{}=properties) do
@@ -23,8 +24,10 @@ defmodule RSMP.Connection do
 
   # GenServer
   @impl GenServer
-  def init({id,managers}) do
+  def init({id, managers, options}) do
     Logger.info("RSMP: starting emqtt")
+
+    type = Keyword.get(options, :type, :site)
 
     options =
       RSMP.Utility.client_options()
@@ -39,7 +42,7 @@ defmodule RSMP.Connection do
     {:ok, emqtt} = :emqtt.start_link(options)
     # {:ok, _} = :emqtt.connect(emqtt)
 
-    connection = new(emqtt: emqtt, id: id, managers: managers)
+    connection = new(emqtt: emqtt, id: id, managers: managers, type: type)
     # subscribe_to_topics(connection)
 
     send(self(), :connect)
@@ -157,13 +160,17 @@ defmodule RSMP.Connection do
     # highest qos to be used when sending us messages
     qos = 2
 
-    {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/command/#", qos})
-    {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/reaction/#", qos})
+    if connection.type == :site do
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/command/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/reaction/#", qos})
+    end
 
-    {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/state/#", qos})
-    {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/status/#", qos})
-    {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/alarm/#", qos})
-    {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/result/#", qos})
+    if connection.type == :supervisor do
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/state/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/status/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/alarm/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"+/result/#", qos})
+    end
   end
 
   def dispatch_state(connection, topic, _data) when topic.id == connection.id do
