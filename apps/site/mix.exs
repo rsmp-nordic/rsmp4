@@ -9,7 +9,7 @@ defmodule RSMP.Site.MixProject do
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
-      elixir: "~> 1.16",
+      elixir: "~> 1.20.0-rc.1",
       deps: deps()
     ]
   end
@@ -30,19 +30,19 @@ defmodule RSMP.Site.MixProject do
   defp deps do
     [
       {:rsmp, in_umbrella: true},
-      {:phoenix, "~> 1.7.7"},
-      {:phoenix_html, "~> 3.3"},
-      {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 0.19.0"},
-      {:floki, ">= 0.30.0", only: :test},
-      {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.2.0", runtime: Mix.env() == :dev},
-      {:swoosh, "~> 1.3"},
-      {:finch, "~> 0.13"},
-      {:telemetry_metrics, "~> 0.6"},
-      {:telemetry_poller, "~> 1.0"},
-      {:jason, "~> 1.2"},
-      {:plug_cowboy, "~> 2.5"},
+      {:phoenix, "~> 1.8.3"},
+      {:phoenix_html, "~> 4.3.0"},
+      {:phoenix_live_reload, "~> 1.6.2", only: :dev},
+      {:phoenix_live_view, "~> 1.1.22"},
+      {:floki, ">= 0.38.0", only: :test},
+      {:esbuild, "~> 0.10.0", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.4.1", runtime: Mix.env() == :dev},
+      {:swoosh, "~> 1.21.0"},
+      {:finch, "~> 0.21.0"},
+      {:telemetry_metrics, "~> 1.1.0"},
+      {:telemetry_poller, "~> 1.3.0"},
+      {:jason, "~> 1.4.4"},
+      {:plug_cowboy, "~> 2.7.5"},
       {:cowlib, "~> 2.12.1", override: true}
     ]
   end
