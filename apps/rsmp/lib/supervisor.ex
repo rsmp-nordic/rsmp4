@@ -251,6 +251,7 @@ defmodule RSMP.Supervisor do
 
     pub = %{topic: "state", site: id}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{id}", pub)
 
     supervisor
   end
@@ -270,6 +271,7 @@ defmodule RSMP.Supervisor do
     }
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{topic.id}", pub)
 
     supervisor
   end
@@ -286,6 +288,7 @@ defmodule RSMP.Supervisor do
 
     pub = %{topic: "status", site: id, status: %{topic.path => status}}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{id}", pub)
 
     supervisor
   end
@@ -301,6 +304,7 @@ defmodule RSMP.Supervisor do
     Logger.info("RSMP: #{topic.id}: Received alarm #{path_string}: #{inspect(alarm)}")
     pub = %{topic: "alarm", alarm: %{topic.path => alarm}}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{id}", pub)
 
     supervisor
   end

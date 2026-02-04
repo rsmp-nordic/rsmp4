@@ -27,9 +27,8 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   def connected_mount(params, _session, socket) do
-    Phoenix.PubSub.subscribe(RSMP.PubSub, "rsmp")
-
     site_id = params["site_id"]
+    Phoenix.PubSub.subscribe(RSMP.PubSub, "rsmp:#{site_id}")
 
     # id = TLC.make_site_id()
 

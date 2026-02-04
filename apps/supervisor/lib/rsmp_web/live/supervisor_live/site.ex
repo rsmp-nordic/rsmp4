@@ -7,11 +7,12 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def mount(params, _session, socket) do
     # note that mount is called twice, once for the html request,
     # then for the liveview websocket connection
+    site_id = params["site_id"]
+
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(RSMP.PubSub, "rsmp")
+      Phoenix.PubSub.subscribe(RSMP.PubSub, "rsmp:#{site_id}")
     end
 
-    site_id = params["site_id"]
     site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, alarms: %{}}
     plan =
       get_in(site, [

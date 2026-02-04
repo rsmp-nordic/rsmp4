@@ -44,23 +44,24 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
       plan == service.plan ->
         msg = "Switching to plan #{plan} skipped: Already in use"
         Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", %{topic: "command_log", id: "tlc/2", message: msg})
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc/2", message: msg})
         {service, %{status: "already", plan: plan, reason: "Already using plan #{plan}"}}
 
       service.plans[plan] != nil ->
         msg = "Switching to plan #{plan}"
         Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", %{topic: "command_log", id: "tlc/2", message: msg})
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc/2", message: msg})
         service = %{service | plan: plan, source: "forced"}
         RSMP.Service.publish_status(service, "14")
         pub = %{topic: "status", changes: []}
         Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", pub)
         {service, %{status: "ok", plan: plan}}
 
       true ->
         msg = "Switching to plan #{plan} failed: Unknown plan"
         Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", %{topic: "command_log", id: "tlc/2", message: msg})
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc/2", message: msg})
         {service, %{status: "missing", plan: plan, reason: "Plan #{plan} not found"}}
     end
   end
@@ -73,21 +74,21 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
       ) do
     msg = "Invalid params for command #{path}: #{inspect(params)}"
     Logger.warning(msg)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", %{topic: "command_log", id: "tlc/2", message: msg})
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc/2", message: msg})
     {service,nil}
   end
 
   def receive_command(service, topic, payload, _properties) when not is_map(payload) do
     msg = "Invalid payload for command #{topic}: #{inspect(payload)}"
     Logger.warning(msg)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", %{topic: "command_log", id: "tlc", message: msg})
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc", message: msg})
     {service,nil}
   end
 
   def receive_command(service, topic, _payload, _properties) do
     msg = "Unknown command #{topic}"
     Logger.warning(msg)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", %{topic: "command_log", id: "tlc", message: msg})
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc", message: msg})
     {service,nil}
   end
 
