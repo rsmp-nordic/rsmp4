@@ -68,17 +68,20 @@ defmodule RSMP.Supervisor do
   end
 
   def subscribe_to_topics(%{pid: pid, id: _id}) do
+    levels = Application.get_env(:rsmp, :topic_prefix_levels, 3)
+    wildcard_id = List.duplicate("+", levels) |> Enum.join("/")
+
     # Subscribe to statuses
-    {:ok, _, _} = :emqtt.subscribe(pid, {"status/#", 2})
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/status/#", 2})
 
     # Subscribe to online/offline state
-    {:ok, _, _} = :emqtt.subscribe(pid, {"presence/#", 2})
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/presence/#", 2})
 
-    # Subscribe to alamrs
-    {:ok, _, _} = :emqtt.subscribe(pid, {"alarm/#", 2})
+    # Subscribe to alarms
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/alarm/#", 2})
 
     # Subscribe to our response topics
-    {:ok, _, _} = :emqtt.subscribe(pid, {"result/#", 2})
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/result/#", 2})
   end
 
   @impl true
@@ -109,7 +112,7 @@ defmodule RSMP.Supervisor do
     )
 
     properties = %{
-      "Response-Topic": "result/tlc/2/#{site_id}",
+      "Response-Topic": "#{site_id}/result/tlc.2",
       "Correlation-Data": command_id
     }
 

@@ -109,7 +109,7 @@ defmodule RSMP.Site do
   def publish_state(site, state) do
     :emqtt.publish_async(
       site.pid,
-      "presence/#{site.id}",
+      "#{site.id}/presence",
       Utility.to_payload(state),
       [retain: true, qos: 1],
       &publish_done/1
@@ -118,10 +118,10 @@ defmodule RSMP.Site do
 
   def subscribe_to_topics(%{pid: pid, id: id}) do
     # subscribe to commands
-    {:ok, _, _} = :emqtt.subscribe(pid, {"command/+/+/#{id}/#", 1})
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/command/#", 1})
 
     # subscribe to alarm reactions
-    {:ok, _, _} = :emqtt.subscribe(pid, {"reaction/+/+/#{id}/#", 1})
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/reaction/#", 1})
   end
 
   def handle_publish(topic, _module, data, site) do
@@ -186,7 +186,7 @@ defmodule RSMP.Site do
           |> Map.merge(%{
             name: String.to_atom(site.id),
             clientid: site.id,
-            will_topic: "presence/#{site.id}",
+            will_topic: "#{site.id}/presence",
             will_payload: Utility.to_payload("offline"),
             will_retain: true
           })

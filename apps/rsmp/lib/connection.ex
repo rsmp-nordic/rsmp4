@@ -34,7 +34,7 @@ defmodule RSMP.Connection do
       |> Map.merge(%{
         name: String.to_atom(id),
         clientid: id,
-        will_topic: "presence/#{id}",
+        will_topic: "#{id}/presence",
         will_payload: RSMP.Utility.to_payload("offline"),
         will_retain: true
       })
@@ -56,7 +56,7 @@ defmodule RSMP.Connection do
 
     properties =
       if properties[:command_id] do
-        %{"Correlation-Data": options[:command_id]}
+        %{"Correlation-Data": properties[:command_id]}
       else
         %{}
       end
@@ -134,7 +134,7 @@ defmodule RSMP.Connection do
     # Publish Online state
     :emqtt.publish_async(
       connection.emqtt,
-      "presence/#{connection.id}",
+      "#{connection.id}/presence",
       %{},
       RSMP.Utility.to_payload("online"),
       [retain: true, qos: 1],
@@ -159,17 +159,20 @@ defmodule RSMP.Connection do
     id = connection.id
     # highest qos to be used when sending us messages
     qos = 2
+    levels = Application.get_env(:rsmp, :topic_prefix_levels, 3)
 
     if connection.type == :site do
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"command/+/+/#{id}/#", qos})
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"reaction/+/+/#{id}/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/command/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/reaction/#", qos})
     end
 
     if connection.type == :supervisor do
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"presence/#", qos})
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"status/#", qos})
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"alarm/#", qos})
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"result/#", qos})
+      wildcard_id = List.duplicate("+", levels) |> Enum.join("/")
+
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/presence/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/status/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/alarm/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/result/#", qos})
     end
   end
 

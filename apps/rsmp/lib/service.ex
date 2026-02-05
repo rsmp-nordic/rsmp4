@@ -87,7 +87,7 @@ defmodule RSMP.Service do
       def handle_call({:receive_command, topic, data, properties}, _from, service) do
         {service,result} = RSMP.Service.Protocol.receive_command(service, topic, data, properties)
         if result do
-          RSMP.Service.publish_result(service, topic.path.code, topic.path.component, result)
+          RSMP.Service.publish_result(service, topic.path.code, topic.path.component, result, properties)
         end
         {:reply, result, service}
       end

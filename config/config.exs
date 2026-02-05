@@ -7,6 +7,8 @@
 # General application configuration
 import Config
 
+config :rsmp, topic_prefix_levels: 1
+
 # Configures the mailer
 #
 # By default it uses the "Local" adapter which stores the emails

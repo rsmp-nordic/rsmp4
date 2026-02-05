@@ -1,5 +1,5 @@
 # A topic paths of the form:
-# type/module/code/id/component/... or presence/id
+# id/type/module/code/component/... or id/presence
 
 defmodule RSMP.Topic do
   alias RSMP.Path
@@ -22,16 +22,30 @@ defmodule RSMP.Topic do
 
   def from_string(string) do
     parts = String.split(string, "/")
+    id_levels = Application.get_env(:rsmp, :topic_prefix_levels, 3)
 
-    case parts do
-      ["presence", id] ->
-        new(id, "presence", nil, nil, [])
+    if length(parts) >= id_levels + 1 do
+      {id_parts, rest} = Enum.split(parts, id_levels)
+      id = Enum.join(id_parts, "/")
 
-      [type, module, code, id | component] ->
-        new(id, type, module, code, component)
+      case rest do
+        ["presence"] ->
+          new(id, "presence", nil, nil, [])
 
-      _ ->
-        new(nil, nil, nil, nil, [])
+        [type, full_code | component] ->
+          {module, code} =
+            case String.split(full_code, ".", parts: 2) do
+              [m, c] -> {m, c}
+              [c] -> {nil, c}
+            end
+
+          new(id, type, module, code, component)
+
+        _ ->
+          new(nil, nil, nil, nil, [])
+      end
+    else
+      new(nil, nil, nil, nil, [])
     end
   end
 
@@ -41,9 +55,12 @@ defmodule RSMP.Topic do
     def to_string(topic) do
       case topic.type do
         "presence" ->
-          "presence/#{topic.id}"
+          "#{topic.id}/presence"
+
         _ ->
-          array = [topic.type, topic.path.module, topic.path.code, topic.id] ++ topic.path.component
+          path = topic.path
+          code_str = if path.module, do: "#{path.module}.#{path.code}", else: path.code
+          array = [topic.id, topic.type, code_str] ++ path.component
           array |> Enum.join("/")
       end
     end
