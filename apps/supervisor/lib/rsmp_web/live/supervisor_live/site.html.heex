@@ -11,7 +11,7 @@
 
     <thead>
       <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Path</th>
+        <th class="px-1 py-1">Code</th>
         <th class="px-1 py-1">Value</th>
       </tr>
     </thead>
@@ -36,7 +36,7 @@
 
     <thead>
       <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Path</th>
+        <th class="px-1 py-1">Code</th>
         <%= for flag <- @alarm_flags do %>
           <th class="px-1 py-1"><%= to_string(flag) %></th>
         <% end %>
@@ -73,7 +73,7 @@
 
     <thead>
       <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Path</th>
+        <th class="px-1 py-1">Code</th>
         <th class="px-1 py-1">Action</th>
         <th class="px-1 py-1 w-1/3">Response</th>
       </tr>
@@ -83,7 +83,7 @@
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
         <td class="px-1 py-1"><%= command %></td>
         <td class="px-1 py-1">
-          <%= if command == "tlc/2" do %>
+          <%= if command == "tlc.2" do %>
             <div class="flex gap-2 flex-wrap">
               <%= for plan <- @plans do %>
                 <button

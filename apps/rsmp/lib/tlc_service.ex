@@ -55,13 +55,13 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
       plan == service.plan ->
         msg = "Switching to plan #{plan} skipped: Already in use"
         Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc/2", message: msg})
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.2", message: msg})
         {service, %{status: "already", plan: plan, reason: "Already using plan #{plan}"}}
 
       service.plans[plan] != nil ->
         msg = "Switching to plan #{plan}"
         Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc/2", message: msg})
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.2", message: msg})
         service = %{service | plan: plan, source: "forced"}
         RSMP.Service.publish_status(service, "14")
         pub = %{topic: "status", changes: []}
@@ -72,7 +72,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
       true ->
         msg = "Switching to plan #{plan} failed: Unknown plan"
         Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc/2", message: msg})
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.2", message: msg})
         {service, %{status: "missing", plan: plan, reason: "Plan #{plan} not found"}}
     end
   end
@@ -85,7 +85,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
       ) do
     msg = "Invalid params for command #{path}: #{inspect(params)}"
     Logger.warning(msg)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc/2", message: msg})
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.2", message: msg})
     {service,nil}
   end
 

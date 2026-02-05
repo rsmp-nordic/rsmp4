@@ -78,7 +78,7 @@ defmodule RSMP.Converter.TLC do
 
   def command_default("2", statuses) do
     %{
-      plan: statuses["tlc/14"][:plan]
+      plan: statuses["tlc.14"][:plan]
     }
   end
 end

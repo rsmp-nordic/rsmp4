@@ -5,6 +5,19 @@ defmodule RSMP.TopicTest do
   # Use a 3-part ID to match default config :topic_prefix_levels = 3
   @id "region/zone/my-node"
 
+  setup do
+    old_level = Application.get_env(:rsmp, :topic_prefix_levels)
+    Application.put_env(:rsmp, :topic_prefix_levels, 3)
+    on_exit(fn ->
+      if old_level do
+        Application.put_env(:rsmp, :topic_prefix_levels, old_level)
+      else
+        Application.delete_env(:rsmp, :topic_prefix_levels)
+      end
+    end)
+    :ok
+  end
+
   describe "to_string/1" do
     test "formats standard topic correctly: id/type/code/component" do
       topic = Topic.new(@id, "status", "tlc", "1", ["main"])

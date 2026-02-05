@@ -103,7 +103,7 @@ defmodule RSMP.Supervisor do
   def handle_cast({:set_plan, site_id, plan}, supervisor) do
     # Send command to device
     # set current time plan
-    path = "tlc/2"
+    path = "tlc.2"
     topic = RSMP.Topic.new(site_id, "command", "tlc", "2")
     command_id = SecureRandom.hex(2)
 

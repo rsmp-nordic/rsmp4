@@ -17,7 +17,7 @@ defmodule RSMP.Node.TLC do
         statuses = RSMP.Service.get_statuses(service_pid)
         for {code, data} <- statuses, into: %{} do
           data = RSMP.Converter.TLC.from_rsmp_status(code, data)
-          {"tlc/" <> code, data}
+          {"tlc." <> code, data}
         end
       [] -> %{}
     end
@@ -28,14 +28,14 @@ defmodule RSMP.Node.TLC do
       [{service_pid, _}] ->
         alarms = RSMP.Service.get_alarms(service_pid)
         for {code, alarm} <- alarms, into: %{} do
-          {"tlc/" <> code, alarm}
+          {"tlc." <> code, alarm}
         end
       [] -> %{}
     end
   end
 
   def set_alarm(site_id, path, flags) do
-    code = String.replace_prefix(path, "tlc/", "")
+    code = String.replace_prefix(path, "tlc.", "")
     case RSMP.Registry.lookup_service(site_id, "tlc", []) do
       [{service_pid, _}] ->
         RSMP.Service.set_alarm(service_pid, code, flags)
