@@ -88,6 +88,14 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
+  def handle_event("set_plan", %{"plan" => plan}, socket) do
+    site_id = socket.assigns[:id]
+    plan = String.to_integer(plan)
+    TLC.set_plan(site_id, plan)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("alarm", data, socket) do
      path = data["path"]
      flag = data["value"]

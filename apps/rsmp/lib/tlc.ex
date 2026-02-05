@@ -42,4 +42,15 @@ defmodule RSMP.Node.TLC do
       [] -> :ok
     end
   end
+
+  def set_plan(site_id, plan) do
+    case RSMP.Registry.lookup_service(site_id, "tlc", []) do
+      [{service_pid, _}] ->
+        path = RSMP.Path.new("tlc", "2")
+        topic = %RSMP.Topic{path: path}
+        data = %{"plan" => plan}
+        GenServer.call(service_pid, {:receive_command, topic, data, %{}})
+      [] -> :error
+    end
+  end
 end
