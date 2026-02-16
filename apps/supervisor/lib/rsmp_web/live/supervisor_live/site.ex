@@ -144,6 +144,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
+  def handle_info(%{topic: "command_log", id: _id, message: _message}, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(data, socket) do
     Logger.warning("unhandled info: #{inspect(data)}")
     {:noreply, socket}

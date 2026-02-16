@@ -129,11 +129,22 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
+  def handle_info(%{topic: "presence", site: _site, online: online}, socket)
+      when is_boolean(online) do
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(%{topic: "command_log", id: id, message: message}, socket) do
     logs = socket.assigns.command_logs
     new_logs = logs ++ [%{id: id, message: message}]
     new_logs = if length(new_logs) > 5, do: Enum.drop(new_logs, length(new_logs) - 5), else: new_logs
     {:noreply, assign(socket, command_logs: new_logs)}
+  end
+
+  @impl true
+  def handle_info(%{topic: "response", response: _response}, socket) do
+    {:noreply, socket}
   end
 
   # Change tracking on assigns only works with simple data, we
