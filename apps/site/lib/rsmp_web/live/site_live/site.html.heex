@@ -19,8 +19,8 @@
         <td class="px-1 py-1 align-top"><%= status %></td>
         <td class="px-1 py-1">
           <%= Poison.encode!(value) %>
-          <%= if status == "tlc.14" do %>
-            <%= for plan <- @statuses["tlc.22"] do %>
+          <%= if status == "tlc.plan" do %>
+            <%= for plan <- @statuses["tlc.plans"] || [] do %>
               <button
                 class={"rounded-lg px-2 text-white " <> if(value.plan == plan, do: "bg-purple-900", else: "bg-stone-600 hover:bg-orange-600")}
                 phx-click="set_plan"

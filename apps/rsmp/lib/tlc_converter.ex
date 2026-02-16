@@ -2,7 +2,7 @@ defmodule RSMP.Converter.TLC do
   @behaviour RSMP.Converter
 
   # convert from internal format to sxl format
-  def to_rsmp_status("1", data) do
+  def to_rsmp_status("groups", data) do
     %{
       "basecyclecounter" => data.base,
       "cyclecounter" => data.cycle,
@@ -11,14 +11,14 @@ defmodule RSMP.Converter.TLC do
     }
   end
 
-  def to_rsmp_status("14", data) do
+  def to_rsmp_status("plan", data) do
     %{
       "status" => data.plan,
       "source" => data.source
     }
   end
 
-  def to_rsmp_status("22", data) do
+  def to_rsmp_status("plans", data) do
     items =
       data
       |> Enum.join(",")
@@ -39,7 +39,7 @@ defmodule RSMP.Converter.TLC do
 
   # convert from sxl format to internal format
 
-  def from_rsmp_status("1", data) do
+  def from_rsmp_status("groups", data) do
     %{
       base: data["basecyclecounter"],
       cycle: data["cyclecounter"],
@@ -48,14 +48,14 @@ defmodule RSMP.Converter.TLC do
     }
   end
 
-  def from_rsmp_status("14", data) do
+  def from_rsmp_status("plan", data) do
     %{
       plan: data["status"],
       source: data["source"]
     }
   end
 
-  def from_rsmp_status("22", data) do
+  def from_rsmp_status("plans", data) do
     items = String.split(data["status"], ",")
 
     for item <- items do
@@ -76,9 +76,9 @@ defmodule RSMP.Converter.TLC do
 
   # setup default command values from statuses
 
-  def command_default("2", statuses) do
+  def command_default("plan.set", statuses) do
     %{
-      plan: statuses["tlc.14"][:plan]
+      plan: statuses["tlc.plan"][:plan]
     }
   end
 end

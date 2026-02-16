@@ -3,10 +3,10 @@ defmodule RSMP.Service.TLC do
   require Logger
 
   @impl true
-  def status_codes(), do: ["1", "14", "22"]
+  def status_codes(), do: ["groups", "plan", "plans"]
 
   @impl true
-  def alarm_codes(), do: ["1", "2"]
+  def alarm_codes(), do: ["hardware.error", "hardware.warning"]
 
   defstruct(
     id: nil,
@@ -40,13 +40,13 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
   def name(_service), do: "tlc"
   def id(service), do: service.id
 
-  def get_status(service, %RSMP.Path{code: "14"}) do
+  def get_status(service, %RSMP.Path{code: "plan"}) do
     service.plan
   end
 
   def receive_command(
         service,
-        %RSMP.Topic{path: %RSMP.Path{code: "2"}},
+      %RSMP.Topic{path: %RSMP.Path{code: "plan.set"}},
         %{"plan" => plan},
         _properties
       ) do
@@ -55,15 +55,15 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
       plan == service.plan ->
         msg = "Switching to plan #{plan} skipped: Already in use"
         Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.2", message: msg})
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.plan.set", message: msg})
         {service, %{status: "already", plan: plan, reason: "Already using plan #{plan}"}}
 
       service.plans[plan] != nil ->
         msg = "Switching to plan #{plan}"
         Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.2", message: msg})
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.plan.set", message: msg})
         service = %{service | plan: plan, source: "forced"}
-        RSMP.Service.publish_status(service, "14")
+        RSMP.Service.publish_status(service, "plan")
         pub = %{topic: "status", changes: []}
         Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
         Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", pub)
@@ -72,20 +72,20 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
       true ->
         msg = "Switching to plan #{plan} failed: Unknown plan"
         Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.2", message: msg})
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.plan.set", message: msg})
         {service, %{status: "missing", plan: plan, reason: "Plan #{plan} not found"}}
     end
   end
 
   def receive_command(
         service,
-        %RSMP.Topic{path: %RSMP.Path{code: "2"}=path},
+        %RSMP.Topic{path: %RSMP.Path{code: "plan.set"}=path},
         %{}=params,
         _properties
       ) do
     msg = "Invalid params for command #{path}: #{inspect(params)}"
     Logger.warning(msg)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.2", message: msg})
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "command_log", id: "tlc.plan.set", message: msg})
     {service,nil}
   end
 
@@ -127,7 +127,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
   end
 
   # convert from internal format to sxl format
-  def format_status(service, "1") do
+  def format_status(service, "groups") do
     %{
       "basecyclecounter" => service.base,
       "cyclecounter" => service.cycle,
@@ -136,14 +136,14 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
     }
   end
 
-  def format_status(service, "14") do
+  def format_status(service, "plan") do
     %{
       "status" => service.plan,
       "source" => service.source
     }
   end
 
-  def format_status(service, "22") do
+  def format_status(service, "plans") do
     items =
       service.plans
       |> Map.keys()

@@ -20,13 +20,13 @@ defmodule RSMP.TopicTest do
 
   describe "to_string/1" do
     test "formats standard topic correctly: id/type/code/component" do
-      topic = Topic.new(@id, "status", "tlc", "1", ["main"])
-      assert to_string(topic) == "#{@id}/status/tlc.1/main"
+      topic = Topic.new(@id, "status", "tlc", "plan", ["main"])
+      assert to_string(topic) == "#{@id}/status/tlc.plan/main"
     end
 
     test "formats standard topic without component" do
-      topic = Topic.new(@id, "status", "tlc", "1", [])
-      assert to_string(topic) == "#{@id}/status/tlc.1"
+      topic = Topic.new(@id, "status", "tlc", "plan", [])
+      assert to_string(topic) == "#{@id}/status/tlc.plan"
     end
 
     test "formats presence topic correctly: id/presence" do
@@ -37,23 +37,23 @@ defmodule RSMP.TopicTest do
 
   describe "from_string/1" do
     test "parses standard topic: id/type/code/component" do
-      string = "#{@id}/status/tlc.1/main"
+      string = "#{@id}/status/tlc.plan/main"
       topic = Topic.from_string(string)
 
       assert topic.type == "status"
       assert topic.path.module == "tlc"
-      assert topic.path.code == "1"
+      assert topic.path.code == "plan"
       assert topic.id == @id
       assert topic.path.component == ["main"]
     end
 
     test "parses standard topic without component" do
-      string = "#{@id}/status/tlc.1"
+      string = "#{@id}/status/tlc.plan"
       topic = Topic.from_string(string)
 
       assert topic.type == "status"
       assert topic.path.module == "tlc"
-      assert topic.path.code == "1"
+      assert topic.path.code == "plan"
       assert topic.id == @id
       assert topic.path.component == []
     end

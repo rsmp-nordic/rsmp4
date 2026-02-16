@@ -83,7 +83,7 @@
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
         <td class="px-1 py-1"><%= command %></td>
         <td class="px-1 py-1">
-          <%= if command == "tlc.2" do %>
+          <%= if command == "tlc.plan.set" do %>
             <div class="flex gap-2 flex-wrap">
               <%= for plan <- @plans do %>
                 <button

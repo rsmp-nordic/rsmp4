@@ -103,8 +103,8 @@ defmodule RSMP.Supervisor do
   def handle_cast({:set_plan, site_id, plan}, supervisor) do
     # Send command to device
     # set current time plan
-    path = "tlc.2"
-    topic = RSMP.Topic.new(site_id, "command", "tlc", "2")
+    path = "tlc.plan.set"
+    topic = RSMP.Topic.new(site_id, "command", "tlc", "plan.set")
     command_id = SecureRandom.hex(2)
 
     Logger.info(
@@ -112,7 +112,7 @@ defmodule RSMP.Supervisor do
     )
 
     properties = %{
-      "Response-Topic": "#{site_id}/result/tlc.2",
+      "Response-Topic": "#{site_id}/result/tlc.plan.set",
       "Correlation-Data": command_id
     }
 

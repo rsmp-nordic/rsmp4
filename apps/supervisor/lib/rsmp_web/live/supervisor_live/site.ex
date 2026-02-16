@@ -17,7 +17,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     plan =
       get_in(site, [
         Access.key(:statuses, %{}),
-        Access.key("tlc.14", %{}),
+        Access.key("tlc.plan", %{}),
         Access.key(:plan, 0)
       ])
 
@@ -28,10 +28,10 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
        plans: get_plans(site),
        alarm_flags: Enum.sort(["active", "acknowledged", "blocked"]),
        commands: %{
-         "tlc.2" => plan
+         "tlc.plan.set" => plan
        },
        responses: %{
-         "tlc.2" => %{"phase" => "idle", "symbol" => "", "reason" => ""}
+         "tlc.plan.set" => %{"phase" => "idle", "symbol" => "", "reason" => ""}
        }
      )}
   end
@@ -43,7 +43,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   defp get_plans(site) do
-    case get_in(site, [Access.key(:statuses, %{}), Access.key("tlc.22")]) do
+    case get_in(site, [Access.key(:statuses, %{}), Access.key("tlc.plans")]) do
       plans when is_list(plans) -> Enum.sort(plans)
       _ -> []
     end
@@ -77,7 +77,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
     responses =
       socket.assigns.responses
-      |> Map.put("tlc.2", %{"phase" => "sent"})
+      |> Map.put("tlc.plan.set", %{"phase" => "sent"})
 
     {:noreply, assign(socket, responses: responses)}
   end
@@ -115,7 +115,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     if response["phase"] == "sent" do
       responses =
         socket.assigns.responses
-        |> Map.put("tlc.2", %{"phase" => "waiting"})
+        |> Map.put("tlc.plan.set", %{"phase" => "waiting"})
 
       {:noreply, assign(socket, responses: responses)}
     else
@@ -138,8 +138,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
       |> Map.put("symbol", symbol)
       |> Map.put("phase", "received")
 
-    responses = socket.assigns.responses |> Map.put("tlc.2", result)
-    commands = socket.assigns.commands |> Map.put("tlc.2", response[:result]["plan"])
+    responses = socket.assigns.responses |> Map.put("tlc.plan.set", result)
+    commands = socket.assigns.commands |> Map.put("tlc.plan.set", response[:result]["plan"])
     {:noreply, assign(socket, responses: responses, commands: commands)}
   end
 
