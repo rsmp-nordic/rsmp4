@@ -56,6 +56,35 @@ defmodule RSMP.Node.TLC do
         min_interval: 0,
         default_on: true,
         qos: 1
+      }},
+      {"traffic", %Config{
+        code: "volume",
+        stream_name: "live",
+        attributes: %{
+          "cars" => :on_change,
+          "bicycles" => :on_change,
+          "busses" => :on_change
+        },
+        update_rate: nil,
+        delta_rate: :on_change,
+        min_interval: 100,
+        default_on: true,
+        qos: 0
+      }},
+      {"traffic", %Config{
+        code: "volume",
+        stream_name: "5s",
+        attributes: %{
+          "cars" => :send_along,
+          "bicycles" => :send_along,
+          "busses" => :send_along
+        },
+        update_rate: 5_000,
+        align_full_updates: true,
+        delta_rate: :off,
+        min_interval: 0,
+        default_on: true,
+        qos: 1
       }}
     ]
   end
@@ -70,7 +99,8 @@ defmodule RSMP.Node.TLC do
 
   def start_link(id, options \\ []) do
     services = [
-      {[], RSMP.Service.TLC, %{plan: 1, groups: initial_groups()}}
+      {[], RSMP.Service.TLC, %{plan: 1, groups: initial_groups()}},
+      {[], RSMP.Service.Traffic, %{}}
     ]
     managers = %{
     }
@@ -91,15 +121,34 @@ defmodule RSMP.Node.TLC do
   end
 
   def get_statuses(site_id) do
-    case RSMP.Registry.lookup_service(site_id, "tlc", []) do
-      [{service_pid, _}] ->
-        statuses = RSMP.Service.get_statuses(service_pid)
-        for {code, data} <- statuses, into: %{} do
-          data = RSMP.Converter.TLC.from_rsmp_status(code, data)
-          {"tlc." <> code, data}
-        end
-      [] -> %{}
-    end
+    tlc_statuses =
+      case RSMP.Registry.lookup_service(site_id, "tlc", []) do
+        [{service_pid, _}] ->
+          statuses = RSMP.Service.get_statuses(service_pid)
+
+          for {code, data} <- statuses, into: %{} do
+            data = RSMP.Converter.TLC.from_rsmp_status(code, data)
+            {"tlc." <> code, data}
+          end
+
+        [] ->
+          %{}
+      end
+
+    traffic_statuses =
+      case RSMP.Registry.lookup_service(site_id, "traffic", []) do
+        [{service_pid, _}] ->
+          statuses = RSMP.Service.get_statuses(service_pid)
+
+          for {code, data} <- statuses, into: %{} do
+            {"traffic." <> code, data}
+          end
+
+        [] ->
+          %{}
+      end
+
+    Map.merge(tlc_statuses, traffic_statuses)
   end
 
   def get_alarms(site_id) do

@@ -44,10 +44,48 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   defp get_plans(site) do
     case get_in(site, [Access.key(:statuses, %{}), Access.key("tlc.plans")]) do
+      %{"value" => plans} when is_list(plans) -> Enum.sort(plans)
+      %{value: plans} when is_list(plans) -> Enum.sort(plans)
       plans when is_list(plans) -> Enum.sort(plans)
       _ -> []
     end
   end
+
+  def status_seq(value) when is_map(value) do
+    case Map.get(value, "seq") || Map.get(value, :seq) do
+      nil ->
+        "-"
+
+      seq when is_map(seq) ->
+        seq
+        |> Enum.map(fn {stream, number} -> {to_string(stream), number} end)
+        |> Enum.sort_by(fn {stream, _number} -> stream end)
+        |> Enum.map_join(", ", fn {stream, number} -> "\"#{stream}\": #{number}" end)
+        |> then(fn body -> "{" <> body <> "}" end)
+
+      seq ->
+        to_string(seq)
+    end
+  end
+
+  def status_seq(_value), do: "-"
+
+  def status_value(value) when is_map(value) do
+    cond do
+      Map.has_key?(value, "value") ->
+        value["value"]
+
+      Map.has_key?(value, :value) ->
+        value[:value]
+
+      true ->
+        value
+        |> Map.delete("seq")
+        |> Map.delete(:seq)
+    end
+  end
+
+  def status_value(value), do: value
 
   # UI events
 

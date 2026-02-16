@@ -236,12 +236,14 @@ defmodule RSMP.StreamTest do
       Process.sleep(200)
 
       streams = RSMP.Node.TLC.get_streams(id)
-      assert length(streams) == 3
+      assert length(streams) == 5
 
       # Find specific streams
       groups_live = Enum.find(streams, &(&1.code == "groups" and &1.stream_name == "live"))
       plan_stream = Enum.find(streams, &(&1.code == "plan"))
       plans_stream = Enum.find(streams, &(&1.code == "plans"))
+      traffic_live = Enum.find(streams, &(&1.module == "traffic" and &1.code == "volume" and &1.stream_name == "live"))
+      traffic_5s = Enum.find(streams, &(&1.module == "traffic" and &1.code == "volume" and &1.stream_name == "5s"))
 
       assert groups_live != nil
       assert groups_live.running == false  # default_on: false
@@ -253,6 +255,14 @@ defmodule RSMP.StreamTest do
 
       assert plans_stream != nil
       assert plans_stream.running == true  # default_on: true
+
+      assert traffic_live != nil
+      assert traffic_live.running == true
+      assert traffic_live.delta_rate == :on_change
+
+      assert traffic_5s != nil
+      assert traffic_5s.running == true
+      assert traffic_5s.delta_rate == :off
     end
 
     test "stopped tlc.plan stream does not publish on plan switch" do

@@ -12,6 +12,7 @@
     <thead>
       <tr class="text-base bg-stone-100">
         <th class="px-1 py-1">Code</th>
+        <th class="px-1 py-1">Seq</th>
         <th class="px-1 py-1">Value</th>
       </tr>
     </thead>
@@ -19,8 +20,9 @@
     <%= for {path,value} <- @site.statuses do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
         <td class="px-1 py-1"><%= path %></td>
+        <td class="px-1 py-1"><%= status_seq(value) %></td>
         <td class="px-1 py-1">
-          <%= {:ok, str} = Poison.encode(value)
+          <%= {:ok, str} = Poison.encode(status_value(value))
           String.trim(str) %>
         </td>
       </tr>

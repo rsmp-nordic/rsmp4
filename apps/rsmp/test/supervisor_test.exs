@@ -58,4 +58,86 @@ defmodule RSMP.SupervisorTest do
     assert status.cycle == 11
     assert status.stage == 2
   end
+
+  test "traffic.volume live delta replaces provided counters, not accumulates in supervisor" do
+    pid = Process.whereis(RSMP.Supervisor)
+    assert pid != nil
+
+    site_id = "supervisor_traffic_delta_#{System.unique_integer([:positive])}"
+
+    full_payload =
+      RSMP.Utility.to_payload(%{
+        "type" => "full",
+        "data" => %{
+          "cars" => 4
+        }
+      })
+
+    send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: full_payload, properties: %{}}})
+    :timer.sleep(20)
+
+    delta_payload =
+      RSMP.Utility.to_payload(%{
+        "type" => "delta",
+        "data" => %{
+          "cars" => 6
+        }
+      })
+
+    send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: delta_payload, properties: %{}}})
+    :timer.sleep(20)
+
+    status = RSMP.Supervisor.site(site_id).statuses["traffic.volume"]
+    assert status.cars == 6
+
+    delta_payload_2 =
+      RSMP.Utility.to_payload(%{
+        "type" => "delta",
+        "data" => %{
+          "bicycles" => 2
+        }
+      })
+
+    send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: delta_payload_2, properties: %{}}})
+    :timer.sleep(20)
+
+    status = RSMP.Supervisor.site(site_id).statuses["traffic.volume"]
+    assert status.cars == 6
+    assert status.bicycles == 2
+  end
+
+  test "traffic.volume keeps seq per stream" do
+    pid = Process.whereis(RSMP.Supervisor)
+    assert pid != nil
+
+    site_id = "supervisor_traffic_seq_map_#{System.unique_integer([:positive])}"
+
+    live_full_payload =
+      RSMP.Utility.to_payload(%{
+        "type" => "full",
+        "seq" => 64,
+        "data" => %{
+          "cars" => 4
+        }
+      })
+
+    send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: live_full_payload, properties: %{}}})
+    :timer.sleep(20)
+
+    s5_full_payload =
+      RSMP.Utility.to_payload(%{
+        "type" => "full",
+        "seq" => 12,
+        "data" => %{
+          "cars" => 4,
+          "bicycles" => 1
+        }
+      })
+
+    send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/5s", payload: s5_full_payload, properties: %{}}})
+    :timer.sleep(20)
+
+    status = RSMP.Supervisor.site(site_id).statuses["traffic.volume"]
+    assert status["seq"] == %{"live" => 64, "5s" => 12}
+  end
 end

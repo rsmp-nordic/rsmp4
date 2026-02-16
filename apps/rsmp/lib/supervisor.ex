@@ -289,25 +289,25 @@ defmodule RSMP.Supervisor do
     path = topic.path
     {supervisor, site} = get_site(supervisor, id)
 
-    # All status data arrives via streams, wrapped in {type, seq, data}
-    {status_type, data} =
-      case data do
-        %{"type" => type, "data" => inner_data} -> {type, inner_data}
-        other -> {"full", other}
-      end
+    # Status may arrive as stream envelope (%{"type","seq","data"}), compact envelope
+    # (%{"t","s","d"}), atom-keyed variants, or plain status payload.
+    {status_type, seq, data} = extract_status_envelope(data)
 
     # Use code (without stream name) as the status key
     status_key = to_string(path)
 
     new_status = from_rsmp_status(site, path, data)
 
+    current_status = get_in(site.statuses, [status_key]) || %{}
+
     status =
       if status_type == "delta" do
-        current_status = get_in(site.statuses, [status_key]) || %{}
         deep_merge_status(current_status, new_status)
       else
         new_status
       end
+
+    status = maybe_put_status_seq(status, current_status, topic.stream_name, seq)
 
     supervisor = put_in(supervisor.sites[id].statuses[status_key], status)
 
@@ -399,6 +399,89 @@ defmodule RSMP.Supervisor do
   end
 
   defp deep_merge_status(_current_status, new_status), do: new_status
+
+  defp maybe_put_seq(status, nil), do: status
+
+  defp maybe_put_seq(status, seq) when is_map(status) do
+    Map.put(status, "seq", seq)
+  end
+
+  defp maybe_put_seq(status, seq) do
+    %{"value" => status, "seq" => seq}
+  end
+
+  defp maybe_put_seq(status, _seq), do: status
+
+  defp maybe_put_status_seq(status, current_status, nil, incoming_seq) do
+    seq = incoming_seq || status_seq(current_status)
+    maybe_put_seq(status, seq)
+  end
+
+  defp maybe_put_status_seq(status, current_status, stream_name, incoming_seq) do
+    seq = incoming_seq || status_seq_for_stream(current_status, stream_name)
+
+    if is_nil(seq) do
+      status
+    else
+      seq_map =
+        current_status
+        |> status_seq_map()
+        |> Map.put(stream_name, seq)
+
+      maybe_put_seq(status, seq_map)
+    end
+  end
+
+  defp extract_status_envelope(data) when is_map(data) do
+    type = map_get_any(data, ["type", :type, "t", :t])
+    seq = map_get_any(data, ["seq", :seq, "s", :s])
+    inner_data = map_get_any(data, ["data", :data, "d", :d])
+
+    cond do
+      not is_nil(inner_data) and not is_nil(type) ->
+        {type, seq, inner_data}
+
+      not is_nil(inner_data) ->
+        {"full", seq, inner_data}
+
+      true ->
+        {"full", seq, data}
+    end
+  end
+
+  defp extract_status_envelope(data), do: {"full", nil, data}
+
+  defp map_get_any(map, keys) do
+    Enum.find_value(keys, fn key ->
+      Map.get(map, key)
+    end)
+  end
+
+  defp status_seq(value) when is_map(value) do
+    Map.get(value, "seq") || Map.get(value, :seq)
+  end
+
+  defp status_seq(_value), do: nil
+
+  defp status_seq_for_stream(value, stream_name) do
+    case status_seq(value) do
+      seq when is_map(seq) ->
+        Map.get(seq, stream_name) || Map.get(seq, to_string(stream_name))
+
+      seq ->
+        seq
+    end
+  end
+
+  defp status_seq_map(value) do
+    case status_seq(value) do
+      seq when is_map(seq) ->
+        Enum.into(seq, %{}, fn {key, value} -> {to_string(key), value} end)
+
+      _ ->
+        %{}
+    end
+  end
 
   def to_rsmp_status(supervisor, path, data) do
     converter(supervisor, path.module).to_rsmp_status(path.code, data)

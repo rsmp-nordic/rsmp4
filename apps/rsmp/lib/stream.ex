@@ -7,7 +7,8 @@ defmodule RSMP.Stream do
   - stream_name: name to distinguish multiple streams (e.g. "live", "hourly")
   - attributes: map of attribute names to types (:on_change or :send_along)
   - update_rate: interval in ms for full retained updates (nil = on start only)
-  - delta_rate: :on_change | {:interval, ms}
+  - align_full_updates: align full update timer to wall-clock interval boundaries
+  - delta_rate: :on_change | {:interval, ms} | :off
   - min_interval: minimum ms between delta publications
   - aggregation: :off | :sum | :count | :average | :median | :max | :min
   - default_on: whether the stream starts automatically
@@ -26,7 +27,8 @@ defmodule RSMP.Stream do
     :component,       # e.g. [] or ["dl", "1"]
     :attributes,      # %{"signalgroupstatus" => :on_change, "cyclecounter" => :send_along, ...}
     :update_rate,     # ms | nil (full update interval)
-    :delta_rate,      # :on_change | {:interval, ms}
+    :align_full_updates, # boolean (align full timer to wall-clock boundaries)
+    :delta_rate,      # :on_change | {:interval, ms} | :off
     :min_interval,    # ms (minimum gap between deltas)
     :aggregation,     # :off | :sum | :count | :average | :median | :max | :min
     :default_on,      # boolean
@@ -55,6 +57,7 @@ defmodule RSMP.Stream do
       :component,
       attributes: %{},
       update_rate: nil,
+      align_full_updates: false,
       delta_rate: :on_change,
       min_interval: 0,
       aggregation: :off,
@@ -75,6 +78,7 @@ defmodule RSMP.Stream do
       component: config.component || [],
       attributes: config.attributes,
       update_rate: config.update_rate,
+      align_full_updates: config.align_full_updates,
       delta_rate: config.delta_rate,
       min_interval: config.min_interval,
       aggregation: config.aggregation,
@@ -99,6 +103,9 @@ defmodule RSMP.Stream do
 
   @doc "Get current stream info."
   def info(pid), do: GenServer.call(pid, :info)
+
+  @doc "Publish a full update immediately if the stream is running."
+  def force_full(pid), do: GenServer.call(pid, :force_full)
 
   # ---- GenServer ----
 
@@ -142,6 +149,7 @@ defmodule RSMP.Stream do
       seq: state.seq,
       attributes: state.attributes,
       update_rate: state.update_rate,
+      align_full_updates: state.align_full_updates,
       delta_rate: state.delta_rate,
       min_interval: state.min_interval,
       aggregation: state.aggregation,
@@ -150,6 +158,15 @@ defmodule RSMP.Stream do
     }
 
     {:reply, info, state}
+  end
+
+  def handle_call(:force_full, _from, %{running: false} = state) do
+    {:reply, {:error, :not_running}, state}
+  end
+
+  def handle_call(:force_full, _from, state) do
+    state = publish_full(state)
+    {:reply, :ok, state}
   end
 
   @impl GenServer
@@ -311,6 +328,9 @@ defmodule RSMP.Stream do
           state = %{state | pending_changes: pending}
           maybe_publish_delta(state)
 
+        :off ->
+          state
+
         {:interval, _ms} ->
           # Accumulate for next interval tick
           pending = merge_values(state.pending_changes, delta_values)
@@ -452,9 +472,23 @@ defmodule RSMP.Stream do
 
   defp schedule_full_timer(state) do
     if state.full_timer, do: Process.cancel_timer(state.full_timer)
-    timer = Process.send_after(self(), :full_update, state.update_rate)
+    timer = Process.send_after(self(), :full_update, full_timer_delay_ms(state))
     %{state | full_timer: timer}
   end
+
+  defp full_timer_delay_ms(%{update_rate: update_rate, align_full_updates: true})
+       when is_integer(update_rate) and update_rate > 0 do
+    now_ms = System.system_time(:millisecond)
+    remainder = rem(now_ms, update_rate)
+
+    if remainder == 0 do
+      update_rate
+    else
+      update_rate - remainder
+    end
+  end
+
+  defp full_timer_delay_ms(%{update_rate: update_rate}), do: update_rate
 
   defp schedule_delta_timer(%{delta_rate: {:interval, ms}} = state) do
     if state.delta_timer, do: Process.cancel_timer(state.delta_timer)
