@@ -30,6 +30,50 @@
               </button>
             <% end %>
           <% end %>
+
+          <%= if related_streams = @streams_by_status[status] do %>
+            <div class="mt-2 overflow-x-auto rounded-md">
+              <table class="w-full text-left text-sm">
+                <thead>
+                  <tr class="bg-inherit">
+                    <th class="px-1 py-1">Stream</th>
+                    <th class="px-1 py-1">Running</th>
+                    <th class="px-1 py-1">Seq</th>
+                    <th class="px-1 py-1">Default</th>
+                    <th class="px-1 py-1">Delta</th>
+                    <th class="px-1 py-1">QoS</th>
+                  </tr>
+                </thead>
+
+                <%= for stream <- related_streams do %>
+                  <tr class="bg-inherit">
+                    <td class="px-1 py-1"><%= stream.stream_name || "(default)" %></td>
+                    <td class="px-1 py-1">
+                      <button
+                        class={"rounded-lg px-2 text-white " <> if(stream.running, do: "bg-purple-900", else: "bg-stone-500")}
+                        phx-click={if stream.running, do: "stop_stream", else: "start_stream"}
+                        phx-value-module={stream.module}
+                        phx-value-code={stream.code}
+                        phx-value-stream={stream.stream_name || ""}
+                      >
+                        <%= if stream.running, do: "On", else: "Off" %>
+                      </button>
+                    </td>
+                    <td class="px-1 py-1"><%= stream.seq %></td>
+                    <td class="px-1 py-1"><%= if stream.default_on, do: "on", else: "off" %></td>
+                    <td class="px-1 py-1">
+                      <%= case stream.delta_rate do %>
+                        <% :on_change -> %>on change
+                        <% {:interval, ms} -> %><%= ms %>ms
+                        <% other -> %><%= inspect(other) %>
+                      <% end %>
+                    </td>
+                    <td class="px-1 py-1"><%= stream.qos %></td>
+                  </tr>
+                <% end %>
+              </table>
+            </div>
+          <% end %>
         </td>
         <td class="px-1 py-1">
           <%= if is_integer(value) do %>

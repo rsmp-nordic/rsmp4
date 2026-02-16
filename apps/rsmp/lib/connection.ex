@@ -200,15 +200,72 @@ defmodule RSMP.Connection do
       command_id: properties[:"Correlation-Data"]
     }
 
-    case RSMP.Registry.lookup_service(topic.id, topic.path.module, topic.path.component) do
-      [{pid, _value}] ->
-        case topic.type do
-          "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
-          "reaction" -> GenServer.call(pid, {:receive_reaction, topic, data, properties})
+    # Handle stream commands (stream.start, stream.stop)
+    case {topic.path.module, topic.path.code} do
+      {"stream", "start"} ->
+        handle_stream_command(connection, :start, data, properties)
+
+      {"stream", "stop"} ->
+        handle_stream_command(connection, :stop, data, properties)
+
+      _ ->
+        case RSMP.Registry.lookup_service(topic.id, topic.path.module, topic.path.component) do
+          [{pid, _value}] ->
+            case topic.type do
+              "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
+              "reaction" -> GenServer.call(pid, {:receive_reaction, topic, data, properties})
+            end
+
+          _ ->
+            Logger.warning("#{connection.id}: No service handling topic: #{topic}")
+        end
+    end
+  end
+
+  defp handle_stream_command(connection, action, data, _properties) do
+    stream_path = data["stream"] || ""
+    parts = String.split(stream_path, "/")
+
+    case parts do
+      [full_code, stream_name | _component] ->
+        {module, code} =
+          case String.split(full_code, ".", parts: 2) do
+            [m, c] -> {m, c}
+            [c] -> {nil, c}
+          end
+
+        case RSMP.Registry.lookup_stream(connection.id, module, code, stream_name, []) do
+          [{pid, _}] ->
+            case action do
+              :start -> RSMP.Stream.start_stream(pid)
+              :stop -> RSMP.Stream.stop_stream(pid)
+            end
+
+          [] ->
+            Logger.warning("#{connection.id}: Stream not found: #{stream_path}")
+        end
+
+      [full_code] ->
+        # Single-stream status (no stream name)
+        {module, code} =
+          case String.split(full_code, ".", parts: 2) do
+            [m, c] -> {m, c}
+            [c] -> {nil, c}
+          end
+
+        case RSMP.Registry.lookup_stream(connection.id, module, code, nil, []) do
+          [{pid, _}] ->
+            case action do
+              :start -> RSMP.Stream.start_stream(pid)
+              :stop -> RSMP.Stream.stop_stream(pid)
+            end
+
+          [] ->
+            Logger.warning("#{connection.id}: Stream not found: #{stream_path}")
         end
 
       _ ->
-        Logger.warning("#{connection.id}: No service handling topic: #{topic}")
+        Logger.warning("#{connection.id}: Invalid stream path: #{stream_path}")
     end
   end
 

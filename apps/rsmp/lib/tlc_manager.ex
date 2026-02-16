@@ -6,7 +6,7 @@ defmodule RSMP.Remote.Service.TLC do
     id: nil,
     base: 0,
     cycle: 0,
-    groups: [],
+    groups: "",
     alarms: %{},
     plans: %{},
     stage: 0,
@@ -15,7 +15,7 @@ defmodule RSMP.Remote.Service.TLC do
   )
 
   @impl RSMP.Remote.Service.Behaviour
-  def new(id, data \\ []), do: __struct__(Map.merge(data, %{id: id}))
+  def new(id, data \\ %{}), do: __struct__(Map.merge(data, %{id: id}))
 end
 
 defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do

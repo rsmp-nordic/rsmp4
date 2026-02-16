@@ -269,7 +269,7 @@ defmodule RSMP.Site do
         Site.publish_status(site, path)
 
         pub = %{topic: "status", changes: [path]}
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
         {:noreply, site}
       end
 
@@ -280,7 +280,7 @@ defmodule RSMP.Site do
           Site.publish_alarm(site, Path.from_string(path))
 
           pub = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
           {:noreply, site}
         else
           {:noreply, site}
@@ -294,7 +294,7 @@ defmodule RSMP.Site do
           Site.publish_alarm(site, Path.from_string(path))
 
           pub = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
           {:noreply, site}
         else
           {:noreply, site}
@@ -308,7 +308,7 @@ defmodule RSMP.Site do
           Site.publish_alarm(site, Path.from_string(path))
 
           pub = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
           {:noreply, site}
         else
           {:noreply, site}
@@ -322,7 +322,7 @@ defmodule RSMP.Site do
         Site.publish_alarm(site, Path.from_string(path))
 
         pub = %{topic: "alarm", changes: [path]}
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
 
         {:noreply, site}
       end

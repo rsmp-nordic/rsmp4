@@ -10,7 +10,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     site_id = params["site_id"]
 
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(RSMP.PubSub, "rsmp:#{site_id}")
+      Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{site_id}")
     end
 
     site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, alarms: %{}}
@@ -92,6 +92,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_info(%{topic: "status"}, socket) do
+    {:noreply, socket |> assign_site()}
+  end
+
+  @impl true
+  def handle_info(%{topic: "local_status"}, socket) do
     {:noreply, socket |> assign_site()}
   end
 

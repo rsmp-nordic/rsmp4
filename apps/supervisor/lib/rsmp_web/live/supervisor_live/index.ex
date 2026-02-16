@@ -23,7 +23,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   end
 
   def connected_mount(_params, _session, socket) do
-    Phoenix.PubSub.subscribe(RSMP.PubSub, "rsmp")
+    Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor")
     {:ok, sort_sites(socket)}
   end
 

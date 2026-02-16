@@ -13,13 +13,29 @@ defmodule RSMP.Node do
         module -> [{module, {id, managers, options}}]
       end
 
+    stream_configs = Keyword.get(options, :streams, [])
+
     children =
       connection_spec ++
         [
           {RSMP.Services, {id, services}},
+          {RSMP.Streams, id},
           {RSMP.Remote.Nodes, id}
         ]
 
-    Supervisor.init(children, strategy: :one_for_one)
+    result = Supervisor.init(children, strategy: :one_for_one)
+
+    # Start streams after supervisor init by scheduling a message
+    if stream_configs != [] do
+      spawn(fn ->
+        # Wait for registry entries to be available
+        Process.sleep(100)
+        Enum.each(stream_configs, fn {module, config} ->
+          RSMP.Streams.start_stream(id, module, config)
+        end)
+      end)
+    end
+
+    result
   end
 end

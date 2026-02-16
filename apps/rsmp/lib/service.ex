@@ -50,7 +50,7 @@ defmodule RSMP.Service do
       @impl GenServer
       def handle_cast(:publish_all, service) do
         for code <- status_codes() do
-          RSMP.Service.publish_status(service, code)
+          RSMP.Service.report_to_streams(service, code)
         end
         for code <- alarm_codes() do
           RSMP.Service.publish_alarm(service, code)
@@ -70,7 +70,7 @@ defmodule RSMP.Service do
         alarms = Map.put(service.alarms, code, alarm)
         service = %{service | alarms: alarms}
         RSMP.Service.publish_alarm(service, code)
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{service.id}", %{topic: "alarm"})
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "alarm"})
         {:noreply, service}
       end
 
@@ -140,6 +140,27 @@ defmodule RSMP.Service do
   def publish_result(service, code, component, data, properties \\ %{}) do
     topic = make_topic(service, "result", code, component)
     RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 2}, properties)
+  end
+
+  @doc """
+  Report attribute values to all streams for the given status code.
+  Streams will decide whether to publish based on their configuration.
+  """
+  def report_to_streams(service, code) do
+    id = RSMP.Service.Protocol.id(service)
+    module = RSMP.Service.Protocol.name(service)
+    values = RSMP.Service.Protocol.format_status(service, code)
+    report_to_streams(id, module, code, values)
+  end
+
+  def report_to_streams(id, module, code, values) do
+    # Find all streams for this code (any stream_name, any component)
+    match_pattern = {{{id, :stream, module, code, :_, :_}, :"$1", :_}, [], [:"$1"]}
+    pids = Registry.select(RSMP.Registry, [match_pattern])
+
+    Enum.each(pids, fn pid ->
+      RSMP.Stream.report(pid, values)
+    end)
   end
 
   defp make_topic(service, type, code, component) do

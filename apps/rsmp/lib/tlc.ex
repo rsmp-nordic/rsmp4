@@ -1,14 +1,93 @@
 defmodule RSMP.Node.TLC do
+  alias RSMP.Stream.Config
+
   def make_site_id(), do: SecureRandom.hex(4)
+
+  @doc """
+  Stream configurations demonstrating various stream patterns:
+
+  1. groups/live - Live signal group status with Send on Change/Send Along.
+     cyclecounter is Send Along so it doesn't trigger updates alone.
+     Default off (high-frequency, start when needed).
+
+  2. plan (no stream name) - Current plan, single stream.
+     Default on (low-frequency, always useful).
+
+  3. plans (no stream name) - Available plans, single stream.
+     Default on (rarely changes).
+  """
+  def stream_configs do
+    [
+      {"tlc", %Config{
+        code: "groups",
+        stream_name: "live",
+        attributes: %{
+          "signalgroupstatus" => :on_change,
+          "stage" => :on_change,
+          "cyclecounter" => :send_along
+        },
+        update_rate: 60_000,
+        delta_rate: :on_change,
+        min_interval: 100,
+        default_on: false,
+        qos: 0
+      }},
+      {"tlc", %Config{
+        code: "plan",
+        stream_name: nil,
+        attributes: %{
+          "status" => :on_change,
+          "source" => :send_along
+        },
+        update_rate: 300_000,
+        delta_rate: :on_change,
+        min_interval: 0,
+        default_on: true,
+        qos: 1
+      }},
+      {"tlc", %Config{
+        code: "plans",
+        stream_name: nil,
+        attributes: %{
+          "status" => :on_change
+        },
+        update_rate: 300_000,
+        delta_rate: :on_change,
+        min_interval: 0,
+        default_on: true,
+        qos: 1
+      }}
+    ]
+  end
+
+  def child_spec(id) do
+    %{
+      id: {__MODULE__, id},
+      start: {__MODULE__, :start_link, [id]},
+      type: :supervisor
+    }
+  end
 
   def start_link(id, options \\ []) do
     services = [
-      {[], RSMP.Service.TLC, %{plan: 1}}
+      {[], RSMP.Service.TLC, %{plan: 1, groups: initial_groups()}}
     ]
     managers = %{
     }
 
+    options = options ++ [streams: stream_configs()]
+
     RSMP.Node.start_link(id, services, managers, options)
+  end
+
+  @doc "Initial signal group states for a simulated 4-group intersection"
+  def initial_groups do
+    %{
+      "1" => "G",
+      "2" => "r",
+      "3" => "G",
+      "4" => "r"
+    }
   end
 
   def get_statuses(site_id) do
@@ -31,6 +110,24 @@ defmodule RSMP.Node.TLC do
           {"tlc." <> code, alarm}
         end
       [] -> %{}
+    end
+  end
+
+  def get_streams(site_id) do
+    RSMP.Streams.list_stream_info(site_id)
+  end
+
+  def start_stream(site_id, module, code, stream_name) do
+    case RSMP.Registry.lookup_stream(site_id, module, code, stream_name, []) do
+      [{pid, _}] -> RSMP.Stream.start_stream(pid)
+      [] -> {:error, :not_found}
+    end
+  end
+
+  def stop_stream(site_id, module, code, stream_name) do
+    case RSMP.Registry.lookup_stream(site_id, module, code, stream_name, []) do
+      [{pid, _}] -> RSMP.Stream.stop_stream(pid)
+      [] -> {:error, :not_found}
     end
   end
 

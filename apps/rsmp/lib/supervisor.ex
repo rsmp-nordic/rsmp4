@@ -126,7 +126,7 @@ defmodule RSMP.Supervisor do
         Utility.to_payload(%{"plan" => plan}),
         [retain: true, qos: 1],
         :infinity,
-        &publish_done/1
+        {&publish_done/1, []}
       )
 
     {:noreply, supervisor}
@@ -156,8 +156,8 @@ defmodule RSMP.Supervisor do
       alarm: supervisor.sites[site_id].alarms[path_string]
     }
 
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{site_id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{site_id}", pub)
 
     {:noreply, supervisor}
   end
@@ -228,7 +228,12 @@ defmodule RSMP.Supervisor do
           receive_presence(supervisor, topic.id, data)
 
         "status" ->
-          receive_status(supervisor, topic, data)
+          if data == nil do
+            # Stream cleared (empty retained message)
+            supervisor
+          else
+            receive_status(supervisor, topic, data)
+          end
 
         "result" ->
           command_id = properties[:"Correlation-Data"]
@@ -253,8 +258,8 @@ defmodule RSMP.Supervisor do
     Logger.info("RSMP: Supervisor received presence from #{id}: #{data}")
 
     pub = %{topic: "presence", site: id, online: online}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{id}", pub)
 
     supervisor
   end
@@ -273,8 +278,8 @@ defmodule RSMP.Supervisor do
       }
     }
 
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{topic.id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{topic.id}", pub)
 
     supervisor
   end
@@ -284,14 +289,41 @@ defmodule RSMP.Supervisor do
     path = topic.path
     {supervisor, site} = get_site(supervisor, id)
 
-    status = from_rsmp_status(site, path, data)
-    supervisor = put_in(supervisor.sites[id].statuses[to_string(path)], status)
+    # All status data arrives via streams, wrapped in {type, seq, data}
+    {status_type, data} =
+      case data do
+        %{"type" => type, "data" => inner_data} -> {type, inner_data}
+        other -> {"full", other}
+      end
 
-    Logger.info("RSMP: #{id}: Received status #{to_string(path)}: #{inspect(status)} from #{id}")
+    # Use code (without stream name) as the status key
+    status_key = to_string(path)
+
+    new_status = from_rsmp_status(site, path, data)
+
+    status =
+      if status_type == "delta" do
+        current_status = get_in(site.statuses, [status_key]) || %{}
+        deep_merge_status(current_status, new_status)
+      else
+        new_status
+      end
+
+    supervisor = put_in(supervisor.sites[id].statuses[status_key], status)
+
+    case status_type do
+      "delta" ->
+        Logger.info(
+          "RSMP: #{id}: Received delta #{status_key}: #{inspect(new_status)} from #{id}"
+        )
+
+      _ ->
+        Logger.info("RSMP: #{id}: Received status #{status_key}: #{inspect(status)} from #{id}")
+    end
 
     pub = %{topic: "status", site: id, status: %{topic.path => status}}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{id}", pub)
 
     supervisor
   end
@@ -312,8 +344,8 @@ defmodule RSMP.Supervisor do
 
     Logger.info("RSMP: #{topic.id}: Received alarm #{path_string}: #{inspect(alarm)}")
     pub = %{topic: "alarm", alarm: %{topic.path => alarm}}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp:#{id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{id}", pub)
 
     supervisor
   end
@@ -348,12 +380,25 @@ defmodule RSMP.Supervisor do
   end
 
   def module(supervisor, name), do: supervisor.modules |> Map.fetch!(name)
-  def commander(supervisor, name), do: module(supervisor, name).commander
-  def converter(supervisor, name), do: module(supervisor, name).converter
+  def commander(supervisor, name), do: module(supervisor, name).commander()
+  def converter(supervisor, name), do: module(supervisor, name).converter()
 
   def from_rsmp_status(supervisor, path, data) do
     converter(supervisor, path.module).from_rsmp_status(path.code, data)
   end
+
+  defp deep_merge_status(current_status, new_status)
+       when is_map(current_status) and is_map(new_status) do
+    Map.merge(current_status, new_status, fn _key, current_value, new_value ->
+      if is_map(current_value) and is_map(new_value) do
+        Map.merge(current_value, new_value)
+      else
+        new_value
+      end
+    end)
+  end
+
+  defp deep_merge_status(_current_status, new_status), do: new_status
 
   def to_rsmp_status(supervisor, path, data) do
     converter(supervisor, path.module).to_rsmp_status(path.code, data)

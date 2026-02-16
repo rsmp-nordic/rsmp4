@@ -7,11 +7,17 @@ defmodule RSMP.Site.Application do
 
   @impl true
   def start(_type, _args) do
+    # Generate a persistent site ID at boot
+    site_id = RSMP.Node.TLC.make_site_id()
+    Application.put_env(:site, :site_id, site_id)
+
     children = [
       # Start the Telemetry supervisor
       RSMP.Site.Web.Telemetry,
       # Start Finch
       {Finch, name: RSMP.Site.Finch},
+      # Start the TLC node (MQTT connection + services)
+      {RSMP.Node.TLC, site_id},
       # Start the Endpoint (http/https)
       RSMP.Site.Web.Endpoint
     ]

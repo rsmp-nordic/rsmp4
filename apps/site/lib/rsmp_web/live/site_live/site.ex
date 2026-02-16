@@ -21,28 +21,28 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        id: "",
        statuses: %{},
        alarms: %{},
+       stream_list: [],
+       streams_by_status: %{},
        command_logs: [],
        alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
   end
 
-  def connected_mount(params, _session, socket) do
-    site_id = params["site_id"]
-    Phoenix.PubSub.subscribe(RSMP.PubSub, "rsmp:#{site_id}")
-
-    # id = TLC.make_site_id()
-
-    {:ok, pid} = TLC.start_link(site_id)
+  def connected_mount(_params, _session, socket) do
+    site_id = Application.get_env(:site, :site_id)
+    Phoenix.PubSub.subscribe(RSMP.PubSub, "site:#{site_id}")
 
     statuses = TLC.get_statuses(site_id)
     alarms = TLC.get_alarms(site_id)
+    stream_list = TLC.get_streams(site_id)
 
     {:ok,
      assign(socket,
-       rsmp_site_id: pid,
        id: site_id,
        statuses: statuses,
        alarms: alarm_map(alarms),
+       stream_list: stream_list,
+       streams_by_status: streams_by_status(stream_list),
        command_logs: [],
        alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
@@ -55,7 +55,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     if site_id do
       {:noreply, socket}
     else
-      site_id = TLC.make_site_id()
+      site_id = Application.get_env(:site, :site_id)
       {:noreply, push_patch(socket, to: ~p"/site/#{site_id}")}
     end
   end
@@ -96,6 +96,24 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
+  def handle_event("start_stream", %{"module" => module, "code" => code, "stream" => stream_name}, socket) do
+    site_id = socket.assigns[:id]
+    stream_name = if stream_name == "", do: nil, else: stream_name
+    TLC.start_stream(site_id, module, code, stream_name)
+    stream_list = TLC.get_streams(site_id)
+    {:noreply, assign(socket, stream_list: stream_list, streams_by_status: streams_by_status(stream_list))}
+  end
+
+  @impl true
+  def handle_event("stop_stream", %{"module" => module, "code" => code, "stream" => stream_name}, socket) do
+    site_id = socket.assigns[:id]
+    stream_name = if stream_name == "", do: nil, else: stream_name
+    TLC.stop_stream(site_id, module, code, stream_name)
+    stream_list = TLC.get_streams(site_id)
+    {:noreply, assign(socket, stream_list: stream_list, streams_by_status: streams_by_status(stream_list))}
+  end
+
+  @impl true
   def handle_event("alarm", data, socket) do
      path = data["path"]
      flag = data["value"]
@@ -123,9 +141,17 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
+  def handle_info(%{topic: "local_status"}, socket) do
+    site_id = socket.assigns.id
+    statuses = TLC.get_statuses(site_id)
+    {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
+  end
+
+  @impl true
   def handle_info(%{topic: "status"}, socket) do
-    statuses = TLC.get_statuses(socket.assigns.id)
-    {:noreply, assign(socket, statuses: statuses)}
+    site_id = socket.assigns.id
+    statuses = TLC.get_statuses(site_id)
+    {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
   end
 
   @impl true
@@ -154,5 +180,19 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     alarms
     |> Enum.map(fn {path, alarm} -> {path, Map.from_struct(alarm)} end)
     |> Enum.into(%{})
+  end
+
+  def streams_by_status(stream_list) do
+    Enum.group_by(stream_list, fn stream -> "#{stream.module}.#{stream.code}" end)
+  end
+
+  defp assign_statuses_and_streams(socket, statuses, site_id) do
+    stream_list = TLC.get_streams(site_id)
+
+    assign(socket,
+      statuses: statuses,
+      stream_list: stream_list,
+      streams_by_status: streams_by_status(stream_list)
+    )
   end
 end

@@ -19,12 +19,12 @@ defmodule RSMP.TopicTest do
   end
 
   describe "to_string/1" do
-    test "formats standard topic correctly: id/type/code/component" do
-      topic = Topic.new(@id, "status", "tlc", "plan", ["main"])
+    test "formats status topic with stream name" do
+      topic = Topic.new(@id, "status", "tlc", "plan", "main", [])
       assert to_string(topic) == "#{@id}/status/tlc.plan/main"
     end
 
-    test "formats standard topic without component" do
+    test "formats status topic without stream name" do
       topic = Topic.new(@id, "status", "tlc", "plan", [])
       assert to_string(topic) == "#{@id}/status/tlc.plan"
     end
@@ -33,10 +33,20 @@ defmodule RSMP.TopicTest do
       topic = Topic.new(@id, "presence", nil, nil, [])
       assert to_string(topic) == "#{@id}/presence"
     end
+
+    test "formats status topic with stream name and component" do
+      topic = Topic.new(@id, "status", "tlc", "traffic", "hourly", ["dl", "1"])
+      assert to_string(topic) == "#{@id}/status/tlc.traffic/hourly/dl/1"
+    end
+
+    test "formats command topic with component (no stream name)" do
+      topic = Topic.new(@id, "command", "tlc", "plan.set", ["main"])
+      assert to_string(topic) == "#{@id}/command/tlc.plan.set/main"
+    end
   end
 
   describe "from_string/1" do
-    test "parses standard topic: id/type/code/component" do
+    test "parses status topic with stream name" do
       string = "#{@id}/status/tlc.plan/main"
       topic = Topic.from_string(string)
 
@@ -44,10 +54,11 @@ defmodule RSMP.TopicTest do
       assert topic.path.module == "tlc"
       assert topic.path.code == "plan"
       assert topic.id == @id
-      assert topic.path.component == ["main"]
+      assert topic.stream_name == "main"
+      assert topic.path.component == []
     end
 
-    test "parses standard topic without component" do
+    test "parses status topic without stream name or component" do
       string = "#{@id}/status/tlc.plan"
       topic = Topic.from_string(string)
 
@@ -55,7 +66,30 @@ defmodule RSMP.TopicTest do
       assert topic.path.module == "tlc"
       assert topic.path.code == "plan"
       assert topic.id == @id
+      assert topic.stream_name == nil
       assert topic.path.component == []
+    end
+
+    test "parses status topic with stream name and component" do
+      string = "#{@id}/status/tlc.traffic/hourly/dl/1"
+      topic = Topic.from_string(string)
+
+      assert topic.type == "status"
+      assert topic.path.module == "tlc"
+      assert topic.path.code == "traffic"
+      assert topic.stream_name == "hourly"
+      assert topic.path.component == ["dl", "1"]
+    end
+
+    test "parses command topic (no stream name concept)" do
+      string = "#{@id}/command/tlc.plan.set/main"
+      topic = Topic.from_string(string)
+
+      assert topic.type == "command"
+      assert topic.path.module == "tlc"
+      assert topic.path.code == "plan.set"
+      assert topic.stream_name == nil
+      assert topic.path.component == ["main"]
     end
 
     test "parses presence topic" do

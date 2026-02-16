@@ -10,7 +10,8 @@ defmodule RSMP.MixProject do
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
       deps: deps(),
-      consolidate_protocols: false
+      consolidate_protocols: false,
+      listeners: [Phoenix.CodeReloader]
     ]
   end
 
