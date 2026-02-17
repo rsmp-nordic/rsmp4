@@ -98,8 +98,8 @@
         <%= for flag <- @alarm_flags do %>
           <td class="px-1 py-1">
             <button
-              class={RSMP.ButtonClasses.alarm(alarm[flag], flag != :active)}
-              disabled={flag != :active}
+              class={RSMP.ButtonClasses.alarm(alarm[flag], to_string(flag) != "active")}
+              disabled={to_string(flag) != "active"}
               phx-click="alarm"
               phx-value-path={path}
               value={flag}

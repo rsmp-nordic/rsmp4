@@ -119,13 +119,17 @@ defmodule RSMP.Site.Web.SiteLive.Site do
      flag = data["value"]
      site_id = socket.assigns[:id]
 
-     alarms = TLC.get_alarms(site_id)
-     current_alarm = alarms[path]
-     new_value = not Map.get(current_alarm, String.to_atom(flag))
-     TLC.set_alarm(site_id, path, %{flag => new_value})
+     if flag == "active" do
+       alarms = TLC.get_alarms(site_id)
+       current_alarm = alarms[path]
+       new_value = not Map.get(current_alarm, :active)
+       TLC.set_alarm(site_id, path, %{flag => new_value})
 
-     alarms = TLC.get_alarms(site_id)
-     {:noreply, assign(socket, alarms: alarm_map(alarms))}
+       alarms = TLC.get_alarms(site_id)
+       {:noreply, assign(socket, alarms: alarm_map(alarms))}
+     else
+       {:noreply, socket}
+     end
   end
 
   @impl true

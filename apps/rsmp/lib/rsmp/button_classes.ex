@@ -9,7 +9,8 @@ defmodule RSMP.ButtonClasses do
       @base,
       "bg-stone-600",
       if(hover, do: "hover:bg-orange-600"),
-      if(dimmed, do: "opacity-60")
+      if(dimmed, do: "bg-stone-400"),
+      if(dimmed, do: "text-white/70")
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" ")
@@ -35,7 +36,9 @@ defmodule RSMP.ButtonClasses do
       @base,
       if(active, do: "bg-purple-900", else: "bg-stone-600"),
       if(not active and hover_inactive, do: "hover:bg-orange-600"),
-      if(dimmed, do: "opacity-60")
+      if(dimmed and active, do: "bg-purple-300"),
+      if(dimmed and not active, do: "bg-stone-400"),
+      if(dimmed, do: "text-white/70")
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" ")

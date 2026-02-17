@@ -236,10 +236,17 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   @impl true
   def handle_event("alarm", %{"path" => path, "flag" => flag, "value" => value}, socket) do
     site_id = socket.assigns.site_id
-    new_value = value == "false"
+    alarms = Map.get(socket.assigns.site, :alarms, %{})
+    alarm = Map.get(alarms, path, %{})
+    active = alarm["active"] == true
 
-    RSMP.Supervisor.set_alarm_flag(site_id, RSMP.Path.from_string(path), flag, new_value)
-    {:noreply, socket |> assign_site()}
+    if flag != "active" and active do
+      new_value = value == "false"
+      RSMP.Supervisor.set_alarm_flag(site_id, RSMP.Path.from_string(path), flag, new_value)
+      {:noreply, socket |> assign_site()}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
