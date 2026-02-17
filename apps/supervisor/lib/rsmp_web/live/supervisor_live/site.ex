@@ -117,6 +117,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
         end
 
       %{
+        key: stream_key,
         label: label,
         seq: seq,
         state: state,
@@ -209,8 +210,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     Map.get(streams, "#{path}/#{stream_key}", "stopped")
   end
 
-  defp stream_state_class("running"), do: "rounded-lg px-2 text-white bg-purple-900"
-  defp stream_state_class(_), do: "rounded-lg px-2 text-stone-200 bg-stone-500 opacity-60"
+  defp stream_state_class("running"), do: RSMP.ButtonClasses.stream(true)
+  defp stream_state_class(_), do: RSMP.ButtonClasses.stream(false)
 
   def format_status_lines(value) do
     value
@@ -261,6 +262,38 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
       |> Map.put("tlc.plan.set", %{"phase" => "sent"})
 
     {:noreply, assign(socket, responses: responses)}
+  end
+
+  @impl true
+  def handle_event("throttle", %{"path" => path, "stream" => stream_name, "state" => state}, socket) do
+    site_id = socket.assigns.site_id
+
+    case String.split(path, "/", parts: 2) do
+      [full_code | _rest] ->
+        case String.split(full_code, ".", parts: 2) do
+          [module, code] ->
+            stream =
+              case stream_name do
+                "" -> nil
+                "default" -> nil
+                value -> value
+              end
+
+            if state == "running" do
+              RSMP.Supervisor.stop_stream(site_id, module, code, stream)
+            else
+              RSMP.Supervisor.start_stream(site_id, module, code, stream)
+            end
+
+          _ ->
+            Logger.warning("Unable to parse stream path for throttle: #{path}")
+        end
+
+      _ ->
+        Logger.warning("Invalid stream path for throttle: #{path}")
+    end
+
+    {:noreply, socket}
   end
 
   @impl true

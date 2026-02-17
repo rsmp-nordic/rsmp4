@@ -25,7 +25,7 @@
           <%= if status == "tlc.plan" do %>
             <%= for plan <- @statuses["tlc.plans"] || [] do %>
               <button
-                class={"rounded-lg px-2 text-white " <> if(value.plan == plan, do: "bg-purple-900", else: "bg-stone-600 hover:bg-orange-600")}
+                class={RSMP.ButtonClasses.selectable(value.plan == plan)}
                 phx-click="set_plan"
                 phx-value-plan={plan}
               >
@@ -39,7 +39,7 @@
             <div class="flex flex-wrap gap-1">
               <%= for stream <- related_streams do %>
                 <button
-                  class={"rounded-lg px-2 text-white " <> if(stream.running, do: "bg-purple-900", else: "bg-stone-500")}
+                  class={RSMP.ButtonClasses.stream(stream.running)}
                   phx-click={if stream.running, do: "stop_stream", else: "start_stream"}
                   phx-value-module={stream.module}
                   phx-value-code={stream.code}
@@ -63,7 +63,7 @@
           <%= if is_integer(value) do %>
             <%= for {event,label} <- [{"increase","+"},{"decrease","-"}] do %>
               <button
-                class="bg-stone-600 text-white rounded-lg px-2"
+                class={RSMP.ButtonClasses.neutral()}
                 phx-click={event}
                 value={status}
               >
@@ -98,7 +98,7 @@
         <%= for flag <- @alarm_flags do %>
           <td class="px-1 py-1">
             <button
-              class={"text-white rounded-lg px-2 " <> if(alarm[flag], do: "bg-purple-900", else: "bg-stone-600") <> if(flag != :active, do: " opacity-20", else: "")}
+              class={RSMP.ButtonClasses.alarm(alarm[flag], flag != :active)}
               disabled={flag != :active}
               phx-click="alarm"
               phx-value-path={path}

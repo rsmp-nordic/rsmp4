@@ -31,7 +31,10 @@
               <button
                 type="button"
                 class={stream.class}
-                disabled
+                phx-click="throttle"
+                phx-value-path={row.path}
+                phx-value-stream={stream.key}
+                phx-value-state={stream.state}
                 title={stream.title}
               >
                 <%= stream.label %>
@@ -65,7 +68,7 @@
         <%= for flag <- @alarm_flags do %>
           <td class="px-1 py-1 align-top">
             <button
-              class={"text-white rounded-lg px-2 " <> if(alarm[flag], do: "bg-purple-900", else: "bg-stone-600") <> if(flag == "active", do: " opacity-20", else: "")}
+              class={RSMP.ButtonClasses.alarm(alarm[flag], flag == "active")}
               phx-click="alarm"
               phx-value-path={path}
               phx-value-flag={flag}
@@ -107,7 +110,7 @@
                   phx-click="command"
                   phx-value-path={command}
                   phx-value-plan={plan}
-                  class={"rounded-lg px-2 text-white " <> if(status == plan, do: "bg-purple-900", else: "bg-stone-600 hover:bg-orange-600")}
+                  class={RSMP.ButtonClasses.selectable(status == plan)}
                 >
                   <%= plan %>
                 </button>
@@ -129,14 +132,14 @@
                 type="number"
                 name="value"
                 value={status}
-                class="bg-stone-600 text-white rounded-lg px-2 w-20"
+                class={RSMP.ButtonClasses.neutral() <> " w-20"}
               />
               <input type="hidden" name="path" value={command} />
               <input
                 type="submit"
                 name="submit"
                 value="Send"
-                class="bg-stone-600 hover:bg-orange-600 text-white rounded-lg px-2"
+                class={RSMP.ButtonClasses.neutral(hover: true)}
               />
             </form>
           <% end %>

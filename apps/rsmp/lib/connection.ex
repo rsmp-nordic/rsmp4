@@ -125,7 +125,7 @@ defmodule RSMP.Connection do
       "presence" ->
         dispatch_presence(connection, topic, data)
 
-      type when type in ["command", "reaction"] ->
+      type when type in ["command", "reaction", "throttle"] ->
         dispatch_to_service(connection, topic, data, properties)
 
       type when type in ["status", "alarm", "result"] ->
@@ -185,6 +185,7 @@ defmodule RSMP.Connection do
     if connection.type == :site do
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/command/#", qos})
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/reaction/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/throttle/#", qos})
     end
 
     if connection.type == :supervisor do
@@ -221,13 +222,17 @@ defmodule RSMP.Connection do
       command_id: properties[:"Correlation-Data"]
     }
 
-    # Handle stream commands (stream.start, stream.stop)
-    case {topic.path.module, topic.path.code} do
-      {"stream", "start"} ->
-        handle_stream_command(connection, :start, data, properties)
+    case {topic.type, topic.path.module, topic.path.code} do
+      {"throttle", module, code} when is_binary(module) and is_binary(code) ->
+        handle_stream_throttle(connection, module, code, topic.path.component, data, properties)
 
-      {"stream", "stop"} ->
-        handle_stream_command(connection, :stop, data, properties)
+      # Legacy support for older stream command topics
+      {"command", "stream", "start"} ->
+        handle_legacy_stream_command(connection, :start, data, properties)
+
+      # Legacy support for older stream command topics
+      {"command", "stream", "stop"} ->
+        handle_legacy_stream_command(connection, :stop, data, properties)
 
       _ ->
         case RSMP.Registry.lookup_service(topic.id, topic.path.module, topic.path.component) do
@@ -235,6 +240,7 @@ defmodule RSMP.Connection do
             case topic.type do
               "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
               "reaction" -> GenServer.call(pid, {:receive_reaction, topic, data, properties})
+              _ -> :ok
             end
 
           _ ->
@@ -243,7 +249,31 @@ defmodule RSMP.Connection do
     end
   end
 
-  defp handle_stream_command(connection, action, data, _properties) do
+  defp handle_stream_throttle(connection, module, code, stream_parts, data, _properties) do
+    action = if is_map(data), do: data["action"], else: nil
+
+    stream_name =
+      case stream_parts do
+        [] -> nil
+        [name] when name in ["", "default"] -> nil
+        [name] when is_binary(name) -> name
+        _ -> :invalid
+      end
+
+    cond do
+      action not in ["start", "stop"] ->
+        Logger.warning("#{connection.id}: Invalid throttle action: #{inspect(data)}")
+
+      stream_name == :invalid ->
+        Logger.warning("#{connection.id}: Invalid throttle topic path for #{module}.#{code}: #{inspect(stream_parts)}")
+
+      true ->
+        stream_action = if action == "start", do: :start, else: :stop
+        execute_stream_action(connection, module, code, stream_name, stream_action)
+    end
+  end
+
+  defp handle_legacy_stream_command(connection, action, data, _properties) do
     stream_path = data["stream"] || ""
     parts = String.split(stream_path, "/")
 
@@ -255,16 +285,7 @@ defmodule RSMP.Connection do
             [c] -> {nil, c}
           end
 
-        case RSMP.Registry.lookup_stream(connection.id, module, code, stream_name, []) do
-          [{pid, _}] ->
-            case action do
-              :start -> RSMP.Stream.start_stream(pid)
-              :stop -> RSMP.Stream.stop_stream(pid)
-            end
-
-          [] ->
-            Logger.warning("#{connection.id}: Stream not found: #{stream_path}")
-        end
+        execute_stream_action(connection, module, code, stream_name, action)
 
       [full_code] ->
         # Single-stream status (no stream name)
@@ -274,19 +295,30 @@ defmodule RSMP.Connection do
             [c] -> {nil, c}
           end
 
-        case RSMP.Registry.lookup_stream(connection.id, module, code, nil, []) do
-          [{pid, _}] ->
-            case action do
-              :start -> RSMP.Stream.start_stream(pid)
-              :stop -> RSMP.Stream.stop_stream(pid)
-            end
-
-          [] ->
-            Logger.warning("#{connection.id}: Stream not found: #{stream_path}")
-        end
+        execute_stream_action(connection, module, code, nil, action)
 
       _ ->
         Logger.warning("#{connection.id}: Invalid stream path: #{stream_path}")
+    end
+  end
+
+  defp execute_stream_action(connection, module, code, stream_name, action) do
+    case RSMP.Registry.lookup_stream(connection.id, module, code, stream_name, []) do
+      [{pid, _}] ->
+        case action do
+          :start -> RSMP.Stream.start_stream(pid)
+          :stop -> RSMP.Stream.stop_stream(pid)
+        end
+
+        stream_segment = stream_name || "default"
+        stream_key = "#{module}.#{code}/#{stream_segment}"
+        state = if action == :start, do: "running", else: "stopped"
+        pub = %{topic: "stream", stream: stream_key, state: state}
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", pub)
+
+      [] ->
+        stream_label = stream_name || "default"
+        Logger.warning("#{connection.id}: Stream not found: #{module}.#{code}/#{stream_label}")
     end
   end
 

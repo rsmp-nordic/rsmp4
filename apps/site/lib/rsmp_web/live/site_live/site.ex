@@ -155,6 +155,13 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
+  def handle_info(%{topic: "stream"}, socket) do
+    site_id = socket.assigns.id
+    stream_list = TLC.get_streams(site_id)
+    {:noreply, assign(socket, stream_list: stream_list, streams_by_status: streams_by_status(stream_list))}
+  end
+
+  @impl true
   def handle_info(%{topic: "presence", site: _site, online: online}, socket)
       when is_boolean(online) do
     {:noreply, socket}

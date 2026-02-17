@@ -37,6 +37,14 @@ defmodule RSMP.Supervisor do
     GenServer.cast(__MODULE__, {:set_alarm_flag, site_id, path, flag, value})
   end
 
+  def start_stream(site_id, module, code, stream_name) do
+    GenServer.cast(__MODULE__, {:throttle_stream, site_id, module, code, stream_name, "start"})
+  end
+
+  def stop_stream(site_id, module, code, stream_name) do
+    GenServer.cast(__MODULE__, {:throttle_stream, site_id, module, code, stream_name, "stop"})
+  end
+
   # Callbacks
 
   @impl true
@@ -161,6 +169,32 @@ defmodule RSMP.Supervisor do
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{site_id}", pub)
+
+    {:noreply, supervisor}
+  end
+
+  @impl true
+  def handle_cast({:throttle_stream, site_id, module, code, stream_name, action}, supervisor) do
+    stream_segment =
+      case stream_name do
+        nil -> "default"
+        "" -> "default"
+        value -> to_string(value)
+      end
+
+    topic = Topic.new(site_id, "throttle", module, code, [stream_segment])
+
+    Logger.info(
+      "RSMP: Sending throttle #{action} for #{module}.#{code}/#{stream_segment} to #{site_id}"
+    )
+
+    :emqtt.publish_async(
+      supervisor.pid,
+      to_string(topic),
+      Utility.to_payload(%{"action" => action}),
+      [retain: false, qos: 1],
+      &publish_done/1
+    )
 
     {:noreply, supervisor}
   end
