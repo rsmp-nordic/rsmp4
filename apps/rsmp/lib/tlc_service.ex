@@ -101,6 +101,81 @@ defmodule RSMP.Service.TLC do
     {:noreply, service}
   end
 
+  @impl GenServer
+  def handle_call({:set_plan_local, plan}, _from, service) do
+    {service, _result} = apply_plan_set(service, plan, :local)
+    {:reply, :ok, service}
+  end
+
+  def apply_plan_set(service, plan, origin \\ :supervisor) do
+    cond do
+      plan == service.plan ->
+        msg = "Plan #{plan} already used"
+        Logger.info("RSMP: #{msg}")
+
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{
+          topic: "command_log",
+          id: "tlc.plan.set",
+          message: msg
+        })
+
+        if origin == :local do
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{
+            topic: "plan_result",
+            result: %{message: "Already using plan #{plan}"}
+          })
+        end
+
+        {service, %{status: "already", plan: plan, reason: "Already using plan #{plan}"}}
+
+      service.plans[plan] != nil ->
+        msg = "Switching to plan #{plan}"
+        Logger.info("RSMP: #{msg}")
+
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{
+          topic: "command_log",
+          id: "tlc.plan.set",
+          message: msg
+        })
+
+        service = %{service | plan: plan, source: "forced"}
+        RSMP.Service.report_to_streams(service, "plan")
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status"})
+
+        message =
+          case origin do
+            :supervisor -> "Supervisor switched to plan #{plan}"
+            :local -> "Switched to plan #{plan}"
+          end
+
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{
+          topic: "plan_result",
+          result: %{message: message}
+        })
+
+        {service, %{status: "ok", plan: plan}}
+
+      true ->
+        msg = "Switching to plan #{plan} failed: Unknown plan"
+        Logger.info("RSMP: #{msg}")
+
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{
+          topic: "command_log",
+          id: "tlc.plan.set",
+          message: msg
+        })
+
+        if origin == :local do
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{
+            topic: "plan_result",
+            result: %{message: "Local switch failed: plan #{plan} not found"}
+          })
+        end
+
+        {service, %{status: "missing", plan: plan, reason: "Plan #{plan} not found"}}
+    end
+  end
+
   defp maybe_put_stage(values, previous_stage, current_stage) do
     if previous_stage != current_stage do
       Map.put(values, "stage", current_stage)
@@ -164,29 +239,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
         %{"plan" => plan},
         _properties
       ) do
-
-     cond do
-      plan == service.plan ->
-        msg = "Switching to plan #{plan} skipped: Already in use"
-        Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "command_log", id: "tlc.plan.set", message: msg})
-        {service, %{status: "already", plan: plan, reason: "Already using plan #{plan}"}}
-
-      service.plans[plan] != nil ->
-        msg = "Switching to plan #{plan}"
-        Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "command_log", id: "tlc.plan.set", message: msg})
-        service = %{service | plan: plan, source: "forced"}
-        RSMP.Service.report_to_streams(service, "plan")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status"})
-        {service, %{status: "ok", plan: plan}}
-
-      true ->
-        msg = "Switching to plan #{plan} failed: Unknown plan"
-        Logger.info("RSMP: #{msg}")
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "command_log", id: "tlc.plan.set", message: msg})
-        {service, %{status: "missing", plan: plan, reason: "Plan #{plan} not found"}}
-    end
+    RSMP.Service.TLC.apply_plan_set(service, plan, :supervisor)
   end
 
   def receive_command(

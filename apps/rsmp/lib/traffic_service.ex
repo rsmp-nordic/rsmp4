@@ -3,6 +3,7 @@ defmodule RSMP.Service.Traffic do
 
 	@vehicle_types ["cars", "bicycles", "busses"]
 	@zero_volume %{"cars" => 0, "bicycles" => 0, "busses" => 0}
+	@traffic_levels [:none, :low, :high]
 
 	@impl true
 	def status_codes(), do: ["volume"]
@@ -12,36 +13,83 @@ defmodule RSMP.Service.Traffic do
 
 	defstruct(
 		id: nil,
-		live_volume: @zero_volume
+		live_volume: @zero_volume,
+		traffic_level: :low,
+		detection_timer: nil
 	)
 
 	@impl RSMP.Service.Behaviour
 	def new(id, _data \\ %{}) do
-		Process.send_after(self(), :tick_detection, random_detection_interval_ms())
-
-		%__MODULE__{id: id}
+		detection_timer = schedule_next_detection(:low)
+		service = %__MODULE__{id: id, detection_timer: detection_timer}
+		service
 	end
 
 	@impl GenServer
 	def handle_info(:tick_detection, service) do
-		detection_volume = random_detection_volume()
-		live_volume = accumulate_volume(service.live_volume, detection_volume)
+		service = %{service | detection_timer: nil}
 
-		live_update =
-			Enum.into(detection_volume, %{}, fn {type, _count} ->
-				{type, Map.fetch!(live_volume, type)}
-			end)
+		case service.traffic_level do
+			:none ->
+				{:noreply, service}
 
-		RSMP.Service.report_to_streams(service.id, "traffic", "volume", live_update)
-		Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status", changes: ["traffic.volume"]})
+			level ->
+				detection_volume = random_detection_volume()
+				live_volume = accumulate_volume(service.live_volume, detection_volume)
 
-		Process.send_after(self(), :tick_detection, random_detection_interval_ms())
+				live_update =
+					Enum.into(detection_volume, %{}, fn {type, _count} ->
+						{type, Map.fetch!(live_volume, type)}
+					end)
 
-		{:noreply, %{service | live_volume: live_volume}}
+				RSMP.Service.report_to_streams(service.id, "traffic", "volume", live_update)
+				Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status", changes: ["traffic.volume"]})
+
+				detection_timer = schedule_next_detection(level)
+				{:noreply, %{service | live_volume: live_volume, detection_timer: detection_timer}}
+		end
 	end
 
-	defp random_detection_interval_ms() do
+	@impl GenServer
+	def handle_call(:get_traffic_level, _from, service) do
+		{:reply, service.traffic_level, service}
+	end
+
+	@impl GenServer
+	def handle_cast({:set_traffic_level, level}, service) when level in @traffic_levels do
+		service = cancel_detection_timer(service)
+		service = %{service | traffic_level: level}
+
+		service =
+			case level do
+				:none -> service
+				_ -> %{service | detection_timer: schedule_next_detection(level)}
+			end
+
+		{:noreply, service}
+	end
+
+	@impl GenServer
+	def handle_cast({:set_traffic_level, _invalid_level}, service) do
+		{:noreply, service}
+	end
+
+	defp schedule_next_detection(:high), do: Process.send_after(self(), :tick_detection, random_detection_interval_ms(:high))
+	defp schedule_next_detection(:low), do: Process.send_after(self(), :tick_detection, random_detection_interval_ms(:low))
+
+	defp cancel_detection_timer(%{detection_timer: nil} = service), do: service
+
+	defp cancel_detection_timer(%{detection_timer: timer_ref} = service) do
+		Process.cancel_timer(timer_ref)
+		%{service | detection_timer: nil}
+	end
+
+	defp random_detection_interval_ms(:low) do
 		Enum.random(100..3_000)
+	end
+
+	defp random_detection_interval_ms(:high) do
+		Enum.random(50..1_000)
 	end
 
 	defp accumulate_volume(current, delta) do

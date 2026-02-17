@@ -180,6 +180,26 @@ defmodule RSMP.Node.TLC do
     end
   end
 
+  def get_traffic_level(site_id) do
+    case RSMP.Registry.lookup_service(site_id, "traffic", []) do
+      [{service_pid, _}] -> GenServer.call(service_pid, :get_traffic_level)
+      [] -> :low
+    end
+  end
+
+  def set_traffic_level(site_id, level) when level in [:none, :low, :high] do
+    case RSMP.Registry.lookup_service(site_id, "traffic", []) do
+      [{service_pid, _}] ->
+        GenServer.cast(service_pid, {:set_traffic_level, level})
+        :ok
+
+      [] ->
+        :error
+    end
+  end
+
+  def set_traffic_level(_site_id, _level), do: :error
+
   def set_alarm(site_id, path, flags) do
     code = String.replace_prefix(path, "tlc.", "")
     case RSMP.Registry.lookup_service(site_id, "tlc", []) do
@@ -196,6 +216,13 @@ defmodule RSMP.Node.TLC do
         topic = %RSMP.Topic{path: path}
         data = %{"plan" => plan}
         GenServer.call(service_pid, {:receive_command, topic, data, %{}})
+      [] -> :error
+    end
+  end
+
+  def set_plan_local(site_id, plan) do
+    case RSMP.Registry.lookup_service(site_id, "tlc", []) do
+      [{service_pid, _}] -> GenServer.call(service_pid, {:set_plan_local, plan})
       [] -> :error
     end
   end

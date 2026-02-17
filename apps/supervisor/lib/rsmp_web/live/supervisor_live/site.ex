@@ -41,7 +41,17 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def assign_site(socket) do
     site_id = socket.assigns.site_id
     site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, streams: %{}, alarms: %{}}
-    assign(socket, site: site, plans: get_plans(site))
+
+    plan =
+      get_in(site, [
+        Access.key(:statuses, %{}),
+        Access.key("tlc.plan", %{}),
+        Access.key(:plan, 0)
+      ])
+
+    commands = Map.put(socket.assigns.commands, "tlc.plan.set", plan)
+
+    assign(socket, site: site, plans: get_plans(site), commands: commands)
   end
 
   defp get_plans(site) do

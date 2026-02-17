@@ -25,6 +25,8 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        stream_list: [],
        streams_by_status: %{},
        stream_pulses: %{},
+       traffic_level: :low,
+       plan_result: %{"message" => ""},
        command_logs: [],
        alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
@@ -46,6 +48,8 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        stream_list: stream_list,
        streams_by_status: streams_by_status(stream_list),
        stream_pulses: %{},
+       traffic_level: TLC.get_traffic_level(site_id),
+       plan_result: %{"message" => ""},
        command_logs: [],
        alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
@@ -94,8 +98,23 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   def handle_event("set_plan", %{"plan" => plan}, socket) do
     site_id = socket.assigns[:id]
     plan = String.to_integer(plan)
-    TLC.set_plan(site_id, plan)
+    TLC.set_plan_local(site_id, plan)
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("set_traffic_level", %{"level" => level}, socket) do
+    site_id = socket.assigns[:id]
+
+    traffic_level =
+      case level do
+        "none" -> :none
+        "high" -> :high
+        _ -> :low
+      end
+
+    TLC.set_traffic_level(site_id, traffic_level)
+    {:noreply, assign(socket, traffic_level: traffic_level)}
   end
 
   @impl true
@@ -224,6 +243,13 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     new_logs = logs ++ [%{id: id, message: message}]
     new_logs = if length(new_logs) > 5, do: Enum.drop(new_logs, length(new_logs) - 5), else: new_logs
     {:noreply, assign(socket, command_logs: new_logs)}
+  end
+
+  @impl true
+  def handle_info(%{topic: "plan_result", result: result}, socket) when is_map(result) do
+    message = to_string(result[:message] || result["message"] || "")
+    plan_result = %{"message" => message}
+    {:noreply, assign(socket, plan_result: plan_result)}
   end
 
   @impl true

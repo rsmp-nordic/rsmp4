@@ -2,6 +2,65 @@
 <div id="client"></div>
 
 <div class="overflow-x-auto rounded-md my-4">
+  <table id="operate" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Operate
+    </caption>
+
+    <tbody>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">Plan</td>
+        <td class="px-1 py-1 align-top">
+          <div class="flex gap-2 flex-wrap">
+            <%= for plan <- @statuses["tlc.plans"] || [] do %>
+              <button
+                class={RSMP.ButtonClasses.selectable(get_in(@statuses, ["tlc.plan", :plan]) == plan)}
+                phx-click="set_plan"
+                phx-value-plan={plan}
+              >
+                <%= plan %>
+              </button>
+            <% end %>
+          </div>
+        </td>
+        <td class="px-1 py-1 align-top">
+          <%= @plan_result["message"] %>
+        </td>
+      </tr>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">Traffic</td>
+        <td class="px-1 py-1 align-top">
+          <div class="flex gap-2 flex-wrap">
+            <button
+              class={RSMP.ButtonClasses.selectable(@traffic_level == :none)}
+              phx-click="set_traffic_level"
+              phx-value-level="none"
+            >
+              None
+            </button>
+            <button
+              class={RSMP.ButtonClasses.selectable(@traffic_level == :low)}
+              phx-click="set_traffic_level"
+              phx-value-level="low"
+            >
+              Low
+            </button>
+            <button
+              class={RSMP.ButtonClasses.selectable(@traffic_level == :high)}
+              phx-click="set_traffic_level"
+              phx-value-level="high"
+            >
+              High
+            </button>
+          </div>
+        </td>
+        <td class="px-1 py-1 align-top"></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="overflow-x-auto rounded-md my-4">
   <table id="statuses" class="w-full text-left">
     <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
       Status
@@ -21,17 +80,6 @@
         <td class="px-1 py-1">
           <%= for {name, formatted_value} <- format_status_lines(value) do %>
             <div><%= name %>: <%= format_status_value(formatted_value) %></div>
-          <% end %>
-          <%= if status == "tlc.plan" do %>
-            <%= for plan <- @statuses["tlc.plans"] || [] do %>
-              <button
-                class={RSMP.ButtonClasses.selectable(value.plan == plan)}
-                phx-click="set_plan"
-                phx-value-plan={plan}
-              >
-                <%= plan %>
-              </button>
-            <% end %>
           <% end %>
         </td>
         <td class="px-1 py-1 align-top">
@@ -108,27 +156,6 @@
             </button>
           </td>
         <% end %>
-      </tr>
-    <% end %>
-  </table>
-</div>
-
-<div class="overflow-x-auto rounded-md my-4">
-  <table id="commands" class="w-full text-left">
-    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
-      Commands
-    </caption>
-
-    <thead>
-      <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Code</th>
-        <th class="px-1 py-1">Log</th>
-      </tr>
-    </thead>
-    <%= for log <- @command_logs do %>
-      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1 align-top"><%= log.id %></td>
-        <td class="px-1 py-1 align-top"><%= log.message %></td>
       </tr>
     <% end %>
   </table>

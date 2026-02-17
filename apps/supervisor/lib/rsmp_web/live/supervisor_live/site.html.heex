@@ -4,6 +4,51 @@
 <div id="client"></div>
 
 <div class="overflow-x-auto rounded-md my-4">
+  <table id="operate" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Operate
+    </caption>
+
+    <tbody>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">Plan</td>
+        <td class="px-1 py-1 align-top">
+          <div class="flex gap-2 flex-wrap">
+            <%= for plan <- @plans do %>
+              <button
+                type="button"
+                phx-click="command"
+                phx-value-path="tlc.plan.set"
+                phx-value-plan={plan}
+                class={RSMP.ButtonClasses.selectable(@commands["tlc.plan.set"] == plan)}
+              >
+                <%= plan %>
+              </button>
+            <% end %>
+            <button
+              type="button"
+              phx-click="command"
+              phx-value-path="tlc.plan.set"
+              phx-value-plan={(List.last(@plans) || 0) + 1}
+              class="bg-red-600 hover:bg-red-800 text-white rounded-lg px-2"
+              title="Send invalid plan"
+            >
+              <%= (List.last(@plans) || 0) + 1 %>
+            </button>
+          </div>
+        </td>
+        <td class="px-1 py-1 align-top">
+          <span class={"inline-block h-5 w-5 animate-spin rounded-full border-4 border-solid border-purple-900 border-r-transparent " <> if @responses["tlc.plan.set"]["phase"] == "waiting", do: "shown", else: "hidden"}>
+          </span>
+          <%= @responses["tlc.plan.set"]["symbol"] %>
+          <%= @responses["tlc.plan.set"]["reason"] %>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="overflow-x-auto rounded-md my-4">
   <table id="statuses" class="w-full text-left">
     <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
       Status
@@ -79,77 +124,6 @@
             </button>
           </td>
         <% end %>
-      </tr>
-    <% end %>
-  </table>
-</div>
-
-<div class="overflow-x-auto rounded-md my-4">
-  <table id="commands" class="w-full text-left">
-    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
-      Commands
-    </caption>
-
-    <thead>
-      <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1 align-top">Code</th>
-        <th class="px-1 py-1 align-top">Action</th>
-        <th class="px-1 py-1 w-1/3 align-top">Response</th>
-      </tr>
-    </thead>
-
-    <%= for {command,status} <- @commands do %>
-      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1 align-top"><%= command %></td>
-        <td class="px-1 py-1 align-top">
-          <%= if command == "tlc.plan.set" do %>
-            <div class="flex gap-2 flex-wrap">
-              <%= for plan <- @plans do %>
-                <button
-                  type="button"
-                  phx-click="command"
-                  phx-value-path={command}
-                  phx-value-plan={plan}
-                  class={RSMP.ButtonClasses.selectable(status == plan)}
-                >
-                  <%= plan %>
-                </button>
-              <% end %>
-              <button
-                type="button"
-                phx-click="command"
-                phx-value-path={command}
-                phx-value-plan={(List.last(@plans) || 0) + 1}
-                class="bg-red-600 hover:bg-red-800 text-white rounded-lg px-2"
-                title="Send invalid plan"
-              >
-                <%= (List.last(@plans) || 0) + 1 %>
-              </button>
-            </div>
-          <% else %>
-            <form phx-submit="command">
-              <input
-                type="number"
-                name="value"
-                value={status}
-                class={RSMP.ButtonClasses.neutral() <> " w-20"}
-              />
-              <input type="hidden" name="path" value={command} />
-              <input
-                type="submit"
-                name="submit"
-                value="Send"
-                class={RSMP.ButtonClasses.neutral(hover: true)}
-              />
-            </form>
-          <% end %>
-        </td>
-        <td class="align-top">
-          <span class={"inline-block h-5 w-5 animate-spin rounded-full border-4 border-solid border-purple-900 border-r-transparent " <> if @responses[command]["phase"] == "waiting", do: "shown", else: "hidden"}>
-          </span>
-          <%= @responses[command]["symbol"] %>
-          <%= @responses[command]["reason"] %>
-        </td>
       </tr>
     <% end %>
   </table>
