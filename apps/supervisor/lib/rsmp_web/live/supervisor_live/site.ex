@@ -2,6 +2,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   use RSMP.Supervisor.Web, :live_view
   use Phoenix.Component
   require Logger
+  @stream_glow_ms 500
 
   @impl true
   def mount(params, _session, socket) do
@@ -25,6 +26,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
      assign(socket,
        site_id: site_id,
        site: site,
+       stream_pulses: %{},
        plans: get_plans(site),
        alarm_flags: Enum.sort(["active", "acknowledged", "blocked"]),
        commands: %{
@@ -63,7 +65,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
         |> Enum.map_join("\n", fn {stream, number} -> "#{stream}: #{number}" end)
 
       seq ->
-        "(default): #{to_string(seq)}"
+        "default: #{to_string(seq)}"
     end
   end
 
@@ -146,8 +148,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   defp stream_label(stream) do
     case stream do
-      nil -> "(default)"
-      "" -> "(default)"
+      nil -> "default"
+      "" -> "default"
       _ -> to_string(stream)
     end
   end
@@ -213,6 +215,17 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   defp stream_state_class("running"), do: RSMP.ButtonClasses.stream(true)
   defp stream_state_class(_), do: RSMP.ButtonClasses.stream(false)
 
+  def stream_button_class(stream, path, stream_pulses) do
+    class = stream_state_class(stream.state)
+    stream_key = stream_state_key(path, stream.key)
+
+    if Map.get(stream_pulses, stream_key, false) do
+      class <> " animate-stream-glow"
+    else
+      class
+    end
+  end
+
   def format_status_lines(value) do
     value
     |> status_value()
@@ -274,6 +287,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   @impl true
   def handle_event("throttle", %{"path" => path, "stream" => stream_name, "state" => state}, socket) do
     site_id = socket.assigns.site_id
+    stream_state_key = stream_state_key(path, stream_name)
 
     case String.split(path, "/", parts: 2) do
       [full_code | _rest] ->
@@ -300,6 +314,13 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
         Logger.warning("Invalid stream path for throttle: #{path}")
     end
 
+    socket =
+      if state == "running" do
+        socket
+      else
+        pulse_stream(socket, stream_state_key)
+      end
+
     {:noreply, socket}
   end
 
@@ -312,13 +333,33 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   # MQTT PubSub events
 
   @impl true
+  def handle_info(%{topic: "status", status: _status_payload}, socket) do
+    {:noreply, socket |> assign_site()}
+  end
+
+  @impl true
   def handle_info(%{topic: "status"}, socket) do
+    {:noreply, socket |> assign_site()}
+  end
+
+  @impl true
+  def handle_info(%{topic: "local_status", status: _status_payload}, socket) do
     {:noreply, socket |> assign_site()}
   end
 
   @impl true
   def handle_info(%{topic: "local_status"}, socket) do
     {:noreply, socket |> assign_site()}
+  end
+
+  @impl true
+  def handle_info(%{topic: "stream_data", stream: stream_key}, socket) when is_binary(stream_key) do
+    {:noreply, pulse_stream(socket, stream_key)}
+  end
+
+  @impl true
+  def handle_info({:clear_stream_pulse, stream_key}, socket) do
+    {:noreply, update(socket, :stream_pulses, &Map.delete(&1, stream_key))}
   end
 
   @impl true
@@ -383,5 +424,14 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def handle_info(data, socket) do
     Logger.warning("unhandled info: #{inspect(data)}")
     {:noreply, socket}
+  end
+
+  defp pulse_stream(socket, stream_key) do
+    Process.send_after(self(), {:clear_stream_pulse, stream_key}, @stream_glow_ms)
+    update(socket, :stream_pulses, &Map.put(&1, stream_key, true))
+  end
+
+  defp stream_state_key(path, stream_key) do
+    "#{path}/#{normalize_stream_key(stream_key)}"
   end
 end

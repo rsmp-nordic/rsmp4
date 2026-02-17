@@ -30,7 +30,7 @@
             <%= for stream <- row.streams do %>
               <button
                 type="button"
-                class={stream.class}
+                class={stream_button_class(stream, row.path, @stream_pulses)}
                 phx-click="throttle"
                 phx-value-path={row.path}
                 phx-value-stream={stream.key}

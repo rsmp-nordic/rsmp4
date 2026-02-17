@@ -33,6 +33,7 @@ defmodule RSMP.Service.Traffic do
 			end)
 
 		RSMP.Service.report_to_streams(service.id, "traffic", "volume", live_update)
+		Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status", changes: ["traffic.volume"]})
 
 		Process.send_after(self(), :tick_detection, random_detection_interval_ms())
 

@@ -39,7 +39,7 @@
             <div class="flex flex-wrap gap-1">
               <%= for stream <- related_streams do %>
                 <button
-                  class={RSMP.ButtonClasses.stream(stream.running)}
+                  class={stream_button_class(stream, @stream_pulses)}
                   phx-click={if stream.running, do: "stop_stream", else: "start_stream"}
                   phx-value-module={stream.module}
                   phx-value-code={stream.code}
@@ -53,7 +53,7 @@
                        end) <> " | QoS: #{stream.qos}"
                   }
                 >
-                  <%= stream.stream_name || "(default)" %>
+                  <%= stream.stream_name || "default" %>
                 </button>
               <% end %>
             </div>

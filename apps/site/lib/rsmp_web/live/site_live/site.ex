@@ -2,6 +2,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   use RSMP.Site.Web, :live_view
   alias RSMP.Site
   alias RSMP.Node.TLC
+  @stream_glow_ms 500
 
   @impl true
   def mount(params, session, socket) do
@@ -23,6 +24,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        alarms: %{},
        stream_list: [],
        streams_by_status: %{},
+       stream_pulses: %{},
        command_logs: [],
        alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
@@ -43,6 +45,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        alarms: alarm_map(alarms),
        stream_list: stream_list,
        streams_by_status: streams_by_status(stream_list),
+       stream_pulses: %{},
        command_logs: [],
        alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
@@ -101,7 +104,20 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     stream_name = if stream_name == "", do: nil, else: stream_name
     TLC.start_stream(site_id, module, code, stream_name)
     stream_list = TLC.get_streams(site_id)
-    {:noreply, assign(socket, stream_list: stream_list, streams_by_status: streams_by_status(stream_list))}
+
+    stream_key = stream_identity(module, code, stream_name)
+
+    socket =
+      assign(socket, stream_list: stream_list, streams_by_status: streams_by_status(stream_list))
+
+    socket =
+      if Enum.any?(stream_list, fn stream -> stream_identity(stream) == stream_key and stream.running end) do
+        pulse_stream(socket, stream_key)
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -145,7 +161,28 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
+  def handle_info(%{topic: "local_status", changes: _changes}, socket) do
+    site_id = socket.assigns.id
+    statuses = TLC.get_statuses(site_id)
+    {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
+  end
+
+  @impl true
   def handle_info(%{topic: "local_status"}, socket) do
+    site_id = socket.assigns.id
+    statuses = TLC.get_statuses(site_id)
+    {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
+  end
+
+  @impl true
+  def handle_info(%{topic: "status", changes: _changes}, socket) do
+    site_id = socket.assigns.id
+    statuses = TLC.get_statuses(site_id)
+    {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
+  end
+
+  @impl true
+  def handle_info(%{topic: "status", status: _status_payload}, socket) do
     site_id = socket.assigns.id
     statuses = TLC.get_statuses(site_id)
     {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
@@ -156,6 +193,16 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     site_id = socket.assigns.id
     statuses = TLC.get_statuses(site_id)
     {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
+  end
+
+  @impl true
+  def handle_info(%{topic: "stream_data", stream: stream_key}, socket) when is_binary(stream_key) do
+    {:noreply, pulse_stream(socket, stream_key)}
+  end
+
+  @impl true
+  def handle_info({:clear_stream_pulse, stream_key}, socket) do
+    {:noreply, update(socket, :stream_pulses, &Map.delete(&1, stream_key))}
   end
 
   @impl true
@@ -207,6 +254,16 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   def format_status_value(value) when is_map(value) or is_list(value), do: Poison.encode!(value)
   def format_status_value(value), do: to_string(value)
 
+  def stream_button_class(stream, stream_pulses) do
+    class = RSMP.ButtonClasses.stream(stream.running)
+
+    if Map.get(stream_pulses, stream_identity(stream), false) do
+      class <> " animate-stream-glow"
+    else
+      class
+    end
+  end
+
   defp assign_statuses_and_streams(socket, statuses, site_id) do
     stream_list = TLC.get_streams(site_id)
 
@@ -216,4 +273,20 @@ defmodule RSMP.Site.Web.SiteLive.Site do
       streams_by_status: streams_by_status(stream_list)
     )
   end
+
+  defp pulse_stream(socket, stream_key) do
+    Process.send_after(self(), {:clear_stream_pulse, stream_key}, @stream_glow_ms)
+    update(socket, :stream_pulses, &Map.put(&1, stream_key, true))
+  end
+
+  defp stream_identity(%{module: module, code: code} = stream) do
+    stream_name = Map.get(stream, :stream_name) || Map.get(stream, "stream_name")
+    stream_identity(module, code, stream_name)
+  end
+
+  defp stream_identity(module, code, stream_name) do
+    normalized_stream = if stream_name in [nil, ""], do: "default", else: stream_name
+    "#{module}.#{code}/#{normalized_stream}"
+  end
+
 end

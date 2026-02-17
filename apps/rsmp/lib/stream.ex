@@ -433,6 +433,8 @@ defmodule RSMP.Stream do
       %{}
     )
 
+    broadcast_stream_data(state, seq, "full")
+
     %{state | seq: seq}
   end
 
@@ -455,6 +457,8 @@ defmodule RSMP.Stream do
       %{retain: false, qos: state.qos},
       %{}
     )
+
+    broadcast_stream_data(state, seq, "delta")
 
     now = System.monotonic_time(:millisecond)
 
@@ -551,4 +555,23 @@ defmodule RSMP.Stream do
     component = if state.component == [], do: "", else: "/" <> Enum.join(state.component, "/")
     "#{state.id}/status/#{state.module}.#{state.code}/#{name}#{component}"
   end
+
+  defp broadcast_stream_data(state, seq, kind) do
+    stream_key = "#{state.module}.#{state.code}/#{normalize_stream_name(state.stream_name)}"
+
+    pub = %{
+      topic: "stream_data",
+      site: state.id,
+      stream: stream_key,
+      kind: kind,
+      seq: seq
+    }
+
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{state.id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{state.id}", pub)
+  end
+
+  defp normalize_stream_name(nil), do: "default"
+  defp normalize_stream_name(""), do: "default"
+  defp normalize_stream_name(name), do: to_string(name)
 end

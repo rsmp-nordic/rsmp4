@@ -16,6 +16,15 @@ module.exports = {
     extend: {
       colors: {
         brand: "#FD4F00",
+      },
+      keyframes: {
+        "stream-glow": {
+          "0%": { boxShadow: "0 0 0 0 rgba(59, 130, 246, 0.75)" },
+          "100%": { boxShadow: "0 0 0 10px rgba(59, 130, 246, 0)" }
+        }
+      },
+      animation: {
+        "stream-glow": "stream-glow 500ms ease-out"
       }
     },
   },
