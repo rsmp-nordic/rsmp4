@@ -52,6 +52,12 @@ defmodule RSMP.StreamTest do
 
       {:ok, stream_pid} = RSMP.Stream.start_link({id, "tlc", config})
 
+      assert_receive {:published, topic, state_data, state_options}
+      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert state_data == %{"state" => "stopped"}
+      assert state_options.retain == true
+      assert state_options.qos == 1
+
       # Stream should not be running
       info = RSMP.Stream.info(stream_pid)
       assert info.running == false
@@ -68,6 +74,12 @@ defmodule RSMP.StreamTest do
       assert data["data"]["status"] == 1
       assert options.retain == true
 
+      assert_receive {:published, topic, state_data, state_options}
+      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert state_data == %{"state" => "running"}
+      assert state_options.retain == true
+      assert state_options.qos == 1
+
       # Starting again should fail
       assert {:error, :already_running} = RSMP.Stream.start_stream(stream_pid)
 
@@ -81,6 +93,12 @@ defmodule RSMP.StreamTest do
       # Should publish empty retained message to clear
       assert_receive {:published, _topic, nil, %{retain: true}}
 
+      assert_receive {:published, topic, state_data, state_options}
+      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert state_data == %{"state" => "stopped"}
+      assert state_options.retain == true
+      assert state_options.qos == 1
+
       info = RSMP.Stream.info(stream_pid)
       assert info.running == false
       assert info.seq == 1
@@ -92,6 +110,12 @@ defmodule RSMP.StreamTest do
       assert data["type"] == "full"
       assert data["seq"] == 2
 
+      assert_receive {:published, topic, state_data, state_options}
+      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert state_data == %{"state" => "running"}
+      assert state_options.retain == true
+      assert state_options.qos == 1
+
       info = RSMP.Stream.info(stream_pid)
       assert info.running == true
       assert info.seq == 2
@@ -99,6 +123,12 @@ defmodule RSMP.StreamTest do
       # Stopping again should fail
       assert :ok = RSMP.Stream.stop_stream(stream_pid)
       assert_receive {:published, _topic, nil, %{retain: true}}
+
+      assert_receive {:published, topic, state_data, state_options}
+      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert state_data == %{"state" => "stopped"}
+      assert state_options.retain == true
+      assert state_options.qos == 1
 
       assert {:error, :not_running} = RSMP.Stream.stop_stream(stream_pid)
     end
@@ -130,6 +160,12 @@ defmodule RSMP.StreamTest do
       assert_receive {:published, _topic, data, _options}, 500
       assert data["type"] == "full"
       assert data["data"]["status"] == 2
+
+      assert_receive {:published, topic, state_data, state_options}, 500
+      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert state_data == %{"state" => "running"}
+      assert state_options.retain == true
+      assert state_options.qos == 1
     end
   end
 
@@ -157,10 +193,18 @@ defmodule RSMP.StreamTest do
       }
 
       {:ok, stream_pid} = RSMP.Stream.start_link({id, "tlc", config})
+
+      assert_receive {:published, topic, state_data, state_options}
+      assert to_string(topic) == "#{id}/stream/tlc.groups/live"
+      assert state_data == %{"state" => "stopped"}
+      assert state_options.retain == true
+      assert state_options.qos == 1
+
       :ok = RSMP.Stream.start_stream(stream_pid)
 
       # Consume the initial full update
       assert_receive {:published, _topic, %{"type" => "full"}, _options}
+      assert_receive {:published, _topic, %{"state" => "running"}, _options}
 
       # Report values where an on_change attr changes
       RSMP.Stream.report(stream_pid, %{

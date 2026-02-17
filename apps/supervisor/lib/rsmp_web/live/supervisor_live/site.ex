@@ -13,7 +13,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
       Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{site_id}")
     end
 
-    site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, alarms: %{}}
+    site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, streams: %{}, alarms: %{}}
     plan =
       get_in(site, [
         Access.key(:statuses, %{}),
@@ -38,7 +38,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   def assign_site(socket) do
     site_id = socket.assigns.site_id
-    site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, alarms: %{}}
+    site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, streams: %{}, alarms: %{}}
     assign(socket, site: site, plans: get_plans(site))
   end
 
@@ -58,17 +58,73 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
       seq when is_map(seq) ->
         seq
-        |> Enum.map(fn {stream, number} -> {to_string(stream), number} end)
+        |> Enum.map(fn {stream, number} -> {stream_label(stream), number} end)
         |> Enum.sort_by(fn {stream, _number} -> stream end)
-        |> Enum.map_join(", ", fn {stream, number} -> "\"#{stream}\": #{number}" end)
-        |> then(fn body -> "{" <> body <> "}" end)
+        |> Enum.map_join("\n", fn {stream, number} -> "#{stream}: #{number}" end)
 
       seq ->
-        to_string(seq)
+        "(default): #{to_string(seq)}"
     end
   end
 
   def status_seq(_value), do: "-"
+
+  def status_rows(site) do
+    statuses = Map.get(site, :statuses, %{})
+    streams = Map.get(site, :streams, %{})
+
+    status_paths = Map.keys(statuses)
+
+    stream_paths =
+      streams
+      |> Map.keys()
+      |> Enum.map(&parse_stream_state_key/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(fn {path, _stream_key} -> path end)
+
+    (status_paths ++ stream_paths)
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.map(fn path ->
+      value = Map.get(statuses, path)
+
+      %{
+        path: path,
+        value: value,
+        streams: status_streams(path, value, site)
+      }
+    end)
+  end
+
+  def status_streams(path, value, site) do
+    seq_map = stream_seq_map(value)
+
+    stream_keys =
+      (Map.keys(seq_map) ++ stream_keys_from_state(site, path))
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    Enum.map(stream_keys, fn stream_key ->
+      label = stream_label(stream_key)
+      seq = Map.get(seq_map, stream_key)
+      state = stream_state(site, path, stream_key)
+
+      title =
+        if is_nil(seq) do
+          "Stream: #{label}\nState: #{state}"
+        else
+          "Stream: #{label}\nSeq: #{seq}\nState: #{state}"
+        end
+
+      %{
+        label: label,
+        seq: seq,
+        state: state,
+        class: stream_state_class(state),
+        title: title
+      }
+    end)
+  end
 
   def status_value(value) when is_map(value) do
     cond do
@@ -86,6 +142,93 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   def status_value(value), do: value
+
+  defp stream_label(stream) do
+    case stream do
+      nil -> "(default)"
+      "" -> "(default)"
+      _ -> to_string(stream)
+    end
+  end
+
+  defp normalize_stream_key(stream) do
+    case stream do
+      nil -> "default"
+      "" -> "default"
+      other -> to_string(other)
+    end
+  end
+
+  defp stream_seq_map(value) when is_map(value) do
+    case Map.get(value, "seq") || Map.get(value, :seq) do
+      seq when is_map(seq) ->
+        Enum.into(seq, %{}, fn {stream, number} -> {normalize_stream_key(stream), number} end)
+
+      nil ->
+        %{}
+
+      seq ->
+        %{"default" => seq}
+    end
+  end
+
+  defp stream_seq_map(_value), do: %{}
+
+  defp stream_keys_from_state(site, path) do
+    streams = Map.get(site, :streams, %{})
+
+    streams
+    |> Map.keys()
+    |> Enum.map(&parse_stream_state_key/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.filter(fn {stream_path, _stream_key} -> stream_path == path end)
+    |> Enum.map(fn {_stream_path, stream_key} -> stream_key end)
+  end
+
+  defp parse_stream_state_key(key) when is_binary(key) do
+    case String.split(key, "/") do
+      [_stream_only] ->
+        nil
+
+      parts ->
+        stream_key = List.last(parts)
+
+        path =
+          parts
+          |> Enum.slice(0, length(parts) - 1)
+          |> Enum.join("/")
+
+        {path, stream_key}
+    end
+  end
+
+  defp parse_stream_state_key(_), do: nil
+
+  defp stream_state(site, path, stream_key) do
+    streams = Map.get(site, :streams, %{})
+    Map.get(streams, "#{path}/#{stream_key}", "stopped")
+  end
+
+  defp stream_state_class("running"), do: "rounded-lg px-2 text-white bg-purple-900"
+  defp stream_state_class(_), do: "rounded-lg px-2 text-stone-200 bg-stone-500 opacity-60"
+
+  def format_status_lines(value) do
+    value
+    |> status_value()
+    |> do_format_status_lines()
+  end
+
+  defp do_format_status_lines(value) when is_map(value) do
+    value
+    |> Enum.map(fn {key, val} -> {to_string(key), val} end)
+  end
+
+  defp do_format_status_lines(nil), do: []
+
+  defp do_format_status_lines(value), do: [{"value", value}]
+
+  def format_status_line_value(value) when is_map(value) or is_list(value), do: Poison.encode!(value)
+  def format_status_line_value(value), do: to_string(value)
 
   # UI events
 
@@ -140,6 +283,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_info(%{topic: "presence"}, socket) do
+    {:noreply, socket |> assign_site()}
+  end
+
+  @impl true
+  def handle_info(%{topic: "stream"}, socket) do
     {:noreply, socket |> assign_site()}
   end
 

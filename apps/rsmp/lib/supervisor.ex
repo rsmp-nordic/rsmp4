@@ -1,7 +1,7 @@
 defmodule RSMP.Supervisor do
   use GenServer
   require Logger
-  alias RSMP.{Utility, Topic}
+  alias RSMP.{Utility, Topic, Path}
 
   defstruct(
     pid: nil,
@@ -79,6 +79,9 @@ defmodule RSMP.Supervisor do
 
     # Subscribe to alarms
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/alarm/#", 2})
+
+    # Subscribe to stream states
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/stream/#", 2})
 
     # Subscribe to our response topics
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/result/#", 2})
@@ -239,6 +242,9 @@ defmodule RSMP.Supervisor do
           command_id = properties[:"Correlation-Data"]
           receive_result(supervisor, topic, data, command_id)
 
+        "stream" ->
+          receive_stream(supervisor, topic, data)
+
         "alarm" ->
           receive_alarm(supervisor, topic, data)
 
@@ -350,6 +356,47 @@ defmodule RSMP.Supervisor do
     supervisor
   end
 
+  defp receive_stream(supervisor, topic, data) when is_map(data) do
+    stream_name =
+      case topic.path.component do
+        [name | _] when is_binary(name) and name != "" -> name
+        _ -> nil
+      end
+
+    state = data["state"] || data[:state]
+
+    cond do
+      is_nil(stream_name) ->
+        Logger.warning("RSMP: #{topic.id}: Ignoring stream state without stream name: #{inspect(topic)}")
+        supervisor
+
+      state not in ["running", "stopped"] ->
+        Logger.warning("RSMP: #{topic.id}: Ignoring invalid stream state payload: #{inspect(data)}")
+        supervisor
+
+      true ->
+        id = topic.id
+        {supervisor, _site} = get_site(supervisor, id)
+        path = Path.new(topic.path.module, topic.path.code, [])
+        stream_key = stream_state_key(path, stream_name)
+
+        supervisor = put_in(supervisor.sites[id].streams[stream_key], state)
+
+        Logger.info("RSMP: #{id}: Received stream state #{stream_key}: #{state}")
+
+        pub = %{topic: "stream", site: id, stream: stream_key, state: state}
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{id}", pub)
+
+        supervisor
+    end
+  end
+
+  defp receive_stream(supervisor, topic, data) do
+    Logger.warning("RSMP: #{topic.id}: Ignoring stream state payload: #{inspect(data)}")
+    supervisor
+  end
+
   # catch-all in case old retained messages are received from the broker
   defp receive_unknown(supervisor, topic, publish) do
     Logger.warning("Unhandled publish, topic: #{inspect(topic)}, publish: #{inspect(publish)}")
@@ -409,8 +456,6 @@ defmodule RSMP.Supervisor do
   defp maybe_put_seq(status, seq) do
     %{"value" => status, "seq" => seq}
   end
-
-  defp maybe_put_seq(status, _seq), do: status
 
   defp maybe_put_status_seq(status, current_status, nil, incoming_seq) do
     seq = incoming_seq || status_seq(current_status)
@@ -481,6 +526,17 @@ defmodule RSMP.Supervisor do
       _ ->
         %{}
     end
+  end
+
+  defp stream_state_key(path, stream_name) do
+    normalized_stream =
+      case stream_name do
+        nil -> "default"
+        "" -> "default"
+        other -> to_string(other)
+      end
+
+    "#{to_string(path)}/#{normalized_stream}"
   end
 
   def to_rsmp_status(supervisor, path, data) do

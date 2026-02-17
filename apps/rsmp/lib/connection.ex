@@ -52,7 +52,17 @@ defmodule RSMP.Connection do
 
   @impl GenServer
   def handle_cast({:publish_message, topic, data, %{retain: retain, qos: qos}=options, %{}=properties}, connection) do
-    Logger.info("RSMP: Publishing #{topic} with flags #{inspect(options)}: #{inspect(data)}")
+    topic_string = to_string(topic)
+
+    topic_without_id =
+      case String.split(topic_string, "/", parts: 2) do
+        [_id, rest] -> rest
+        _ -> topic_string
+      end
+
+    Logger.info(
+      "RSMP: #{connection.id}: Publishing #{topic_without_id} with flags #{inspect(options)}: #{inspect(data)}"
+    )
 
     properties =
       if properties[:command_id] do
@@ -143,6 +153,10 @@ defmodule RSMP.Connection do
     )
 
     trigger_services(connection.id)
+
+    if connection.type == :site do
+      trigger_stream_states(connection.id)
+    end
   end
 
   defp trigger_services(id) do
@@ -150,6 +164,13 @@ defmodule RSMP.Connection do
     Registry.select(RSMP.Registry, [match_pattern])
     |> Enum.each(fn pid ->
        GenServer.cast(pid, :publish_all)
+    end)
+  end
+
+  defp trigger_stream_states(id) do
+    RSMP.Streams.list_streams(id)
+    |> Enum.each(fn pid ->
+      RSMP.Stream.publish_state(pid)
     end)
   end
 

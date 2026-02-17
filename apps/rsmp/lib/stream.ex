@@ -101,6 +101,9 @@ defmodule RSMP.Stream do
   @doc "Report new attribute values. Only call when the stream is running."
   def report(pid, values), do: GenServer.cast(pid, {:report, values})
 
+  @doc "Publish current stream running/stopped state."
+  def publish_state(pid), do: GenServer.call(pid, :publish_state)
+
   @doc "Get current stream info."
   def info(pid), do: GenServer.call(pid, :info)
 
@@ -113,6 +116,8 @@ defmodule RSMP.Stream do
   def init(state) do
     if state.default_on do
       send(self(), :auto_start)
+    else
+      publish_stream_state(state)
     end
 
     {:ok, state}
@@ -166,6 +171,11 @@ defmodule RSMP.Stream do
 
   def handle_call(:force_full, _from, state) do
     state = publish_full(state)
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:publish_state, _from, state) do
+    publish_stream_state(state)
     {:reply, :ok, state}
   end
 
@@ -238,6 +248,8 @@ defmodule RSMP.Stream do
     # Schedule delta interval timer if needed
     state = schedule_delta_timer(state)
 
+    publish_stream_state(state)
+
     state
   end
 
@@ -250,7 +262,9 @@ defmodule RSMP.Stream do
     # Clear retained message
     publish_clear(state)
 
-    %{state | running: false, last_full: nil, pending_changes: %{}}
+    state = %{state | running: false, last_full: nil, pending_changes: %{}}
+    publish_stream_state(state)
+    state
   end
 
   defp request_and_publish_full(state) do
@@ -464,8 +478,35 @@ defmodule RSMP.Stream do
     )
   end
 
+  defp publish_stream_state(state) do
+    topic = make_stream_state_topic(state)
+
+    payload = %{
+      "state" => if(state.running, do: "running", else: "stopped")
+    }
+
+    RSMP.Connection.publish_message(
+      state.id,
+      topic,
+      payload,
+      %{retain: true, qos: 1},
+      %{}
+    )
+  end
+
   defp make_topic(state) do
     RSMP.Topic.new(state.id, "status", state.module, state.code, state.stream_name, state.component)
+  end
+
+  defp make_stream_state_topic(state) do
+    stream_name =
+      case state.stream_name do
+        nil -> "default"
+        "" -> "default"
+        name -> to_string(name)
+      end
+
+    RSMP.Topic.new(state.id, "stream", state.module, state.code, stream_name, [])
   end
 
   defp schedule_full_timer(%{update_rate: nil} = state), do: state

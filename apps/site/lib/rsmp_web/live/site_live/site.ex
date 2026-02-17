@@ -186,6 +186,16 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     Enum.group_by(stream_list, fn stream -> "#{stream.module}.#{stream.code}" end)
   end
 
+  def format_status_lines(value) when is_map(value) do
+    value
+    |> Enum.map(fn {key, val} -> {to_string(key), val} end)
+  end
+
+  def format_status_lines(value), do: [{"value", value}]
+
+  def format_status_value(value) when is_map(value) or is_list(value), do: Poison.encode!(value)
+  def format_status_value(value), do: to_string(value)
+
   defp assign_statuses_and_streams(socket, statuses, site_id) do
     stream_list = TLC.get_streams(site_id)
 
