@@ -2,6 +2,65 @@
 <div id="client"></div>
 
 <div class="overflow-x-auto rounded-md my-4">
+  <table id="operate" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Operate
+    </caption>
+
+    <tbody>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">Plan</td>
+        <td class="px-1 py-1 align-top">
+          <div class="flex gap-2 flex-wrap">
+            <%= for plan <- @statuses["tlc.plans"] || [] do %>
+              <button
+                class={RSMP.ButtonClasses.selectable(get_in(@statuses, ["tlc.plan", :plan]) == plan)}
+                phx-click="set_plan"
+                phx-value-plan={plan}
+              >
+                <%= plan %>
+              </button>
+            <% end %>
+          </div>
+        </td>
+        <td class="px-1 py-1 align-top">
+          <%= @plan_result["message"] %>
+        </td>
+      </tr>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">Traffic</td>
+        <td class="px-1 py-1 align-top">
+          <div class="flex gap-2 flex-wrap">
+            <button
+              class={RSMP.ButtonClasses.selectable(@traffic_level == :none)}
+              phx-click="set_traffic_level"
+              phx-value-level="none"
+            >
+              None
+            </button>
+            <button
+              class={RSMP.ButtonClasses.selectable(@traffic_level == :low)}
+              phx-click="set_traffic_level"
+              phx-value-level="low"
+            >
+              Low
+            </button>
+            <button
+              class={RSMP.ButtonClasses.selectable(@traffic_level == :high)}
+              phx-click="set_traffic_level"
+              phx-value-level="high"
+            >
+              High
+            </button>
+          </div>
+        </td>
+        <td class="px-1 py-1 align-top"></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="overflow-x-auto rounded-md my-4">
   <table id="statuses" class="w-full text-left">
     <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
       Status
@@ -9,8 +68,9 @@
 
     <thead>
       <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Path</th>
+        <th class="px-1 py-1">Code</th>
         <th class="px-1 py-1">Value</th>
+        <th class="px-1 py-1">Streams</th>
         <th class="px-1 py-1"></th>
       </tr>
     </thead>
@@ -18,13 +78,40 @@
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
         <td class="px-1 py-1 align-top"><%= status %></td>
         <td class="px-1 py-1">
-          <%= Poison.encode!(value) %>
+          <%= for {name, formatted_value} <- format_status_lines(value) do %>
+            <div><%= name %>: <%= format_status_value(formatted_value) %></div>
+          <% end %>
+        </td>
+        <td class="px-1 py-1 align-top">
+          <%= if related_streams = @streams_by_status[status] do %>
+            <div class="flex flex-wrap gap-1">
+              <%= for stream <- related_streams do %>
+                <button
+                  class={stream_button_class(stream, @stream_pulses)}
+                  phx-click={if stream.running, do: "stop_stream", else: "start_stream"}
+                  phx-value-module={stream.module}
+                  phx-value-code={stream.code}
+                  phx-value-stream={stream.stream_name || ""}
+                  title={
+                    "Seq: #{stream.seq} | Default: #{if stream.default_on, do: "on", else: "off"} | Delta: " <>
+                      (case stream.delta_rate do
+                         :on_change -> "on change"
+                         {:interval, ms} -> "#{ms}ms"
+                         other -> inspect(other)
+                       end) <> " | QoS: #{stream.qos}"
+                  }
+                >
+                  <%= stream.stream_name || "default" %>
+                </button>
+              <% end %>
+            </div>
+          <% end %>
         </td>
         <td class="px-1 py-1">
           <%= if is_integer(value) do %>
             <%= for {event,label} <- [{"increase","+"},{"decrease","-"}] do %>
               <button
-                class="bg-stone-600 text-white rounded-lg px-2"
+                class={RSMP.ButtonClasses.neutral()}
                 phx-click={event}
                 value={status}
               >
@@ -46,7 +133,7 @@
 
     <thead>
       <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Path</th>
+        <th class="px-1 py-1">Code</th>
         <%= for flag <- @alarm_flags do %>
           <th class="px-1 py-1"><%= to_string(flag) %></th>
         <% end %>
@@ -59,8 +146,8 @@
         <%= for flag <- @alarm_flags do %>
           <td class="px-1 py-1">
             <button
-              class={"text-white rounded-lg px-2 " <> if(alarm[flag], do: "bg-purple-900", else: "bg-stone-600") <> if(flag != :active, do: " opacity-20", else: "")}
-              disabled={flag != :active}
+              class={RSMP.ButtonClasses.alarm(alarm[flag], to_string(flag) != "active")}
+              disabled={to_string(flag) != "active"}
               phx-click="alarm"
               phx-value-path={path}
               value={flag}
@@ -69,27 +156,6 @@
             </button>
           </td>
         <% end %>
-      </tr>
-    <% end %>
-  </table>
-</div>
-
-<div class="overflow-x-auto rounded-md my-4">
-  <table id="commands" class="w-full text-left">
-    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
-      Commands
-    </caption>
-
-    <thead>
-      <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Path</th>
-        <th class="px-1 py-1">Log</th>
-      </tr>
-    </thead>
-    <%= for log <- @command_logs do %>
-      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1 align-top"><%= log.id %></td>
-        <td class="px-1 py-1 align-top"><%= log.message %></td>
       </tr>
     <% end %>
   </table>

@@ -12,6 +12,7 @@ defmodule RSMP.Site.MixProject do
       elixir: "~> 1.20.0-rc.1",
       deps: deps(),
       elixirc_paths: elixirc_paths(Mix.env()),
+      consolidate_protocols: false,
       listeners: [Phoenix.CodeReloader]
     ]
   end

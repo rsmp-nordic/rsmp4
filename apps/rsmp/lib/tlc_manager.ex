@@ -6,7 +6,7 @@ defmodule RSMP.Remote.Service.TLC do
     id: nil,
     base: 0,
     cycle: 0,
-    groups: [],
+    groups: "",
     alarms: %{},
     plans: %{},
     stage: 0,
@@ -15,7 +15,7 @@ defmodule RSMP.Remote.Service.TLC do
   )
 
   @impl RSMP.Remote.Service.Behaviour
-  def new(id, data \\ []), do: __struct__(Map.merge(data, %{id: id}))
+  def new(id, data \\ %{}), do: __struct__(Map.merge(data, %{id: id}))
 end
 
 defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
@@ -26,7 +26,7 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
 
   def receive_status(
         service,
-        %RSMP.Topic{path: %RSMP.Path{code: "14"}=path},
+      %RSMP.Topic{path: %RSMP.Path{code: "plan"}=path},
         %{plan: plan, source: source},
         _properties
       ) do
@@ -84,7 +84,7 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
   end
 
   # convert from sxl format to internal format
-  def parse_status(_service, "14", data) do
+  def parse_status(_service, "plan", data) do
     %{
       plan: data["status"],
       source: data["source"]

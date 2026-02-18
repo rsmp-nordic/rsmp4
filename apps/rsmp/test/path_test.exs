@@ -17,7 +17,7 @@ defmodule RSMP.PathTest do
 
   describe "from_string/1" do
     test "creates a path from a string" do
-      path = RSMP.Path.from_string("my_mod/my_code/my_comp")
+      path = RSMP.Path.from_string("my_mod.my_code/my_comp")
       assert RSMP.Path.to_list(path) == ["my_mod", "my_code", "my_comp"]
     end
   end
@@ -25,7 +25,7 @@ defmodule RSMP.PathTest do
   describe "to_string/1" do
     test "converts a path to its string representation" do
       path = RSMP.Path.new("mod", "code", ["comp"])
-      assert to_string(path) == "mod/code/comp"
+      assert to_string(path) == "mod.code/comp"
     end
   end
 end

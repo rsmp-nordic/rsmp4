@@ -16,7 +16,7 @@ Erlang/OTP 25 [erts-13.2.2.3] [source] [64-bit] [smp:8:8] [ds:8:8:10] [async-thr
 Interactive Elixir (1.15.5) - press Ctrl+C to exit (type h() ENTER for help)
 [info] RSMP: tlc_2b3c3cf7: Received status ./env/humidity: 49 from tlc_2b3c3cf7
 [info] RSMP: tlc_2b3c3cf7: Received status ./env/temperature: 28 from tlc_2b3c3cf7
-[info] RSMP: tlc_2b3c3cf7: Received status ./tlc/plan: 4 from tlc_2b3c3cf7
+[info] RSMP: tlc_2b3c3cf7: Received status tlc.plan: %{plan: 4, source: "forced"} from tlc_2b3c3cf7
 
 iex(4)> RSMP.Supervisor.site_ids()
 ["tlc_2b3c3cf7", "tlc_7a88044b", "tlc_d8815f19", "tlc_debf8805"]
@@ -46,9 +46,9 @@ iex(6)> RSMP.Supervisor.client("tlc_2b3c3cf7")
 
 iex(6)> RSMP.Supervisor.set_plan("tlc_7a88044b",2)
 :ok
-[info] RSMP: Sending 'plan' command d16a to tlc_7a88044b: Please switch to plan 5
-iex(7)> [info] RSMP: tlc_7a88044b: Received response to 'plan' command d16a: %{"plan" => 5, "reason" => "", "status" => "ok"}
-[info] RSMP: tlc_7a88044b: Received status ./tlc/plan: 5 from tlc_7a88044b
+[info] RSMP: Sending 'tlc.plan.set' command d16a to tlc_7a88044b: Please switch to plan 5
+iex(7)> [info] RSMP: tlc_7a88044b: Received response to 'tlc.plan.set' command d16a: %{"plan" => 5, "reason" => "", "status" => "ok"}
+[info] RSMP: tlc_7a88044b: Received status tlc.plan: %{plan: 5, source: "forced"} from tlc_7a88044b
  ```
 
 ### Site
@@ -70,7 +70,7 @@ iex(4)> pid |> RSMP.Site.get_id()  # show our RSMP/MQTT id
 iex(5)> pid |> RSMP.Site.get_statuses()  # show our local statuses
 %{
   "./env/humidity" => 48,
-  "./tlc/plan" => 1,
+  "tlc.plan" => %{plan: 1, source: "startup"},
   "./env/temperature" => 28
 }
 

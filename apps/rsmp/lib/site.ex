@@ -120,8 +120,52 @@ defmodule RSMP.Site do
     # subscribe to commands
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/command/#", 1})
 
+    # subscribe to stream throttling
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/throttle/#", 1})
+
     # subscribe to alarm reactions
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/reaction/#", 1})
+  end
+
+  def handle_throttle(site, path, data) do
+    stream_name =
+      case path.component do
+        [] -> nil
+        [name] when name in ["", "default"] -> nil
+        [name] when is_binary(name) -> name
+        _ -> :invalid
+      end
+
+    action = if is_map(data), do: data["action"], else: nil
+
+    cond do
+      action not in ["start", "stop"] ->
+        Logger.warning("RSMP: Invalid throttle action for #{path}: #{inspect(data)}")
+        site
+
+      stream_name == :invalid ->
+        Logger.warning("RSMP: Invalid throttle stream segment for #{path}: #{inspect(path.component)}")
+        site
+
+      true ->
+        case RSMP.Registry.lookup_stream(site.id, path.module, path.code, stream_name, []) do
+          [{pid, _}] ->
+            case action do
+              "start" -> RSMP.Stream.start_stream(pid)
+              "stop" -> RSMP.Stream.stop_stream(pid)
+            end
+
+            stream_segment = stream_name || "default"
+            stream_key = "#{to_string(path)}/#{stream_segment}"
+            pub = %{topic: "stream", stream: stream_key, state: if(action == "start", do: "running", else: "stopped")}
+            Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
+
+          [] ->
+            Logger.warning("RSMP: Stream not found for throttle: #{path}")
+        end
+
+        site
+    end
   end
 
   def handle_publish(topic, _module, data, site) do
@@ -269,7 +313,7 @@ defmodule RSMP.Site do
         Site.publish_status(site, path)
 
         pub = %{topic: "status", changes: [path]}
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
         {:noreply, site}
       end
 
@@ -280,7 +324,7 @@ defmodule RSMP.Site do
           Site.publish_alarm(site, Path.from_string(path))
 
           pub = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
           {:noreply, site}
         else
           {:noreply, site}
@@ -294,7 +338,7 @@ defmodule RSMP.Site do
           Site.publish_alarm(site, Path.from_string(path))
 
           pub = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
           {:noreply, site}
         else
           {:noreply, site}
@@ -308,7 +352,7 @@ defmodule RSMP.Site do
           Site.publish_alarm(site, Path.from_string(path))
 
           pub = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
           {:noreply, site}
         else
           {:noreply, site}
@@ -322,7 +366,7 @@ defmodule RSMP.Site do
         Site.publish_alarm(site, Path.from_string(path))
 
         pub = %{topic: "alarm", changes: [path]}
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
 
         {:noreply, site}
       end
@@ -344,6 +388,7 @@ defmodule RSMP.Site do
             "status" -> responder.receive_status(site, topic.path, data, properties)
             "command" -> responder.receive_command(site, topic.path, data, properties)
             "reaction" -> responder.receive_reaction(site, topic.path, data, properties)
+            "throttle" -> Site.handle_throttle(site, topic.path, data)
           end
 
         {:noreply, site}

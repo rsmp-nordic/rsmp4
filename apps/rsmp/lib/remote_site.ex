@@ -7,6 +7,7 @@ defmodule RSMP.Remote.Node.Site do
     online: false,
     modules: %{},
     statuses: %{},
+    streams: %{},
     alarms: %{},
     num_alarms: 0
   )

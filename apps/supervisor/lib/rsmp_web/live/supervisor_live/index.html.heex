@@ -8,16 +8,16 @@
 
     <thead>
       <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1 w-1">Online</th>
-        <th class="px-1 py-1">ID</th>
-        <th class="px-1 py-1">Alarms</th>
+        <th class="px-1 py-1 w-1 align-top">Online</th>
+        <th class="px-1 py-1 align-top">ID</th>
+        <th class="px-1 py-1 align-top">Alarms</th>
       </tr>
     </thead>
     <%= for {id,state} <- @sites do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1"><%= if state.online, do: "🟢" %></td>
-        <td class="px-1 py-1"><.link href={~p"/site/#{id}"}><%= id %></.link></td>
-        <td class="px-1 py-1">
+        <td class="px-1 py-1 align-top"><%= if state.online, do: "🟢" %></td>
+        <td class="px-1 py-1 align-top"><.link href={~p"/site/#{id}"}><%= id %></.link></td>
+        <td class="px-1 py-1 align-top">
           <%= if state.num_alarms > 0, do: "⚠️ " <> to_string(state.num_alarms) %>
         </td>
       </tr>

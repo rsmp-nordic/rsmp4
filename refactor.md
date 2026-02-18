@@ -27,8 +27,8 @@ How do we map topic paths to services handling them?
 Each pair of {service,component} maps to a service.
 
 af34/state 							-> dispatcher
-f32a/command/tlc/2/tc 	-> tc
-422e/status/tlc/1/tc		-> tc
+f32a/command/tlc.plan.set/tc 	-> tc
+422e/status/tlc.groups/tc		-> tc
 
 ## Retain
 Status messages and alarms should probably be retained, so that when a receiver reconnects, it get's the latest status.

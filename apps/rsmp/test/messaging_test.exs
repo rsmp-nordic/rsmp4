@@ -41,8 +41,8 @@ defmodule RSMP.MessagingTest do
     {:ok, pid} = RSMP.Remote.Service.TLC.start_link({id, remote_id, "tlc", [], %{}})
 
     # Create the status message
-    # Expecting path '14' (Status) as defined in RSMP.Remote.Service.TLC.receive_status/4
-    topic = RSMP.Topic.new(remote_id, "status", "tlc", "14")
+    # Expecting path 'plan' (Status) as defined in RSMP.Remote.Service.TLC.receive_status/4
+    topic = RSMP.Topic.new(remote_id, "status", "tlc", "plan")
     data = %{"status" => 2, "source" => "local"}
 
     # Send receive_status cast
@@ -107,7 +107,7 @@ defmodule RSMP.MessagingTest do
     initial_data = %{plans: %{2 => %{desc: "Plan 2"}}}
     {:ok, pid} = RSMP.Service.TLC.start_link({id, [], "tlc", initial_data})
 
-    topic = RSMP.Topic.new(id, "command", "tlc", "2")
+    topic = RSMP.Topic.new(id, "command", "tlc", "plan.set")
     data = %{"plan" => 2}
 
     # Helper to clean mailbox before call
@@ -123,14 +123,12 @@ defmodule RSMP.MessagingTest do
     state = :sys.get_state(pid)
     assert state.plan == 2
 
-    # Verify Published Status (from inside receive_command)
-    assert_receive {:published, topic_status, _data_status}
-    assert topic_status.type == "status"
-    assert topic_status.path.code == "14"
+    # Status is now delivered via streams only, so no raw status is published.
+    # The report_to_streams call will find no streams in this test (none started).
 
     # Verify Published Result (from generic handle_call)
     assert_receive {:published, topic_result, _data_result}
     assert topic_result.type == "result"
-    assert topic_result.path.code == "2"
+    assert topic_result.path.code == "plan.set"
   end
 end

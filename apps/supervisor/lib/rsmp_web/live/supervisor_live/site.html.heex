@@ -1,7 +1,51 @@
-<p><.link href={~p"/"}>&larr; Site List</.link></p>
 
-<h1 class="text-2xl font-bold py-4">Remote Site <%= @site_id %></h1>
+<h1 class="text-2xl font-bold py-4"><.link href={~p"/"}>&larr;</.link> Remote Site <%= @site_id %></h1>
 <div id="client"></div>
+
+<div class="overflow-x-auto rounded-md my-4">
+  <table id="operate" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Operate
+    </caption>
+
+    <tbody>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">Plan</td>
+        <td class="px-1 py-1 align-top">
+          <div class="flex gap-2 flex-wrap">
+            <%= for plan <- @plans do %>
+              <button
+                type="button"
+                phx-click="command"
+                phx-value-path="tlc.plan.set"
+                phx-value-plan={plan}
+                class={RSMP.ButtonClasses.selectable(@commands["tlc.plan.set"] == plan)}
+              >
+                <%= plan %>
+              </button>
+            <% end %>
+            <button
+              type="button"
+              phx-click="command"
+              phx-value-path="tlc.plan.set"
+              phx-value-plan={(List.last(@plans) || 0) + 1}
+              class="bg-red-600 hover:bg-red-800 text-white rounded-lg px-2"
+              title="Send invalid plan"
+            >
+              <%= (List.last(@plans) || 0) + 1 %>
+            </button>
+          </div>
+        </td>
+        <td class="px-1 py-1 align-top">
+          <span class={"inline-block h-5 w-5 animate-spin rounded-full border-4 border-solid border-purple-900 border-r-transparent " <> if @responses["tlc.plan.set"]["phase"] == "waiting", do: "shown", else: "hidden"}>
+          </span>
+          <%= @responses["tlc.plan.set"]["symbol"] %>
+          <%= @responses["tlc.plan.set"]["reason"] %>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
 
 <div class="overflow-x-auto rounded-md my-4">
   <table id="statuses" class="w-full text-left">
@@ -11,17 +55,36 @@
 
     <thead>
       <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Path</th>
-        <th class="px-1 py-1">Value</th>
+        <th class="px-1 py-1 align-top">Code</th>
+        <th class="px-1 py-1 align-top">Value</th>
+        <th class="px-1 py-1 align-top">Streams</th>
       </tr>
     </thead>
 
-    <%= for {path,value} <- @site.statuses do %>
+    <%= for row <- status_rows(@site) do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1"><%= path %></td>
-        <td class="px-1 py-1">
-          <%= {:ok, str} = Poison.encode(value)
-          String.trim(str) %>
+        <td class="px-1 py-1 align-top"><%= row.path %></td>
+        <td class="px-1 py-1 align-top">
+          <%= for {name, formatted_value} <- format_status_lines(row.value) do %>
+            <div><%= name %>: <%= format_status_line_value(formatted_value) %></div>
+          <% end %>
+        </td>
+        <td class="px-1 py-1 align-top">
+          <div class="flex flex-wrap gap-1">
+            <%= for stream <- row.streams do %>
+              <button
+                type="button"
+                class={stream_button_class(stream, row.path, @stream_pulses)}
+                phx-click="throttle"
+                phx-value-path={row.path}
+                phx-value-stream={stream.key}
+                phx-value-state={stream.state}
+                title={stream.title}
+              >
+                <%= stream.label %>
+              </button>
+            <% end %>
+          </div>
         </td>
       </tr>
     <% end %>
@@ -36,101 +99,30 @@
 
     <thead>
       <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Path</th>
+        <th class="px-1 py-1 align-top">Code</th>
         <%= for flag <- @alarm_flags do %>
-          <th class="px-1 py-1"><%= to_string(flag) %></th>
+          <th class="px-1 py-1 align-top"><%= to_string(flag) %></th>
         <% end %>
       </tr>
     </thead>
 
     <%= for {path,alarm} <- @site.alarms do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1"><%= path %></td>
+        <td class="px-1 py-1 align-top"><%= path %></td>
         <%= for flag <- @alarm_flags do %>
-          <td class="px-1 py-1">
+          <td class="px-1 py-1 align-top">
             <button
-              class={"text-white rounded-lg px-2 " <> if(alarm[flag], do: "bg-purple-900", else: "bg-stone-600") <> if(flag == "active", do: " opacity-20", else: "")}
+              class={RSMP.ButtonClasses.alarm(alarm[flag], flag == "active" or (flag != "active" and not alarm["active"]))}
               phx-click="alarm"
               phx-value-path={path}
               phx-value-flag={flag}
               value={to_string(alarm[flag])}
-              disabled={flag == "active"}
+              disabled={flag == "active" or (flag != "active" and not alarm["active"])}
             >
               <%= if alarm[flag], do: ~c"Yes", else: ~c"No" %>
             </button>
           </td>
         <% end %>
-      </tr>
-    <% end %>
-  </table>
-</div>
-
-<div class="overflow-x-auto rounded-md my-4">
-  <table id="commands" class="w-full text-left">
-    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
-      Commands
-    </caption>
-
-    <thead>
-      <tr class="text-base bg-stone-100">
-        <th class="px-1 py-1">Path</th>
-        <th class="px-1 py-1">Action</th>
-        <th class="px-1 py-1 w-1/3">Response</th>
-      </tr>
-    </thead>
-
-    <%= for {command,status} <- @commands do %>
-      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1"><%= command %></td>
-        <td class="px-1 py-1">
-          <%= if command == "tlc/2" do %>
-            <div class="flex gap-2 flex-wrap">
-              <%= for plan <- @plans do %>
-                <button
-                  type="button"
-                  phx-click="command"
-                  phx-value-path={command}
-                  phx-value-plan={plan}
-                  class={"rounded-lg px-2 text-white " <> if(status == plan, do: "bg-purple-900", else: "bg-stone-600 hover:bg-orange-600")}
-                >
-                  <%= plan %>
-                </button>
-              <% end %>
-              <button
-                type="button"
-                phx-click="command"
-                phx-value-path={command}
-                phx-value-plan={(List.last(@plans) || 0) + 1}
-                class="bg-red-600 hover:bg-red-800 text-white rounded-lg px-2"
-                title="Send invalid plan"
-              >
-                <%= (List.last(@plans) || 0) + 1 %>
-              </button>
-            </div>
-          <% else %>
-            <form phx-submit="command">
-              <input
-                type="number"
-                name="value"
-                value={status}
-                class="bg-stone-600 text-white rounded-lg px-2 w-20"
-              />
-              <input type="hidden" name="path" value={command} />
-              <input
-                type="submit"
-                name="submit"
-                value="Send"
-                class="bg-stone-600 hover:bg-orange-600 text-white rounded-lg px-2"
-              />
-            </form>
-          <% end %>
-        </td>
-        <td>
-          <span class={"inline-block h-5 w-5 animate-spin rounded-full border-4 border-solid border-purple-900 border-r-transparent " <> if @responses[command]["phase"] == "waiting", do: "shown", else: "hidden"}>
-          </span>
-          <%= @responses[command]["symbol"] %>
-          <%= @responses[command]["reason"] %>
-        </td>
       </tr>
     <% end %>
   </table>

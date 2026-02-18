@@ -48,6 +48,18 @@ Used when acting as a Supervisor/Controller.
 2.  **Receiver (Remote)**: `RSMP.Connection` receives the alarm message and casts to `receive_alarm` on the `RSMP.Remote.Service`.
 3.  **Update**: The remote service creates or updates an `RSMP.Alarm` struct within its state using `parse_alarm` and `receive_alarm`.
 
+## TLC Codes In Use
+
+- **Statuses**
+  - `tlc.groups`
+  - `tlc.plan`
+  - `tlc.plans`
+- **Alarms**
+  - `tlc.hardware.error`
+  - `tlc.hardware.warning`
+- **Commands**
+  - `tlc.plan.set`
+
 ## File Structure
 
 - `lib/connection.ex`: MQTT process and message dispatcher.

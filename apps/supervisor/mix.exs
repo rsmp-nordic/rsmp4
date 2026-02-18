@@ -11,6 +11,7 @@ defmodule RSMP.Supervisor.MixProject do
       lockfile: "../../mix.lock",
       deps: deps(),
       elixirc_paths: elixirc_paths(Mix.env()),
+      consolidate_protocols: false,
       listeners: [Phoenix.CodeReloader]
     ]
   end

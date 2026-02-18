@@ -14,7 +14,18 @@ defmodule RSMP.Path do
   end
 
   def from_string(string) do
-    {[module, code], component} = string |> String.split("/") |> Enum.split(2)
+    {full_code, component} =
+      case String.split(string, "/", parts: 2) do
+        [full_code, rest] -> {full_code, String.split(rest, "/")}
+        [full_code] -> {full_code, []}
+      end
+
+    {module, code} =
+      case String.split(full_code, ".", parts: 2) do
+        [m, c] -> {m, c}
+        [c] -> {nil, c}
+      end
+
     new(module, code, component)
   end
 
@@ -22,8 +33,13 @@ defmodule RSMP.Path do
 
   defimpl String.Chars do
     def to_string(path) do
-      array = [path.module, path.code] ++ path.component
-      array |> Enum.join("/")
+      code_part = if path.module, do: "#{path.module}.#{path.code}", else: path.code
+
+      if path.component == [] do
+        code_part
+      else
+        Enum.join([code_part | path.component], "/")
+      end
     end
   end
 end
