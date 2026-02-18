@@ -125,7 +125,7 @@ defmodule RSMP.Connection do
       "presence" ->
         dispatch_presence(connection, topic, data)
 
-      type when type in ["command", "reaction", "throttle"] ->
+      type when type in ["command", "throttle"] ->
         dispatch_to_service(connection, topic, data, properties)
 
       type when type in ["status", "alarm", "result"] ->
@@ -184,14 +184,13 @@ defmodule RSMP.Connection do
 
     if connection.type == :site do
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/command/#", qos})
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/reaction/#", qos})
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/throttle/#", qos})
     end
 
     if connection.type == :supervisor do
       wildcard_id = List.duplicate("+", levels) |> Enum.join("/")
 
-      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/presence/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/presence", qos})
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/status/#", qos})
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/alarm/#", qos})
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/result/#", qos})
@@ -231,7 +230,6 @@ defmodule RSMP.Connection do
           [{pid, _value}] ->
             case topic.type do
               "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
-              "reaction" -> GenServer.call(pid, {:receive_reaction, topic, data, properties})
               _ -> :ok
             end
 

@@ -1,21 +1,17 @@
 defmodule RSMP.Alarm do
   defstruct(
-    active: false,
-    acknowledged: false,
-    blocked: false
+    active: false
   )
 
   def new(options \\ []), do: __struct__(options)
 
   def get_flag_keys() do
-    [:active, :acknowledged, :blocked] |> Enum.sort()
+    [:active]
   end
 
   def flag_atom_from_string(flag) do
     mapping = %{
-      "active" => :active,
-      "acknowledged" => :acknowledged,
-      "blocked" => :blocked
+      "active" => :active
     }
 
     mapping[flag]

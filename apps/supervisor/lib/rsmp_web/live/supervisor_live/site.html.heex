@@ -112,12 +112,9 @@
         <%= for flag <- @alarm_flags do %>
           <td class="px-1 py-1 align-top">
             <button
-              class={RSMP.ButtonClasses.alarm(alarm[flag], flag == "active" or (flag != "active" and not alarm["active"]))}
-              phx-click="alarm"
-              phx-value-path={path}
-              phx-value-flag={flag}
-              value={to_string(alarm[flag])}
-              disabled={flag == "active" or (flag != "active" and not alarm["active"])}
+              class={RSMP.ButtonClasses.alarm(alarm[flag], false)}
+              type="button"
+              disabled
             >
               <%= if alarm[flag], do: ~c"Yes", else: ~c"No" %>
             </button>

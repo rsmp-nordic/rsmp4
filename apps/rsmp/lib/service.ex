@@ -3,7 +3,6 @@ defprotocol RSMP.Service.Protocol do
   def id(service)
 
   def receive_command(service, path, data, properties)
-  def receive_reaction(service, path, data, properties)
 
   def format_status(service, code)
 end
@@ -91,12 +90,6 @@ defmodule RSMP.Service do
         end
         {:reply, result, service}
       end
-
-      @impl GenServer
-      def handle_call({:receive_reaction, topic, data, properties}, _from, service) do
-        service = RSMP.Service.Protocol.receive_reaction(service, topic, data, properties)
-        {:reply, :ok, service}
-      end
     end
   end
 
@@ -130,8 +123,6 @@ defmodule RSMP.Service do
     data = %{
       "aSp" => "Issue",
       "aSt" => if(alarm.active, do: "Active", else: "Inactive"),
-      "ack" => alarm.acknowledged,
-      "sS" => alarm.blocked,
       "aTs" => RSMP.Time.timestamp()
     }
     RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 1}, properties)

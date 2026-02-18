@@ -235,6 +235,48 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
 
   def receive_command(
         service,
+        %RSMP.Topic{path: %RSMP.Path{code: "alarm.set", module: "tlc"} = path},
+        %{"code" => code, "active" => active},
+        _properties
+      )
+      when is_boolean(active) do
+    cond do
+      Map.has_key?(service.alarms, code) == false ->
+        msg = "Unknown alarm code #{code} for command #{path}"
+        Logger.warning(msg)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "command_log", id: "tlc.alarm.set", message: msg})
+        {service, %{status: "missing", code: code, reason: "Alarm code not found"}}
+
+      true ->
+        alarm = Map.get(service.alarms, code, RSMP.Alarm.new())
+
+        if alarm.active == active do
+          {service, %{status: "already", code: code, active: active}}
+        else
+          alarm = %{alarm | active: active}
+          alarms = Map.put(service.alarms, code, alarm)
+          service = %{service | alarms: alarms}
+          RSMP.Service.publish_alarm(service, code)
+          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "alarm"})
+          {service, %{status: "ok", code: code, active: active}}
+        end
+    end
+  end
+
+  def receive_command(
+        service,
+        %RSMP.Topic{path: %RSMP.Path{code: "alarm.set", module: "tlc"} = path},
+        payload,
+        _properties
+      ) do
+    msg = "Invalid payload for command #{path}: #{inspect(payload)}"
+    Logger.warning(msg)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "command_log", id: "tlc.alarm.set", message: msg})
+    {service, nil}
+  end
+
+  def receive_command(
+        service,
       %RSMP.Topic{path: %RSMP.Path{code: "plan.set"}},
         %{"plan" => plan},
         _properties
@@ -266,29 +308,6 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
     Logger.warning(msg)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "command_log", id: "tlc", message: msg})
     {service,nil}
-  end
-
-  def receive_reaction(service, %RSMP.Topic{path: %RSMP.Path{code: code}}, payload, _properties) do
-     alarms = service.alarms
-     if Map.has_key?(alarms, code) do
-        alarm = alarms[code]
-        alarm = RSMP.Alarm.update_from_string_map(alarm, payload)
-        alarms = Map.put(alarms, code, alarm)
-        service = %{service | alarms: alarms}
-
-        RSMP.Service.publish_alarm(service, code)
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "alarm"})
-
-        service
-     else
-        Logger.warning("Unknown reaction for alarm #{code}")
-        service
-     end
-  end
-
-  def receive_reaction(service, topic, _payload, _properties) do
-    Logger.warning("Unknown reaction #{topic}")
-    service
   end
 
   # convert from internal format to sxl format
@@ -328,30 +347,3 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
 
   def format_status(service, "28"), do: format_status(service, "24")
 end
-
-# ----
-
-#  def reaction(service, %Path{code: "201"}=path, flags, _properties) do
-#    path_string = to_string(path)
-#    Logger.info("RSMP: Received alarm flag #{to_string(path)}, #{inspect(flags)}")
-#
-#    alarm = service.alarms[path_string] |> Alarm.update_from_string_map(flags)
-#    service = put_in(service.alarms[path_string], alarm)
-#
-#    Node.publish_alarm(service, path)
-#
-#    pub = %{topic: "alarm", changes: %{path_string => service.alarms[path]}}
-#    Phoenix.PubSub.broadcast(RSMP.PubSub, "rsmp", pub)
-#
-#    service
-#  end
-#
-#  def reaction(service, path, payload, _properties) do
-#    Logger.warning(
-#      "Unhandled reaction, path: #{inspect(path)}, payload: #{inspect(payload)}"
-#    )
-#
-#    service
-#  end
-#
-#  def alarm(service, _path, _flags, _properties), do: service#

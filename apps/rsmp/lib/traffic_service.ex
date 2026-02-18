@@ -115,7 +115,6 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.Traffic do
 	def id(service), do: service.id
 
 	def receive_command(service, _topic, _data, _properties), do: {service, nil}
-	def receive_reaction(service, _topic, _data, _properties), do: service
 
 	def format_status(service, "volume") do
 		service.live_volume

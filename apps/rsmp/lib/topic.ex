@@ -60,7 +60,7 @@ defmodule RSMP.Topic do
               %__MODULE__{id: id, type: "status", stream_name: stream_name, path: Path.new(module, code, component)}
           end
 
-        # Non-status topics (command, result, alarm, reaction): no stream concept
+        # Non-status topics (command, result, alarm): no stream concept
         [type, full_code | tail] ->
           {module, code} =
             case String.split(full_code, ".", parts: 2) do

@@ -33,10 +33,6 @@ defmodule RSMP.Supervisor do
     GenServer.cast(__MODULE__, {:set_plan, site_id, plan})
   end
 
-  def set_alarm_flag(site_id, path, flag, value) do
-    GenServer.cast(__MODULE__, {:set_alarm_flag, site_id, path, flag, value})
-  end
-
   def start_stream(site_id, module, code, stream_name) do
     GenServer.cast(__MODULE__, {:throttle_stream, site_id, module, code, stream_name, "start"})
   end
@@ -44,6 +40,8 @@ defmodule RSMP.Supervisor do
   def stop_stream(site_id, module, code, stream_name) do
     GenServer.cast(__MODULE__, {:throttle_stream, site_id, module, code, stream_name, "stop"})
   end
+
+
 
   # Callbacks
 
@@ -139,36 +137,6 @@ defmodule RSMP.Supervisor do
         :infinity,
         {&publish_done/1, []}
       )
-
-    {:noreply, supervisor}
-  end
-
-  @impl true
-  def handle_cast({:set_alarm_flag, site_id, path, flag, value}, supervisor) do
-    path_string = to_string(path)
-    supervisor = put_in(supervisor.sites[site_id].alarms[path_string][flag], value)
-
-    # Send alarm flag to device
-    topic = %Topic{id: site_id, type: "reaction", path: path}
-    Logger.info("RSMP: Sending alarm flag #{path_string} to #{site_id}: Set #{flag} to #{value}")
-
-    :emqtt.publish_async(
-      supervisor.pid,
-      to_string(topic),
-      Utility.to_payload(%{flag => value}),
-      [retain: true, qos: 1],
-      &publish_done/1
-    )
-
-    pub = %{
-      topic: "alarm",
-      id: site_id,
-      path: path,
-      alarm: supervisor.sites[site_id].alarms[path_string]
-    }
-
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{site_id}", pub)
 
     {:noreply, supervisor}
   end
@@ -370,9 +338,7 @@ defmodule RSMP.Supervisor do
 
   defp receive_alarm(supervisor, topic, data) do
     alarm = %{
-      "active" => data["aSt"] == "Active",
-      "acknowledged" => data["ack"],
-      "blocked" => data["sS"]
+      "active" => data["aSt"] == "Active"
     }
 
     id = topic.id

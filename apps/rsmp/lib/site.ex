@@ -122,9 +122,6 @@ defmodule RSMP.Site do
 
     # subscribe to stream throttling
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/throttle/#", 1})
-
-    # subscribe to alarm reactions
-    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/reaction/#", 1})
   end
 
   def handle_throttle(site, path, data) do
@@ -387,7 +384,6 @@ defmodule RSMP.Site do
           case topic.type do
             "status" -> responder.receive_status(site, topic.path, data, properties)
             "command" -> responder.receive_command(site, topic.path, data, properties)
-            "reaction" -> responder.receive_reaction(site, topic.path, data, properties)
             "throttle" -> Site.handle_throttle(site, topic.path, data)
           end
 

@@ -68,5 +68,5 @@ Used when acting as a Supervisor/Controller.
 - `lib/tlc_service.ex`: Implementation of the Traffic Light Controller (TLC) local service.
 - `lib/tlc_manager.ex`: Implementation of the TLC remote service (Proxy).
 - `lib/remote_service_generic.ex`: Fallback implementation for unknown remote services.
-- `lib/alarm.ex`: Struct and utilities for managing alarm flags (active, acknowledged, blocked).
+- `lib/alarm.ex`: Struct and utilities for managing alarm state (`active`).
 - `lib/topic.ex` & `lib/path.ex`: Helpers for parsing and generating RSMP topic strings.

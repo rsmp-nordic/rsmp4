@@ -37,22 +37,6 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   end
 
   @impl true
-  def handle_event(
-        "alarm",
-        %{"site-id" => site_id, "path" => path, "flag" => flag, "value" => value},
-        socket
-      ) do
-    RSMP.Supervisor.set_alarm_flag(
-      site_id,
-      RSMP.Path.from_string(path),
-      flag,
-      value == "true"
-    )
-
-    {:noreply, socket}
-  end
-
-  @impl true
   def handle_event(name, data, socket) do
     Logger.info("unhandled event: #{inspect([name, data])}")
     {:noreply, socket}

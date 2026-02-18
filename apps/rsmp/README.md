@@ -25,14 +25,10 @@ iex(6)> RSMP.Supervisor.client("tlc_2b3c3cf7")
 %{
   alarms: %{
     "env/humidity" => %{
-      "acknowledged" => false,
-      "active" => false,
-      "blocked" => false
+      "active" => false
     },
     "env/temperature" => %{
-      "acknowledged" => false,
-      "active" => false,
-      "blocked" => false
+      "active" => false
     }
   },
   num_alarms: 0,
@@ -77,14 +73,10 @@ iex(5)> pid |> RSMP.Site.get_statuses()  # show our local statuses
 iex(6)> pid |> RSMP.Site.get_alarms()  # show our local alarms
 %{
   "./env/humidity" => %{
-    "acknowledged" => false,
-    "active" => false,
-    "blocked" => false
+    "active" => false
   },
   "./env/temperature" => %{
-    "acknowledged" => false,
-    "active" => false,
-    "blocked" => false
+    "active" => false
   }
 }
 

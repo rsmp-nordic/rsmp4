@@ -28,7 +28,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
        site: site,
        stream_pulses: %{},
        plans: get_plans(site),
-       alarm_flags: Enum.sort(["active", "acknowledged", "blocked"]),
+       alarm_flags: ["active"],
        commands: %{
          "tlc.plan.set" => plan
        },
@@ -257,22 +257,6 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   # UI events
 
   @impl true
-  def handle_event("alarm", %{"path" => path, "flag" => flag, "value" => value}, socket) do
-    site_id = socket.assigns.site_id
-    alarms = Map.get(socket.assigns.site, :alarms, %{})
-    alarm = Map.get(alarms, path, %{})
-    active = alarm["active"] == true
-
-    if flag != "active" and active do
-      new_value = value == "false"
-      RSMP.Supervisor.set_alarm_flag(site_id, RSMP.Path.from_string(path), flag, new_value)
-      {:noreply, socket |> assign_site()}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
   def handle_event("command", params, socket) do
     path = params["path"]
     plan = params["plan"] || params["value"]
@@ -407,6 +391,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_info(%{topic: "response", response: response}, socket) do
+    if response[:command] != "plan.set" do
+      {:noreply, socket}
+    else
     symbol =
       case response[:result]["status"] do
         "unknown" -> "⚠️ "
@@ -423,6 +410,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     responses = socket.assigns.responses |> Map.put("tlc.plan.set", result)
     commands = socket.assigns.commands |> Map.put("tlc.plan.set", response[:result]["plan"])
     {:noreply, assign(socket, responses: responses, commands: commands)}
+    end
   end
 
   @impl true
