@@ -226,14 +226,6 @@ defmodule RSMP.Connection do
       {"throttle", module, code} when is_binary(module) and is_binary(code) ->
         handle_stream_throttle(connection, module, code, topic.path.component, data, properties)
 
-      # Legacy support for older stream command topics
-      {"command", "stream", "start"} ->
-        handle_legacy_stream_command(connection, :start, data, properties)
-
-      # Legacy support for older stream command topics
-      {"command", "stream", "stop"} ->
-        handle_legacy_stream_command(connection, :stop, data, properties)
-
       _ ->
         case RSMP.Registry.lookup_service(topic.id, topic.path.module, topic.path.component) do
           [{pid, _value}] ->
@@ -270,35 +262,6 @@ defmodule RSMP.Connection do
       true ->
         stream_action = if action == "start", do: :start, else: :stop
         execute_stream_action(connection, module, code, stream_name, stream_action)
-    end
-  end
-
-  defp handle_legacy_stream_command(connection, action, data, _properties) do
-    stream_path = data["stream"] || ""
-    parts = String.split(stream_path, "/")
-
-    case parts do
-      [full_code, stream_name | _component] ->
-        {module, code} =
-          case String.split(full_code, ".", parts: 2) do
-            [m, c] -> {m, c}
-            [c] -> {nil, c}
-          end
-
-        execute_stream_action(connection, module, code, stream_name, action)
-
-      [full_code] ->
-        # Single-stream status (no stream name)
-        {module, code} =
-          case String.split(full_code, ".", parts: 2) do
-            [m, c] -> {m, c}
-            [c] -> {nil, c}
-          end
-
-        execute_stream_action(connection, module, code, nil, action)
-
-      _ ->
-        Logger.warning("#{connection.id}: Invalid stream path: #{stream_path}")
     end
   end
 
