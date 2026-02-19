@@ -12,6 +12,10 @@ defmodule RSMP.Supervisors do
 
   def start_supervisor() do
     id = SecureRandom.hex(4)
+    start_supervisor_with_id(id)
+  end
+
+  def start_supervisor_with_id(id) do
     spec = {RSMP.Supervisor, id}
 
     case DynamicSupervisor.start_child(RSMP.Registry.via_supervisors(), spec) do
@@ -21,6 +25,13 @@ defmodule RSMP.Supervisors do
 
       error ->
         error
+    end
+  end
+
+  def ensure_supervisor(id) do
+    case RSMP.Registry.lookup_supervisor(id) do
+      [{_pid, _}] -> {:ok, id}
+      [] -> start_supervisor_with_id(id)
     end
   end
 

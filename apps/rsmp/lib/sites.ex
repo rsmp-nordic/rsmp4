@@ -12,6 +12,10 @@ defmodule RSMP.Sites do
 
   def start_site() do
     id = RSMP.Node.TLC.make_site_id()
+    start_site_with_id(id)
+  end
+
+  def start_site_with_id(id) do
     spec = {RSMP.Node.TLC, id}
 
     case DynamicSupervisor.start_child(RSMP.Registry.via_sites(), spec) do
@@ -21,6 +25,13 @@ defmodule RSMP.Sites do
 
       error ->
         error
+    end
+  end
+
+  def ensure_site(id) do
+    case RSMP.Registry.lookup_node(id) do
+      [{_pid, _}] -> {:ok, id}
+      [] -> start_site_with_id(id)
     end
   end
 

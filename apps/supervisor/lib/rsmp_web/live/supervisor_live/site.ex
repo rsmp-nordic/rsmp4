@@ -12,10 +12,16 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     site_id = params["site_id"]
 
     if connected?(socket) do
+      RSMP.Supervisors.ensure_supervisor(supervisor_id)
       Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}:#{site_id}")
     end
 
-    site = RSMP.Supervisor.site(supervisor_id, site_id) || %{statuses: %{}, streams: %{}, alarms: %{}}
+    site =
+      if connected?(socket) do
+        RSMP.Supervisor.site(supervisor_id, site_id) || %{statuses: %{}, streams: %{}, alarms: %{}}
+      else
+        %{statuses: %{}, streams: %{}, alarms: %{}}
+      end
     plan =
       get_in(site, [
         Access.key(:statuses, %{}),

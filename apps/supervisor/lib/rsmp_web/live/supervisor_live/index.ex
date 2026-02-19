@@ -27,6 +27,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
 
   def connected_mount(_params, _session, socket) do
     supervisor_id = socket.assigns.supervisor_id
+    RSMP.Supervisors.ensure_supervisor(supervisor_id)
     Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}")
     {:ok, sort_sites(socket)}
   end
