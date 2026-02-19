@@ -461,9 +461,11 @@ defmodule RSMP.Supervisor do
     maybe_put_seq(status, seq)
   end
 
-  defp maybe_put_status_seq(status, current_status, _stream_name, incoming_seq) do
-    seq = incoming_seq || status_seq(current_status)
-    maybe_put_seq(status, seq)
+  defp maybe_put_status_seq(status, current_status, stream_name, incoming_seq) do
+    current_seq = status_seq(current_status)
+    seq_map = if is_map(current_seq), do: current_seq, else: %{}
+    seq_map = if incoming_seq, do: Map.put(seq_map, stream_name, incoming_seq), else: seq_map
+    if seq_map == %{}, do: status, else: maybe_put_seq(status, seq_map)
   end
 
   defp extract_status_envelope(data) when is_map(data) do

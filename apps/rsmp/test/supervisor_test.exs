@@ -125,7 +125,7 @@ defmodule RSMP.SupervisorTest do
     :timer.sleep(20)
 
     status = RSMP.Supervisor.site(supervisor_id, site_id).statuses["traffic.volume"]
-    assert status["seq"] == 64
+    assert status["seq"] == %{"live" => 64}
 
     s5_full_payload =
       RSMP.Utility.to_payload(%{
@@ -141,6 +141,6 @@ defmodule RSMP.SupervisorTest do
     :timer.sleep(20)
 
     status = RSMP.Supervisor.site(supervisor_id, site_id).statuses["traffic.volume"]
-    assert status["seq"] == 12
+    assert status["seq"] == %{"live" => 64, "5s" => 12}
   end
 end
