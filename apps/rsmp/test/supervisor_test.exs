@@ -106,7 +106,7 @@ defmodule RSMP.SupervisorTest do
     assert status.bicycles == 2
   end
 
-  test "traffic.volume keeps seq per stream" do
+  test "traffic.volume seq is latest stream seq" do
     pid = Process.whereis(RSMP.Supervisor)
     assert pid != nil
 
@@ -124,6 +124,9 @@ defmodule RSMP.SupervisorTest do
     send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: live_full_payload, properties: %{}}})
     :timer.sleep(20)
 
+    status = RSMP.Supervisor.site(site_id).statuses["traffic.volume"]
+    assert status["seq"] == 64
+
     s5_full_payload =
       RSMP.Utility.to_payload(%{
         "type" => "full",
@@ -138,6 +141,6 @@ defmodule RSMP.SupervisorTest do
     :timer.sleep(20)
 
     status = RSMP.Supervisor.site(site_id).statuses["traffic.volume"]
-    assert status["seq"] == %{"live" => 64, "5s" => 12}
+    assert status["seq"] == 12
   end
 end

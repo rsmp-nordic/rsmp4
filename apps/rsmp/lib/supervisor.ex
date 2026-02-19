@@ -462,19 +462,9 @@ defmodule RSMP.Supervisor do
     maybe_put_seq(status, seq)
   end
 
-  defp maybe_put_status_seq(status, current_status, stream_name, incoming_seq) do
-    seq = incoming_seq || status_seq_for_stream(current_status, stream_name)
-
-    if is_nil(seq) do
-      status
-    else
-      seq_map =
-        current_status
-        |> status_seq_map()
-        |> Map.put(stream_name, seq)
-
-      maybe_put_seq(status, seq_map)
-    end
+  defp maybe_put_status_seq(status, current_status, _stream_name, incoming_seq) do
+    seq = incoming_seq || status_seq(current_status)
+    maybe_put_seq(status, seq)
   end
 
   defp extract_status_envelope(data) when is_map(data) do
@@ -508,25 +498,6 @@ defmodule RSMP.Supervisor do
 
   defp status_seq(_value), do: nil
 
-  defp status_seq_for_stream(value, stream_name) do
-    case status_seq(value) do
-      seq when is_map(seq) ->
-        Map.get(seq, stream_name) || Map.get(seq, to_string(stream_name))
-
-      seq ->
-        seq
-    end
-  end
-
-  defp status_seq_map(value) do
-    case status_seq(value) do
-      seq when is_map(seq) ->
-        Enum.into(seq, %{}, fn {key, value} -> {to_string(key), value} end)
-
-      _ ->
-        %{}
-    end
-  end
 
   defp stream_state_key(path, stream_name) do
     normalized_stream =
