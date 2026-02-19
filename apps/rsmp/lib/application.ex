@@ -11,7 +11,10 @@ defmodule RSMP.Application do
       # Start the PubSub system
       {Phoenix.PubSub, name: RSMP.PubSub},
       # Start our registry
-      {Registry, keys: :unique, name: RSMP.Registry}
+      {Registry, keys: :unique, name: RSMP.Registry},
+      # Start the dynamic supervisor managers
+      RSMP.Sites,
+      RSMP.Supervisors
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

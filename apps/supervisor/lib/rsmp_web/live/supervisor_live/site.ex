@@ -8,13 +8,20 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def mount(params, _session, socket) do
     # note that mount is called twice, once for the html request,
     # then for the liveview websocket connection
+    supervisor_id = params["supervisor_id"]
     site_id = params["site_id"]
 
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{site_id}")
+      RSMP.Supervisors.ensure_supervisor(supervisor_id)
+      Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}:#{site_id}")
     end
 
-    site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, streams: %{}, alarms: %{}}
+    site =
+      if connected?(socket) do
+        RSMP.Supervisor.site(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, streams: %{}, alarms: %{}}
+      else
+        %{presence: "offline", statuses: %{}, streams: %{}, alarms: %{}}
+      end
     plan =
       get_in(site, [
         Access.key(:statuses, %{}),
@@ -24,6 +31,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
     {:ok,
      assign(socket,
+       supervisor_id: supervisor_id,
        site_id: site_id,
        site: site,
        stream_pulses: %{},
@@ -39,8 +47,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   def assign_site(socket) do
+    supervisor_id = socket.assigns.supervisor_id
     site_id = socket.assigns.site_id
-    site = RSMP.Supervisor.site(site_id) || %{statuses: %{}, streams: %{}, alarms: %{}}
+    site = RSMP.Supervisor.site(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, streams: %{}, alarms: %{}}
 
     plan =
       get_in(site, [
@@ -267,8 +276,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
         String.to_integer(plan)
       end
 
+    supervisor_id = socket.assigns.supervisor_id
     site_id = socket.assigns[:site_id]
-    RSMP.Supervisor.set_plan(site_id, plan)
+    RSMP.Supervisor.set_plan(supervisor_id, site_id, plan)
     Process.send_after(self(), {:command_waiting, path}, 1000)
 
     responses =
@@ -280,6 +290,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_event("throttle", %{"path" => path, "stream" => stream_name, "state" => state}, socket) do
+    supervisor_id = socket.assigns.supervisor_id
     site_id = socket.assigns.site_id
     stream_state_key = stream_state_key(path, stream_name)
 
@@ -295,9 +306,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
               end
 
             if state == "running" do
-              RSMP.Supervisor.stop_stream(site_id, module, code, stream)
+              RSMP.Supervisor.stop_stream(supervisor_id, site_id, module, code, stream)
             else
-              RSMP.Supervisor.start_stream(site_id, module, code, stream)
+              RSMP.Supervisor.start_stream(supervisor_id, site_id, module, code, stream)
             end
 
           _ ->

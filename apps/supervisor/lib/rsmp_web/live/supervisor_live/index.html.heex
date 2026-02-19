@@ -1,4 +1,4 @@
-<h1 class="text-2xl font-bold py-4">Sites</h1>
+<h1 class="text-2xl font-bold py-4"><.link href={~p"/"}>&larr;</.link> Supervisor <%= @supervisor_id %></h1>
 
 <div class="overflow-x-auto rounded-md my-4">
   <table id="statuses" class="w-full text-left">
@@ -15,8 +15,13 @@
     </thead>
     <%= for {id,state} <- @sites do %>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
-        <td class="px-1 py-1 align-top"><%= if state.online, do: "🟢" %></td>
-        <td class="px-1 py-1 align-top"><.link href={~p"/site/#{id}"}><%= id %></.link></td>
+        <td class="px-1 py-1 align-top"><span class={"inline-block w-3 h-3 rounded-full " <> case state.presence do
+          "online" -> "bg-green-500"
+          "offline" -> "bg-red-500"
+          "shutdown" -> "bg-gray-400"
+          _ -> "bg-gray-400"
+        end}></span></td>
+        <td class="px-1 py-1 align-top"><.link href={~p"/supervisor/#{@supervisor_id}/site/#{id}"}><%= id %></.link></td>
         <td class="px-1 py-1 align-top">
           <%= if state.num_alarms > 0, do: "⚠️ " <> to_string(state.num_alarms) %>
         </td>

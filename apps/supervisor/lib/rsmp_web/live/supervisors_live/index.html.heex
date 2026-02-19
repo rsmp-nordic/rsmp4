@@ -1,0 +1,43 @@
+<h1 class="text-2xl font-bold py-4">Supervisors</h1>
+
+<div class="overflow-x-auto rounded-md my-4">
+  <table id="supervisors" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Supervisors
+    </caption>
+
+    <thead>
+      <tr class="text-base bg-stone-100">
+        <th class="px-1 py-1 align-top">ID</th>
+        <th class="px-1 py-1 align-top w-1"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <%= for id <- @supervisors do %>
+        <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+          <td class="px-1 py-1 align-top">
+            <.link href={~p"/supervisor/#{id}"}><%= id %></.link>
+          </td>
+          <td class="px-1 py-1 align-top">
+            <button
+              type="button"
+              phx-click="remove_supervisor"
+              phx-value-id={id}
+              class="bg-red-600 hover:bg-red-800 text-white rounded-lg px-2"
+            >
+              Remove
+            </button>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+
+<button
+  type="button"
+  phx-click="add_supervisor"
+  class="bg-purple-900 hover:bg-purple-700 text-white rounded-lg px-4 py-2"
+>
+  Add Supervisor
+</button>

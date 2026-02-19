@@ -568,7 +568,6 @@ defmodule RSMP.Stream do
     }
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{state.id}", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{state.id}", pub)
   end
 
   defp normalize_stream_name(nil), do: "default"

@@ -6,6 +6,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
 
   @impl true
   def mount(params, session, socket) do
+    supervisor_id = params["supervisor_id"]
+    socket = assign(socket, supervisor_id: supervisor_id)
+
     case connected?(socket) do
       true ->
         connected_mount(params, session, socket)
@@ -23,16 +26,28 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   end
 
   def connected_mount(_params, _session, socket) do
-    Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor")
+    supervisor_id = socket.assigns.supervisor_id
+    RSMP.Supervisors.ensure_supervisor(supervisor_id)
+    Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}")
     {:ok, sort_sites(socket)}
   end
 
   def sort_sites(socket) do
+    supervisor_id = socket.assigns.supervisor_id
+
     assign(socket,
       sites:
-        RSMP.Supervisor.sites()
+        RSMP.Supervisor.sites(supervisor_id)
         |> Map.to_list()
-        |> Enum.sort_by(fn {id, state} -> {state.online == false, id} end, :asc)
+        |> Enum.sort_by(fn {id, state} ->
+          priority = case state.presence do
+            "online" -> 0
+            "offline" -> 1
+            "shutdown" -> 2
+            _ -> 3
+          end
+          {priority, id}
+        end, :asc)
     )
   end
 

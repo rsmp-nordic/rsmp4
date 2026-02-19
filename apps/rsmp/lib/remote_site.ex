@@ -4,7 +4,7 @@ defmodule RSMP.Remote.Node.Site do
 
   defstruct(
     id: nil,
-    online: false,
+    presence: "offline",
     modules: %{},
     statuses: %{},
     streams: %{},

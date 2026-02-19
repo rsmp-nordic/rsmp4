@@ -6,7 +6,9 @@ defmodule RSMP.Connection do
     emqtt: nil,
     id: nil,
     managers: %{},
-    type: :site
+    type: :site,
+    connected: false,
+    init_options: %{}
   )
 
   def new(options), do: __struct__(options)
@@ -20,6 +22,21 @@ defmodule RSMP.Connection do
   def publish_message(id, topic, data, %{}=options, %{}=properties) do
     [{pid, _value}] = RSMP.Registry.lookup_connection(id)
     GenServer.cast(pid, {:publish_message, topic, data, options, properties})
+  end
+
+  def connected?(id) do
+    [{pid, _value}] = RSMP.Registry.lookup_connection(id)
+    GenServer.call(pid, :connected?)
+  end
+
+  def simulate_disconnect(id) do
+    [{pid, _value}] = RSMP.Registry.lookup_connection(id)
+    GenServer.cast(pid, :simulate_disconnect)
+  end
+
+  def simulate_reconnect(id) do
+    [{pid, _value}] = RSMP.Registry.lookup_connection(id)
+    GenServer.cast(pid, :simulate_reconnect)
   end
 
   # GenServer
@@ -39,11 +56,11 @@ defmodule RSMP.Connection do
         will_retain: true
       })
 
-    {:ok, emqtt} = :emqtt.start_link(options)
-    # {:ok, _} = :emqtt.connect(emqtt)
+    Process.flag(:trap_exit, true)
 
-    connection = new(emqtt: emqtt, id: id, managers: managers, type: type)
-    # subscribe_to_topics(connection)
+    {:ok, emqtt} = :emqtt.start_link(options)
+
+    connection = new(emqtt: emqtt, id: id, managers: managers, type: type, init_options: options)
 
     send(self(), :connect)
 
@@ -51,6 +68,71 @@ defmodule RSMP.Connection do
   end
 
   @impl GenServer
+  def terminate(_reason, connection) do
+    publish_shutdown(connection)
+    :ok
+  end
+
+  defp publish_shutdown(%{emqtt: emqtt} = connection) when emqtt != nil do
+    :emqtt.publish(
+      emqtt,
+      "#{connection.id}/presence",
+      RSMP.Utility.to_payload("shutdown"),
+      retain: true,
+      qos: 1
+    )
+
+    :emqtt.disconnect(emqtt)
+  end
+
+  defp publish_shutdown(connection) do
+    opts = connection.init_options |> Map.put(:clientid, "#{connection.id}_shutdown")
+    with {:ok, pid} <- :emqtt.start_link(opts),
+         {:ok, _} <- :emqtt.connect(pid) do
+      :emqtt.publish(
+        pid,
+        "#{connection.id}/presence",
+        RSMP.Utility.to_payload("shutdown"),
+        retain: true,
+        qos: 1
+      )
+
+      :emqtt.disconnect(pid)
+    end
+  end
+
+  @impl GenServer
+  def handle_call(:connected?, _from, connection) do
+    {:reply, connection.connected, connection}
+  end
+
+  @impl GenServer
+  def handle_cast(:simulate_disconnect, connection) do
+    if connection.emqtt && connection.connected do
+      Process.exit(connection.emqtt, :kill)
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
+    end
+
+    {:noreply, %{connection | emqtt: nil, connected: false}}
+  end
+
+  @impl GenServer
+  def handle_cast(:simulate_reconnect, connection) do
+    if !connection.connected do
+      {:ok, emqtt} = :emqtt.start_link(connection.init_options)
+      connection = %{connection | emqtt: emqtt}
+      send(self(), :connect)
+      {:noreply, connection}
+    else
+      {:noreply, connection}
+    end
+  end
+
+  @impl GenServer
+  def handle_cast({:publish_message, _topic, _data, _options, _properties}, %{connected: false} = connection) do
+    {:noreply, connection}
+  end
+
   def handle_cast({:publish_message, topic, data, %{retain: retain, qos: qos}=options, %{}=properties}, connection) do
     topic_string = to_string(topic)
 
@@ -86,10 +168,14 @@ defmodule RSMP.Connection do
 
   # emqtt
   @impl true
+  def handle_info(:connect, %{emqtt: nil} = state) do
+    {:noreply, state}
+  end
+
   def handle_info(:connect, state) do
     case :emqtt.connect(state.emqtt) do
       {:ok, _} ->
-        on_connected(state)
+        state = on_connected(state)
         {:noreply, state}
 
       {:error, reason} ->
@@ -101,13 +187,22 @@ defmodule RSMP.Connection do
 
   @impl true
   def handle_info({:connected, _publish}, connection) do
-    on_connected(connection)
-    {:noreply, connection}
+    {:noreply, on_connected(connection)}
   end
 
   @impl true
   def handle_info({:disconnected, _publish}, connection) do
     Logger.warning("RSMP: Disconnected")
+    {:noreply, %{connection | connected: false}}
+  end
+
+  @impl true
+  def handle_info({:EXIT, pid, _reason}, %{emqtt: pid} = connection) do
+    Logger.warning("RSMP: Connection #{connection.id} emqtt process exited")
+    {:noreply, %{connection | emqtt: nil, connected: false}}
+  end
+
+  def handle_info({:EXIT, _pid, _reason}, connection) do
     {:noreply, connection}
   end
 
@@ -141,7 +236,6 @@ defmodule RSMP.Connection do
     Logger.info("RSMP: Connection #{connection.id} connected")
     subscribe_to_topics(connection)
 
-    # Publish Online state
     :emqtt.publish_async(
       connection.emqtt,
       "#{connection.id}/presence",
@@ -157,6 +251,10 @@ defmodule RSMP.Connection do
     if connection.type == :site do
       trigger_stream_states(connection.id)
     end
+
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: true})
+
+    %{connection | connected: true}
   end
 
   defp trigger_services(id) do

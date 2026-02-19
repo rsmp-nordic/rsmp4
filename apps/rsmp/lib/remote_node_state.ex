@@ -39,14 +39,8 @@ defmodule RSMP.Remote.Node.State do
 
   @impl GenServer
   def handle_cast({:update_online_status, status}, remote) when is_binary(status) do
-    online = status == "online"
-    remote = %{remote | online: online}
-
-    if remote.online do
-      Logger.info("Remote #{remote.remote_id} is online")
-    else
-      Logger.info("Remote #{remote.remote_id} is offline: #{status}")
-    end
+    remote = %{remote | online: status == "online"}
+    Logger.info("Remote #{remote.remote_id} presence: #{status}")
     {:noreply, remote}
   end
 
