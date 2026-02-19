@@ -68,7 +68,6 @@ config :rsmp, :emqtt,
   port: 1883,
   proto_ver: :v5,
   clean_start: false,
-  name: :emqtt,
   reconnect: :infinity
 
 config :logger, level: :debug

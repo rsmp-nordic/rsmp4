@@ -13,9 +13,7 @@ defmodule RSMP.Supervisor.Application do
       # Start Finch
       {Finch, name: RSMP.Supervisor.Finch},
       # Start the Endpoint (http/https)
-      RSMP.Supervisor.Web.Endpoint,
-      # Start our RSMP supervisor
-      RSMP.Supervisor
+      RSMP.Supervisor.Web.Endpoint
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

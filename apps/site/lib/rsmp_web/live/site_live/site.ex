@@ -15,11 +15,13 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     end
   end
 
-  def initial_mount(_params, _session, socket) do
+  def initial_mount(params, _session, socket) do
+    site_id = params["site_id"]
+
     {:ok,
      assign(socket,
        page: "loading",
-       id: "",
+       id: site_id,
        statuses: %{},
        alarms: %{},
        stream_list: [],
@@ -32,8 +34,8 @@ defmodule RSMP.Site.Web.SiteLive.Site do
      )}
   end
 
-  def connected_mount(_params, _session, socket) do
-    site_id = Application.get_env(:site, :site_id)
+  def connected_mount(params, _session, socket) do
+    site_id = params["site_id"]
     Phoenix.PubSub.subscribe(RSMP.PubSub, "site:#{site_id}")
 
     statuses = TLC.get_statuses(site_id)
@@ -53,18 +55,6 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        command_logs: [],
        alarm_flags: RSMP.Alarm.get_flag_keys()
      )}
-  end
-
-  @impl true
-  def handle_params(params, _url, socket) do
-    site_id = params["site_id"]
-
-    if site_id do
-      {:noreply, socket}
-    else
-      site_id = Application.get_env(:site, :site_id)
-      {:noreply, push_patch(socket, to: ~p"/site/#{site_id}")}
-    end
   end
 
   def change_status(data, socket, delta) do

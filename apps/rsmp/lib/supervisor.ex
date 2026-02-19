@@ -13,32 +13,32 @@ defmodule RSMP.Supervisor do
 
   # api
 
-  def start_link(options) do
-    GenServer.start_link(__MODULE__, options, name: __MODULE__)
+  def start_link(id) do
+    GenServer.start_link(__MODULE__, id, name: RSMP.Registry.via_supervisor(id))
   end
 
-  def site_ids() do
-    GenServer.call(__MODULE__, :site_ids)
+  def site_ids(supervisor_id) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), :site_ids)
   end
 
-  def sites() do
-    GenServer.call(__MODULE__, :sites)
+  def sites(supervisor_id) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), :sites)
   end
 
-  def site(id) do
-    GenServer.call(__MODULE__, {:site, id})
+  def site(supervisor_id, site_id) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:site, site_id})
   end
 
-  def set_plan(site_id, plan) do
-    GenServer.cast(__MODULE__, {:set_plan, site_id, plan})
+  def set_plan(supervisor_id, site_id, plan) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:set_plan, site_id, plan})
   end
 
-  def start_stream(site_id, module, code, stream_name) do
-    GenServer.cast(__MODULE__, {:throttle_stream, site_id, module, code, stream_name, "start"})
+  def start_stream(supervisor_id, site_id, module, code, stream_name) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_stream, site_id, module, code, stream_name, "start"})
   end
 
-  def stop_stream(site_id, module, code, stream_name) do
-    GenServer.cast(__MODULE__, {:throttle_stream, site_id, module, code, stream_name, "stop"})
+  def stop_stream(supervisor_id, site_id, module, code, stream_name) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_stream, site_id, module, code, stream_name, "stop"})
   end
 
 
@@ -46,29 +46,28 @@ defmodule RSMP.Supervisor do
   # Callbacks
 
   @impl true
-  def init(_rsmp) do
-    Logger.info("RSMP: Supervisor GenServer init")
+  def init(id) do
+    Logger.info("RSMP: Supervisor #{id} GenServer init")
     Process.flag(:trap_exit, true)
 
     if Application.get_env(:rsmp, :emqtt_connect, true) do
       emqtt_opts = Application.get_env(:rsmp, :emqtt)
-      id = "super_#{SecureRandom.hex(4)}"
       emqtt_opts = emqtt_opts |> Keyword.put(:clientid, id)
 
       Logger.info("RSMP: Starting emqtt with options: #{inspect(emqtt_opts)}")
       {:ok, pid} = :emqtt.start_link(emqtt_opts)
-      # {:ok, _} = :emqtt.connect(pid)
-
-      # subscribe_to_topics(%{pid: pid, id: id})
       supervisor = new(pid: pid, id: id)
       send(self(), :connect)
       {:ok, supervisor}
     else
-      {:ok, new(id: "test_supervisor")}
+      {:ok, new(id: id)}
     end
   end
 
   @impl true
+  def terminate(:shutdown, _state), do: :ok
+  def terminate(:normal, _state), do: :ok
+
   def terminate(reason, _state) do
     Logger.error("RSMP: Supervisor GenServer terminating: #{inspect(reason)}")
   end
@@ -266,8 +265,8 @@ defmodule RSMP.Supervisor do
     Logger.info("RSMP: Supervisor received presence from #{id}: #{data}")
 
     pub = %{topic: "presence", site: id, online: online}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
     supervisor
   end
@@ -286,8 +285,8 @@ defmodule RSMP.Supervisor do
       }
     }
 
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{topic.id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{topic.id}", pub)
 
     supervisor
   end
@@ -330,8 +329,8 @@ defmodule RSMP.Supervisor do
     end
 
     pub = %{topic: "status", site: id, status: %{topic.path => status}}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
     supervisor
   end
@@ -350,8 +349,8 @@ defmodule RSMP.Supervisor do
 
     Logger.info("RSMP: #{topic.id}: Received alarm #{path_string}: #{inspect(alarm)}")
     pub = %{topic: "alarm", alarm: %{topic.path => alarm}}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
     supervisor
   end
@@ -385,8 +384,8 @@ defmodule RSMP.Supervisor do
         Logger.info("RSMP: #{id}: Received stream state #{stream_key}: #{state}")
 
         pub = %{topic: "stream", site: id, stream: stream_key, state: state}
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor", pub)
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{id}", pub)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
         supervisor
     end
