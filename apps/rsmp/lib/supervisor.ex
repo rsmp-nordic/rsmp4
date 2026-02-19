@@ -332,6 +332,10 @@ defmodule RSMP.Supervisor do
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
+    stream_key = stream_state_key(path, topic.stream_name)
+    stream_pub = %{topic: "stream_data", site: id, stream: stream_key}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", stream_pub)
+
     supervisor
   end
 
