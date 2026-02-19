@@ -257,17 +257,21 @@ defmodule RSMP.Supervisor do
   end
 
   # helpers
-  defp receive_presence(supervisor, id, data) do
+  defp receive_presence(supervisor, id, data) when data in ["online", "offline", "shutdown"] do
     {supervisor, site} = get_site(supervisor, id)
-    online = data == "online"
-    site = %{site | online: online}
+    site = %{site | presence: data}
     supervisor = put_in(supervisor.sites[id], site)
     Logger.info("RSMP: Supervisor received presence from #{id}: #{data}")
 
-    pub = %{topic: "presence", site: id, online: online}
+    pub = %{topic: "presence", site: id, presence: data}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
+    supervisor
+  end
+
+  defp receive_presence(supervisor, id, data) do
+    Logger.warning("RSMP: Supervisor received unknown presence from #{id}: #{inspect(data)}")
     supervisor
   end
 

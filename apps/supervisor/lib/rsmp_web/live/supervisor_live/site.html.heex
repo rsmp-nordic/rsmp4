@@ -1,5 +1,10 @@
 
-<h1 class="text-2xl font-bold py-4"><.link href={~p"/supervisor/#{@supervisor_id}"}>&larr;</.link> Supervisor <%= @supervisor_id %> / Remote Site <%= @site_id %></h1>
+<h1 class="text-2xl font-bold py-4"><.link href={~p"/supervisor/#{@supervisor_id}"}>&larr;</.link> Supervisor <%= @supervisor_id %> / Remote Site <%= @site_id %> <span class={"inline-block w-3 h-3 rounded-full " <> case @site.presence do
+  "online" -> "bg-green-500"
+  "offline" -> "bg-red-500"
+  "shutdown" -> "bg-gray-400"
+  _ -> "bg-gray-400"
+end}></span></h1>
 <div id="client"></div>
 
 <div class="overflow-x-auto rounded-md my-4">

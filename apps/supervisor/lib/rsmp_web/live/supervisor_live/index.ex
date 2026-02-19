@@ -39,7 +39,15 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
       sites:
         RSMP.Supervisor.sites(supervisor_id)
         |> Map.to_list()
-        |> Enum.sort_by(fn {id, state} -> {state.online == false, id} end, :asc)
+        |> Enum.sort_by(fn {id, state} ->
+          priority = case state.presence do
+            "online" -> 0
+            "offline" -> 1
+            "shutdown" -> 2
+            _ -> 3
+          end
+          {priority, id}
+        end, :asc)
     )
   end
 

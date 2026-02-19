@@ -18,9 +18,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
     site =
       if connected?(socket) do
-        RSMP.Supervisor.site(supervisor_id, site_id) || %{statuses: %{}, streams: %{}, alarms: %{}}
+        RSMP.Supervisor.site(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, streams: %{}, alarms: %{}}
       else
-        %{statuses: %{}, streams: %{}, alarms: %{}}
+        %{presence: "offline", statuses: %{}, streams: %{}, alarms: %{}}
       end
     plan =
       get_in(site, [
@@ -49,7 +49,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def assign_site(socket) do
     supervisor_id = socket.assigns.supervisor_id
     site_id = socket.assigns.site_id
-    site = RSMP.Supervisor.site(supervisor_id, site_id) || %{statuses: %{}, streams: %{}, alarms: %{}}
+    site = RSMP.Supervisor.site(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, streams: %{}, alarms: %{}}
 
     plan =
       get_in(site, [

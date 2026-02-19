@@ -1,5 +1,13 @@
-<h1 class="text-2xl font-bold py-4"><.link href={~p"/"}>&larr;</.link> Site <%= @id %></h1>
+<h1 class="text-2xl font-bold py-4"><.link href={~p"/"}>&larr;</.link> Site <%= @id %> <span class={"inline-block w-3 h-3 rounded-full " <> cond do
+  @removed -> "bg-gray-400"
+  @connected -> "bg-green-500"
+  true -> "bg-red-500"
+end}></span></h1>
 <div id="client"></div>
+
+<%= if @removed do %>
+  <p class="text-gray-500 my-4">This site has been removed.</p>
+<% else %>
 
 <div class="overflow-x-auto rounded-md my-4">
   <table id="operate" class="w-full text-left">
@@ -8,6 +16,18 @@
     </caption>
 
     <tbody>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">Network</td>
+        <td class="px-1 py-1 align-top">
+          <button
+            class={RSMP.ButtonClasses.selectable(@connected)}
+            phx-click="toggle_connection"
+          >
+            <%= if @connected, do: "Online", else: "Offline" %>
+          </button>
+        </td>
+        <td class="px-1 py-1 align-top"></td>
+      </tr>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
         <td class="px-1 py-1 align-top w-40">Plan</td>
         <td class="px-1 py-1 align-top">
@@ -160,3 +180,5 @@
     <% end %>
   </table>
 </div>
+
+<% end %>
