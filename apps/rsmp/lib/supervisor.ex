@@ -56,6 +56,10 @@ defmodule RSMP.Supervisor do
     GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:send_fetch, site_id, module, code, stream_name, from_ts, to_ts})
   end
 
+  def data_points(supervisor_id, site_id, stream_key) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:data_points, site_id, stream_key})
+  end
+
 
 
   # Callbacks
@@ -126,6 +130,16 @@ defmodule RSMP.Supervisor do
   @impl true
   def handle_call({:site, id}, _from, supervisor) do
     {:reply, supervisor.sites[id], supervisor}
+  end
+
+  @impl true
+  def handle_call({:data_points, site_id, stream_key}, _from, supervisor) do
+    points =
+      case supervisor.sites[site_id] do
+        nil -> []
+        site -> RSMP.Remote.Node.Site.get_data_points(site, stream_key)
+      end
+    {:reply, points, supervisor}
   end
 
   @impl true
@@ -417,6 +431,13 @@ defmodule RSMP.Supervisor do
     }
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", point_pub)
 
+    # Persist this data point so the LiveView can build history on mount/reconnect
+    stream_key = "#{status_key}/#{topic.stream_name}"
+    supervisor =
+      update_in(supervisor.sites[id], fn site ->
+        RSMP.Remote.Node.Site.store_data_point(site, stream_key, seq, point_pub.ts, new_status)
+      end)
+
     supervisor
   end
 
@@ -491,6 +512,8 @@ defmodule RSMP.Supervisor do
       seq = data["seq"]
       values = from_rsmp_status(site, path, data["values"])
 
+      Logger.info("RSMP: #{supervisor.id}: Received replay #{path}/#{topic.stream_name} seq=#{seq} values=#{inspect(values)}")
+
       point_pub = %{
         topic: "data_point",
         site: site_id,
@@ -503,9 +526,19 @@ defmodule RSMP.Supervisor do
         complete: data["complete"]
       }
       Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", point_pub)
-    end
 
-    supervisor
+      # Persist so the LiveView can read history on mount/reconnect
+      stream_key = "#{path}/#{topic.stream_name}"
+      supervisor =
+        update_in(supervisor.sites[site_id], fn site ->
+          RSMP.Remote.Node.Site.store_data_point(site, stream_key, seq, ts, values)
+        end)
+
+      supervisor
+    else
+      Logger.warning("RSMP: #{supervisor.id}: Replay message missing 'values': #{inspect(data)}")
+      supervisor
+    end
   end
 
   defp receive_replay(supervisor, _topic, _data), do: supervisor

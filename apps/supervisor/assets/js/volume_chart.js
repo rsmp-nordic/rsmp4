@@ -1,6 +1,5 @@
 import uPlot from "uplot"
-
-const MAX_POINTS = 60
+import { createState, tickSecond, receivePoint, receiveHistory, drawData, MAX_POINTS } from "./volume_chart_state.mjs"
 
 function makeBars(size) {
   return uPlot.paths.bars({ size: [size, 100], gap: 0 })
@@ -24,14 +23,24 @@ function buildChart(el, width) {
       axes: [
         { show: false },
         {
-          stroke: "#9ca3af",
-          ticks: { stroke: "#374151", width: 1 },
-          grid: { stroke: "#1f2937", width: 1 },
+          stroke: "#374151",
+          ticks: { stroke: "#d1d5db", width: 1 },
+          grid: { stroke: "#e5e7eb", width: 1 },
           font: "11px sans-serif",
           labelFont: "11px sans-serif",
           size: 36,
         },
       ],
+      hooks: {
+        drawClear: [
+          (u) => {
+            u.ctx.save()
+            u.ctx.fillStyle = "#f3f4f6"
+            u.ctx.fillRect(0, 0, u.ctx.canvas.width, u.ctx.canvas.height)
+            u.ctx.restore()
+          },
+        ],
+      },
       series: [
         {},
         // drawn back-to-front so stacked: total (busses on top), then bicycles, then cars
@@ -65,36 +74,26 @@ function buildChart(el, width) {
 
 const VolumeChart = {
   mounted() {
-    this.buf = { cars: [], bicycles: [], busses: [] }
+    this.state = createState()
 
     const width = this.el.offsetWidth || 600
     this.chart = buildChart(this.el, width)
 
-    this.handleEvent("volume_point", (point) => {
-      const { cars, bicycles, busses } = point
-      this.buf.cars.push(cars)
-      this.buf.bicycles.push(bicycles)
-      this.buf.busses.push(busses)
-
-      // keep only the last MAX_POINTS entries
-      if (this.buf.cars.length > MAX_POINTS) {
-        this.buf.cars.shift()
-        this.buf.bicycles.shift()
-        this.buf.busses.shift()
-      }
-
-      const n = this.buf.cars.length
-      const xs = Array.from({ length: n }, (_, i) => i + (MAX_POINTS - n))
-
-      // stacked cumulative values for back-to-front drawing
-      const total = this.buf.cars.map(
-        (c, i) => c + this.buf.bicycles[i] + this.buf.busses[i]
-      )
-      const carsBicycles = this.buf.cars.map((c, i) => c + this.buf.bicycles[i])
-      const carsOnly = [...this.buf.cars]
-
-      this.chart.setData([xs, total, carsBicycles, carsOnly])
+    // Batch history from server (on mount and on reconnect) replaces the buffer.
+    this.handleEvent("volume_history", ({ bins }) => {
+      receiveHistory(this.state, bins)
+      this.chart.setData(drawData(this.state))
     })
+
+    // Live data point each second — queued for the next timer tick.
+    this.handleEvent("volume_point", (point) => {
+      receivePoint(this.state, point)
+    })
+
+    // Advance the graph by one bin per second.
+    this._interval = setInterval(() => {
+      this.chart.setData(tickSecond(this.state))
+    }, 1000)
 
     this._resizeObserver = new ResizeObserver(() => {
       const w = this.el.offsetWidth
@@ -104,6 +103,7 @@ const VolumeChart = {
   },
 
   destroyed() {
+    if (this._interval) clearInterval(this._interval)
     if (this._resizeObserver) this._resizeObserver.disconnect()
     if (this.chart) this.chart.destroy()
   },
