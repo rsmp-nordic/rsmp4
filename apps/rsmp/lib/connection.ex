@@ -223,6 +223,9 @@ defmodule RSMP.Connection do
       type when type in ["command", "throttle"] ->
         dispatch_to_service(connection, topic, data, properties)
 
+      "fetch" ->
+        dispatch_fetch(connection, topic, data, properties)
+
       type when type in ["status", "alarm", "result"] ->
         dispatch_to_remote_service(connection, topic, data, properties)
 
@@ -250,6 +253,7 @@ defmodule RSMP.Connection do
 
     if connection.type == :site do
       trigger_stream_states(connection.id)
+      trigger_stream_replay(connection.id)
     end
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: true})
@@ -272,6 +276,43 @@ defmodule RSMP.Connection do
     end)
   end
 
+  defp trigger_stream_replay(id) do
+    RSMP.Streams.list_streams(id)
+    |> Enum.each(fn pid ->
+      RSMP.Stream.replay(pid)
+    end)
+  end
+
+  defp dispatch_fetch(connection, topic, data, properties) do
+    from_ts = parse_datetime(data["from"])
+    to_ts = parse_datetime(data["to"])
+    response_topic = properties[:"Response-Topic"]
+    correlation_data = properties[:"Correlation-Data"]
+
+    case RSMP.Registry.lookup_stream(connection.id, topic.path.module, topic.path.code, topic.stream_name, topic.path.component) do
+      [{pid, _}] ->
+        GenServer.cast(pid, {:handle_fetch, from_ts, to_ts, response_topic, correlation_data})
+
+      [] ->
+        Logger.warning("#{connection.id}: Fetch for unknown stream: #{topic}")
+        if response_topic do
+          payload = %{"complete" => true}
+          RSMP.Connection.publish_message(connection.id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
+        end
+    end
+  end
+
+  defp parse_datetime(nil), do: nil
+
+  defp parse_datetime(ts) when is_binary(ts) do
+    case DateTime.from_iso8601(ts) do
+      {:ok, dt, _} -> dt
+      _ -> nil
+    end
+  end
+
+  defp parse_datetime(_), do: nil
+
   # implementation
   def subscribe_to_topics(connection) do
     emqtt = connection.emqtt
@@ -283,6 +324,7 @@ defmodule RSMP.Connection do
     if connection.type == :site do
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/command/#", qos})
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/throttle/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/fetch/#", qos})
     end
 
     if connection.type == :supervisor do

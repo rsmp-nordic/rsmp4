@@ -21,7 +21,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   def initial_mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       sites: %{}
+       sites: %{},
+       connected: false
      )}
   end
 
@@ -29,7 +30,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
     supervisor_id = socket.assigns.supervisor_id
     RSMP.Supervisors.ensure_supervisor(supervisor_id)
     Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}")
-    {:ok, sort_sites(socket)}
+    connected = RSMP.Supervisor.connected?(supervisor_id)
+    {:ok, sort_sites(assign(socket, connected: connected))}
   end
 
   def sort_sites(socket) do
@@ -52,9 +54,20 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   end
 
   @impl true
+  def handle_event("toggle_connection", _params, socket) do
+    RSMP.Supervisor.toggle_connection(socket.assigns.supervisor_id)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event(name, data, socket) do
     Logger.info("unhandled event: #{inspect([name, data])}")
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(%{topic: "connected", connected: connected}, socket) do
+    {:noreply, assign(socket, connected: connected)}
   end
 
   @impl true

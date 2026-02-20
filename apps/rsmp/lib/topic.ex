@@ -41,9 +41,10 @@ defmodule RSMP.Topic do
         ["presence"] ->
           new(id, "presence", nil, nil, [])
 
-        # Status topics: first segment after code is always stream_name.
+        # Status-like topics: status, replay, fetch, history, channel.
+        # First segment after code is always stream_name.
         # If there's only id/type/code (no extra segments), stream_name is nil.
-        ["status", full_code | tail] ->
+        [type, full_code | tail] when type in ["status", "replay", "fetch", "history", "channel"] ->
           {module, code} =
             case String.split(full_code, ".", parts: 2) do
               [m, c] -> {m, c}
@@ -53,11 +54,11 @@ defmodule RSMP.Topic do
           case tail do
             [] ->
               # No stream name, no component (single-stream status)
-              %__MODULE__{id: id, type: "status", stream_name: nil, path: Path.new(module, code, [])}
+              %__MODULE__{id: id, type: type, stream_name: nil, path: Path.new(module, code, [])}
 
             [stream_name | component] ->
               # First segment = stream name, rest = component
-              %__MODULE__{id: id, type: "status", stream_name: stream_name, path: Path.new(module, code, component)}
+              %__MODULE__{id: id, type: type, stream_name: stream_name, path: Path.new(module, code, component)}
           end
 
         # Non-status topics (command, result, alarm): no stream concept

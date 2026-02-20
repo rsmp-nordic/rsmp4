@@ -53,7 +53,7 @@ defmodule RSMP.StreamTest do
       {:ok, stream_pid} = RSMP.Stream.start_link({id, "tlc", config})
 
       assert_receive {:published, topic, state_data, state_options}
-      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert to_string(topic) == "#{id}/channel/tlc.plan/default"
       assert state_data == %{"state" => "stopped"}
       assert state_options.retain == true
       assert state_options.qos == 1
@@ -69,13 +69,13 @@ defmodule RSMP.StreamTest do
       # Should have published a full update
       assert_receive {:published, topic, data, options}
       assert to_string(topic) == "#{id}/status/tlc.plan"
-      assert data["type"] == "full"
+      assert data["values"]["status"] == 1
       assert data["seq"] == 1
-      assert data["data"]["status"] == 1
+      refute Map.has_key?(data, "type")
       assert options.retain == true
 
       assert_receive {:published, topic, state_data, state_options}
-      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert to_string(topic) == "#{id}/channel/tlc.plan/default"
       assert state_data == %{"state" => "running"}
       assert state_options.retain == true
       assert state_options.qos == 1
@@ -94,7 +94,7 @@ defmodule RSMP.StreamTest do
       assert_receive {:published, _topic, nil, %{retain: true}}
 
       assert_receive {:published, topic, state_data, state_options}
-      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert to_string(topic) == "#{id}/channel/tlc.plan/default"
       assert state_data == %{"state" => "stopped"}
       assert state_options.retain == true
       assert state_options.qos == 1
@@ -107,11 +107,11 @@ defmodule RSMP.StreamTest do
       assert :ok = RSMP.Stream.start_stream(stream_pid)
 
       assert_receive {:published, _topic, data, _options}
-      assert data["type"] == "full"
+      assert data["values"]["status"] == 1
       assert data["seq"] == 2
 
       assert_receive {:published, topic, state_data, state_options}
-      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert to_string(topic) == "#{id}/channel/tlc.plan/default"
       assert state_data == %{"state" => "running"}
       assert state_options.retain == true
       assert state_options.qos == 1
@@ -125,7 +125,7 @@ defmodule RSMP.StreamTest do
       assert_receive {:published, _topic, nil, %{retain: true}}
 
       assert_receive {:published, topic, state_data, state_options}
-      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert to_string(topic) == "#{id}/channel/tlc.plan/default"
       assert state_data == %{"state" => "stopped"}
       assert state_options.retain == true
       assert state_options.qos == 1
@@ -158,11 +158,10 @@ defmodule RSMP.StreamTest do
 
       # Should auto-start and publish a full update
       assert_receive {:published, _topic, data, _options}, 500
-      assert data["type"] == "full"
-      assert data["data"]["status"] == 2
+      assert data["values"]["status"] == 2
 
       assert_receive {:published, topic, state_data, state_options}, 500
-      assert to_string(topic) == "#{id}/stream/tlc.plan/default"
+      assert to_string(topic) == "#{id}/channel/tlc.plan/default"
       assert state_data == %{"state" => "running"}
       assert state_options.retain == true
       assert state_options.qos == 1
@@ -195,7 +194,7 @@ defmodule RSMP.StreamTest do
       {:ok, stream_pid} = RSMP.Stream.start_link({id, "tlc", config})
 
       assert_receive {:published, topic, state_data, state_options}
-      assert to_string(topic) == "#{id}/stream/tlc.groups/live"
+      assert to_string(topic) == "#{id}/channel/tlc.groups/live"
       assert state_data == %{"state" => "stopped"}
       assert state_options.retain == true
       assert state_options.qos == 1
@@ -203,7 +202,7 @@ defmodule RSMP.StreamTest do
       :ok = RSMP.Stream.start_stream(stream_pid)
 
       # Consume the initial full update
-      assert_receive {:published, _topic, %{"type" => "full"}, _options}
+      assert_receive {:published, _topic, %{"values" => _}, _options}
       assert_receive {:published, _topic, %{"state" => "running"}, _options}
 
       # Report values where an on_change attr changes
@@ -216,10 +215,10 @@ defmodule RSMP.StreamTest do
       # Should get a delta with the changed on_change attrs + send_along attrs
       assert_receive {:published, topic, data, options}, 500
       assert to_string(topic) =~ "tlc.groups/live"
-      assert data["type"] == "delta"
-      assert data["data"]["signalgroupstatus"] == %{"1" => "G", "2" => "G", "3" => "G", "4" => "R", "5" => "R"}
-      assert data["data"]["stage"] == 1
-      assert data["data"]["cyclecounter"] == 42
+      assert data["values"]["signalgroupstatus"] == %{"1" => "G", "2" => "G", "3" => "G", "4" => "R", "5" => "R"}
+      assert data["values"]["stage"] == 1
+      assert data["values"]["cyclecounter"] == 42
+      refute Map.has_key?(data, "type")
       assert options.retain == false
 
       # Report only cyclecounter change (send_along) - should NOT trigger delta
@@ -229,8 +228,8 @@ defmodule RSMP.StreamTest do
         "cyclecounter" => 43
       })
 
-      # No delta should be published
-      refute_receive {:published, _, %{"type" => "delta"}, _}, 200
+      # No delta should be published (cyclecounter is send_along, not a trigger)
+      refute_receive {:published, _, %{"values" => _}, %{retain: false}}, 200
 
       # Report signalgroupstatus change - should trigger delta with updated cyclecounter
       RSMP.Stream.report(stream_pid, %{
@@ -240,12 +239,11 @@ defmodule RSMP.StreamTest do
       })
 
       assert_receive {:published, _topic, data, _options}, 500
-      assert data["type"] == "delta"
-      assert data["data"]["signalgroupstatus"] == %{"4" => "G"}
+      assert data["values"]["signalgroupstatus"] == %{"4" => "G"}
       # cyclecounter should be the latest value, sent along
-      assert data["data"]["cyclecounter"] == 44
+      assert data["values"]["cyclecounter"] == 44
       # stage didn't change so it should NOT be in the delta
-      refute Map.has_key?(data["data"], "stage")
+      refute Map.has_key?(data["values"], "stage")
     end
   end
 

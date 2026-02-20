@@ -8,6 +8,21 @@ end}></span></h1>
 <div id="client"></div>
 
 <div class="overflow-x-auto rounded-md my-4">
+  <table class="w-full text-left">
+    <caption class="px-1 py-1 bg-blue-900 text-white text-xl text-left">
+      Traffic Volume (live stream)
+    </caption>
+    <tbody>
+      <tr>
+        <td class="px-1 py-2">
+          <.render_volume_graph volume_points={@volume_points} />
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="overflow-x-auto rounded-md my-4">
   <table id="operate" class="w-full text-left">
     <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
       Operate

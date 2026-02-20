@@ -6,7 +6,10 @@ defmodule RSMP.Supervisor do
   defstruct(
     pid: nil,
     id: nil,
-    sites: %{}
+    sites: %{},
+    connected: false,
+    last_disconnected_at: nil,
+    pending_fetches: %{}
   )
 
   def new(options \\ %{}), do: __struct__(options)
@@ -41,6 +44,18 @@ defmodule RSMP.Supervisor do
     GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_stream, site_id, module, code, stream_name, "stop"})
   end
 
+  def toggle_connection(supervisor_id) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), :toggle_connection)
+  end
+
+  def connected?(supervisor_id) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), :connected?)
+  end
+
+  def send_fetch(supervisor_id, site_id, module, code, stream_name, from_ts, to_ts) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:send_fetch, site_id, module, code, stream_name, from_ts, to_ts})
+  end
+
 
 
   # Callbacks
@@ -72,7 +87,7 @@ defmodule RSMP.Supervisor do
     Logger.error("RSMP: Supervisor GenServer terminating: #{inspect(reason)}")
   end
 
-  def subscribe_to_topics(%{pid: pid, id: _id}) do
+  def subscribe_to_topics(%{pid: pid, id: id}) do
     levels = Application.get_env(:rsmp, :topic_prefix_levels, 3)
     wildcard_id = List.duplicate("+", levels) |> Enum.join("/")
 
@@ -85,11 +100,17 @@ defmodule RSMP.Supervisor do
     # Subscribe to alarms
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/alarm/#", 2})
 
-    # Subscribe to stream states
-    {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/stream/#", 2})
+    # Subscribe to channel states (channel lifecycle)
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/channel/#", 2})
+
+    # Subscribe to replay (buffered data from sites reconnecting)
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/replay/#", 2})
 
     # Subscribe to our response topics
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{wildcard_id}/result/#", 2})
+
+    # Subscribe to history responses (fetch results directed to us)
+    {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/history/#", 2})
   end
 
   @impl true
@@ -105,6 +126,11 @@ defmodule RSMP.Supervisor do
   @impl true
   def handle_call({:site, id}, _from, supervisor) do
     {:reply, supervisor.sites[id], supervisor}
+  end
+
+  @impl true
+  def handle_call(:connected?, _from, supervisor) do
+    {:reply, supervisor.connected, supervisor}
   end
 
   @impl true
@@ -137,6 +163,29 @@ defmodule RSMP.Supervisor do
         {&publish_done/1, []}
       )
 
+    {:noreply, supervisor}
+  end
+
+  @impl true
+  def handle_cast(:toggle_connection, %{connected: true} = supervisor) do
+    if supervisor.pid do
+      :emqtt.disconnect(supervisor.pid)
+    end
+    now = DateTime.utc_now()
+    supervisor = %{supervisor | connected: false, last_disconnected_at: now}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", %{topic: "connected", connected: false})
+    {:noreply, supervisor}
+  end
+
+  @impl true
+  def handle_cast(:toggle_connection, %{connected: false} = supervisor) do
+    send(self(), :connect)
+    {:noreply, supervisor}
+  end
+
+  @impl true
+  def handle_cast({:send_fetch, site_id, module, code, stream_name, from_ts, to_ts}, supervisor) do
+    supervisor = do_send_fetch(supervisor, site_id, module, code, stream_name, from_ts, to_ts)
     {:noreply, supervisor}
   end
 
@@ -197,6 +246,9 @@ defmodule RSMP.Supervisor do
       {:ok, _} ->
         Logger.info("RSMP: Supervisor connected to MQTT broker")
         subscribe_to_topics(state)
+        state = %{state | connected: true}
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{state.id}", %{topic: "connected", connected: true})
+        state = send_pending_fetches(state)
         {:noreply, state}
 
       {:error, reason} ->
@@ -211,12 +263,17 @@ defmodule RSMP.Supervisor do
   def handle_info({:connected, _publish}, supervisor) do
     Logger.info("RSMP: Connected")
     subscribe_to_topics(supervisor)
+    supervisor = %{supervisor | connected: true}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", %{topic: "connected", connected: true})
+    supervisor = send_pending_fetches(supervisor)
     {:noreply, supervisor}
   end
 
   @impl true
   def handle_info({:disconnected, _publish}, supervisor) do
     Logger.info("RSMP: Disconnected")
+    supervisor = %{supervisor | connected: false, last_disconnected_at: DateTime.utc_now()}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", %{topic: "connected", connected: false})
     {:noreply, supervisor}
   end
 
@@ -236,15 +293,22 @@ defmodule RSMP.Supervisor do
             # Stream cleared (empty retained message)
             supervisor
           else
-            receive_status(supervisor, topic, data)
+            retain = publish[:retain] == true or publish[:retain] == 1
+            receive_status(supervisor, topic, data, retain)
           end
 
         "result" ->
           command_id = properties[:"Correlation-Data"]
           receive_result(supervisor, topic, data, command_id)
 
-        "stream" ->
-          receive_stream(supervisor, topic, data)
+        "channel" ->
+          receive_channel(supervisor, topic, data)
+
+        "replay" ->
+          receive_replay(supervisor, topic, data)
+
+        "history" ->
+          receive_history(supervisor, topic, data, properties)
 
         "alarm" ->
           receive_alarm(supervisor, topic, data)
@@ -295,19 +359,19 @@ defmodule RSMP.Supervisor do
     supervisor
   end
 
-  defp receive_status(supervisor, topic, data) do
+  defp receive_status(supervisor, topic, data, retain) do
     id = topic.id
     path = topic.path
     {supervisor, site} = get_site(supervisor, id)
 
-    # Status may arrive as stream envelope (%{"type","seq","data"}), compact envelope
-    # (%{"t","s","d"}), atom-keyed variants, or plain status payload.
-    {status_type, seq, data} = extract_status_envelope(data)
+    # New format: {"values": {...}, "seq": N}, retain flag determines full vs delta.
+    # Legacy format: {"type": "full|delta", "seq": N, "data": {...}} also supported.
+    {status_type, seq, values} = extract_status_envelope(data, retain)
 
     # Use code (without stream name) as the status key
     status_key = to_string(path)
 
-    new_status = from_rsmp_status(site, path, data)
+    new_status = from_rsmp_status(site, path, values)
 
     current_status = get_in(site.statuses, [status_key]) || %{}
 
@@ -340,6 +404,19 @@ defmodule RSMP.Supervisor do
     stream_pub = %{topic: "stream_data", site: id, stream: stream_key}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", stream_pub)
 
+    # Broadcast individual data point for time-series tracking
+    point_pub = %{
+      topic: "data_point",
+      site: id,
+      path: status_key,
+      stream: topic.stream_name,
+      values: new_status,
+      ts: DateTime.utc_now(),
+      seq: seq,
+      source: :live
+    }
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", point_pub)
+
     supervisor
   end
 
@@ -363,10 +440,10 @@ defmodule RSMP.Supervisor do
     supervisor
   end
 
-  defp receive_stream(supervisor, topic, data) when is_map(data) do
+  defp receive_channel(supervisor, topic, data) when is_map(data) do
     stream_name =
-      case topic.path.component do
-        [name | _] when is_binary(name) and name != "" -> name
+      case topic.stream_name do
+        name when is_binary(name) and name != "" -> name
         _ -> nil
       end
 
@@ -399,10 +476,80 @@ defmodule RSMP.Supervisor do
     end
   end
 
-  defp receive_stream(supervisor, topic, data) do
-    Logger.warning("RSMP: #{topic.id}: Ignoring stream state payload: #{inspect(data)}")
+  defp receive_channel(supervisor, topic, data) do
+    Logger.warning("RSMP: #{topic.id}: Ignoring channel state payload: #{inspect(data)}")
     supervisor
   end
+
+  defp receive_replay(supervisor, topic, data) when is_map(data) do
+    site_id = topic.id
+    path = topic.path
+
+    if data["values"] do
+      {supervisor, site} = get_site(supervisor, site_id)
+      ts = parse_iso8601(data["ts"]) || DateTime.utc_now()
+      seq = data["seq"]
+      values = from_rsmp_status(site, path, data["values"])
+
+      point_pub = %{
+        topic: "data_point",
+        site: site_id,
+        path: to_string(path),
+        stream: topic.stream_name,
+        values: values,
+        ts: ts,
+        seq: seq,
+        source: :replay,
+        complete: data["complete"]
+      }
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", point_pub)
+    end
+
+    supervisor
+  end
+
+  defp receive_replay(supervisor, _topic, _data), do: supervisor
+
+  defp receive_history(supervisor, topic, data, properties) when is_map(data) do
+    correlation_data = properties[:"Correlation-Data"]
+    fetch_info = Map.get(supervisor.pending_fetches, correlation_data)
+
+    supervisor =
+      if fetch_info && data["values"] do
+        site_id = fetch_info.site_id
+        path = topic.path
+        {_supervisor, site} = get_site(supervisor, site_id)
+        ts = parse_iso8601(data["ts"]) || DateTime.utc_now()
+        seq = data["seq"]
+        values = from_rsmp_status(site, path, data["values"])
+
+        point_pub = %{
+          topic: "data_point",
+          site: site_id,
+          path: to_string(path),
+          stream: topic.stream_name,
+          values: values,
+          ts: ts,
+          seq: seq,
+          source: :history,
+          complete: data["complete"]
+        }
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", point_pub)
+        supervisor
+      else
+        supervisor
+      end
+
+    # Release pending fetch when complete
+    if data["complete"] && correlation_data && fetch_info do
+      pending = Map.delete(supervisor.pending_fetches, correlation_data)
+      %{supervisor | pending_fetches: pending}
+    else
+      supervisor
+    end
+  end
+
+  defp receive_history(supervisor, _topic, _data, _properties), do: supervisor
 
   # catch-all in case old retained messages are received from the broker
   defp receive_unknown(supervisor, topic, publish) do
@@ -476,24 +623,32 @@ defmodule RSMP.Supervisor do
     if seq_map == %{}, do: status, else: maybe_put_seq(status, seq_map)
   end
 
-  defp extract_status_envelope(data) when is_map(data) do
-    type = map_get_any(data, ["type", :type, "t", :t])
-    seq = map_get_any(data, ["seq", :seq, "s", :s])
-    inner_data = map_get_any(data, ["data", :data, "d", :d])
+  defp extract_status_envelope(data, retain) when is_map(data) do
+    # New format: {"values": {...}, "seq": N} — full vs delta determined by retain flag
+    if Map.has_key?(data, "values") do
+      type = if retain, do: "full", else: "delta"
+      seq = data["seq"]
+      {type, seq, data["values"] || %{}}
+    else
+      # Legacy format: {"type": "full|delta", "seq": N, "data": {...}}
+      type = map_get_any(data, ["type", :type, "t", :t])
+      seq = map_get_any(data, ["seq", :seq, "s", :s])
+      inner_data = map_get_any(data, ["data", :data, "d", :d])
 
-    cond do
-      not is_nil(inner_data) and not is_nil(type) ->
-        {type, seq, inner_data}
+      cond do
+        not is_nil(inner_data) and not is_nil(type) ->
+          {type, seq, inner_data}
 
-      not is_nil(inner_data) ->
-        {"full", seq, inner_data}
+        not is_nil(inner_data) ->
+          {"full", seq, inner_data}
 
-      true ->
-        {"full", seq, data}
+        true ->
+          {"full", seq, data}
+      end
     end
   end
 
-  defp extract_status_envelope(data), do: {"full", nil, data}
+  defp extract_status_envelope(data, _retain), do: {"full", nil, data}
 
   defp map_get_any(map, keys) do
     Enum.find_value(keys, fn key ->
@@ -518,6 +673,66 @@ defmodule RSMP.Supervisor do
 
     "#{to_string(path)}/#{normalized_stream}"
   end
+
+  defp do_send_fetch(supervisor, site_id, module, code, stream_name, from_ts, to_ts) do
+    if supervisor.pid == nil do
+      supervisor
+    else
+      correlation_id = SecureRandom.hex(8)
+      stream_segment = if stream_name && stream_name != "", do: stream_name, else: "default"
+      response_topic = "#{supervisor.id}/history/#{module}.#{code}/#{stream_segment}"
+      fetch_topic = "#{site_id}/fetch/#{module}.#{code}/#{stream_segment}"
+
+      payload = %{}
+      payload = if from_ts, do: Map.put(payload, "from", DateTime.to_iso8601(from_ts)), else: payload
+      payload = if to_ts, do: Map.put(payload, "to", DateTime.to_iso8601(to_ts)), else: payload
+
+      Logger.info("RSMP: Sending fetch #{module}.#{code}/#{stream_segment} to #{site_id} from #{inspect(from_ts)} to #{inspect(to_ts)}")
+
+      properties = %{
+        "Response-Topic": response_topic,
+        "Correlation-Data": correlation_id
+      }
+
+      :emqtt.publish_async(
+        supervisor.pid,
+        fetch_topic,
+        properties,
+        Utility.to_payload(payload),
+        [retain: false, qos: 1],
+        :infinity,
+        {&publish_done/1, []}
+      )
+
+      pending_fetch = %{site_id: site_id, module: module, code: code, stream_name: stream_name}
+      pending_fetches = Map.put(supervisor.pending_fetches, correlation_id, pending_fetch)
+      %{supervisor | pending_fetches: pending_fetches}
+    end
+  end
+
+  defp send_pending_fetches(%{last_disconnected_at: nil} = supervisor), do: supervisor
+
+  defp send_pending_fetches(supervisor) do
+    from_ts = supervisor.last_disconnected_at
+    to_ts = DateTime.utc_now()
+
+    supervisor.sites
+    |> Enum.filter(fn {_id, site} -> site.presence == "online" end)
+    |> Enum.reduce(supervisor, fn {site_id, _site}, sup ->
+      do_send_fetch(sup, site_id, "traffic", "volume", "live", from_ts, to_ts)
+    end)
+  end
+
+  defp parse_iso8601(nil), do: nil
+
+  defp parse_iso8601(ts) when is_binary(ts) do
+    case DateTime.from_iso8601(ts) do
+      {:ok, dt, _} -> dt
+      _ -> nil
+    end
+  end
+
+  defp parse_iso8601(_), do: nil
 
   def to_rsmp_status(supervisor, path, data) do
     converter(supervisor, path.module).to_rsmp_status(path.code, data)

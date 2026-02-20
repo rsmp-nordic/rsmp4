@@ -34,6 +34,8 @@ defmodule RSMP.Stream do
     :default_on,      # boolean
     :qos,             # 0 | 1
     :prune_timeout,   # ms | nil
+    buffer: [],           # list of %{ts, values, seq}, newest first
+    buffer_size: 300,     # max buffer entries
     running: false,
     seq: 0,
     last_full: nil,        # last full values published
@@ -109,6 +111,9 @@ defmodule RSMP.Stream do
 
   @doc "Publish a full update immediately if the stream is running."
   def force_full(pid), do: GenServer.call(pid, :force_full)
+
+  @doc "Replay buffered data on reconnect."
+  def replay(pid), do: GenServer.cast(pid, :replay)
 
   # ---- GenServer ----
 
@@ -187,6 +192,38 @@ defmodule RSMP.Stream do
 
   def handle_cast({:report, values}, state) do
     state = handle_report(values, state)
+    {:noreply, state}
+  end
+
+  def handle_cast(:replay, state) do
+    do_replay(state)
+    {:noreply, state}
+  end
+
+  def handle_cast({:handle_fetch, from_ts, to_ts, response_topic, correlation_data}, state) do
+    entries = filter_buffer_by_range(state.buffer, from_ts, to_ts)
+
+    if entries == [] do
+      payload = %{"complete" => true}
+      RSMP.Connection.publish_message(state.id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
+    else
+      sorted = Enum.reverse(entries)
+      last_idx = length(sorted) - 1
+
+      sorted
+      |> Enum.with_index()
+      |> Enum.each(fn {entry, idx} ->
+        payload = %{
+          "values" => entry.values,
+          "seq" => entry.seq,
+          "ts" => DateTime.to_iso8601(entry.ts),
+          "complete" => (idx == last_idx)
+        }
+        RSMP.Connection.publish_message(state.id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
+        if idx < last_idx, do: Process.sleep(10)
+      end)
+    end
+
     {:noreply, state}
   end
 
@@ -418,9 +455,8 @@ defmodule RSMP.Stream do
     seq = state.seq + 1
 
     payload = %{
-      "type" => "full",
-      "seq" => seq,
-      "data" => data
+      "values" => data,
+      "seq" => seq
     }
 
     topic = make_topic(state)
@@ -435,7 +471,9 @@ defmodule RSMP.Stream do
 
     broadcast_stream_data(state, seq, "full")
 
-    %{state | seq: seq}
+    entry = %{ts: DateTime.utc_now(), values: data, seq: seq}
+    buffer = [entry | state.buffer] |> Enum.take(state.buffer_size)
+    %{state | seq: seq, buffer: buffer}
   end
 
   defp publish_delta(state) do
@@ -443,9 +481,8 @@ defmodule RSMP.Stream do
     seq = state.seq + 1
 
     payload = %{
-      "type" => "delta",
-      "seq" => seq,
-      "data" => data
+      "values" => data,
+      "seq" => seq
     }
 
     topic = make_topic(state)
@@ -462,11 +499,17 @@ defmodule RSMP.Stream do
 
     now = System.monotonic_time(:millisecond)
 
+    # Buffer the full reconstructed state (not just the delta) for replay/history
+    full_values = state.last_full || %{}
+    entry = %{ts: DateTime.utc_now(), values: full_values, seq: seq}
+    buffer = [entry | state.buffer] |> Enum.take(state.buffer_size)
+
     %{state |
       seq: seq,
       pending_changes: %{},
       last_delta_time: now,
-      min_interval_timer: nil
+      min_interval_timer: nil,
+      buffer: buffer
     }
   end
 
@@ -510,7 +553,43 @@ defmodule RSMP.Stream do
         name -> to_string(name)
       end
 
-    RSMP.Topic.new(state.id, "stream", state.module, state.code, stream_name, [])
+    RSMP.Topic.new(state.id, "channel", state.module, state.code, stream_name, [])
+  end
+
+  defp make_replay_topic(state) do
+    RSMP.Topic.new(state.id, "replay", state.module, state.code, state.stream_name, state.component)
+  end
+
+  defp do_replay(%{buffer: []} = _state), do: :ok
+
+  defp do_replay(state) do
+    topic = make_replay_topic(state)
+    entries = Enum.reverse(state.buffer)
+    last_idx = length(entries) - 1
+
+    entries
+    |> Enum.with_index()
+    |> Enum.each(fn {entry, idx} ->
+      payload = %{
+        "values" => entry.values,
+        "seq" => entry.seq,
+        "ts" => DateTime.to_iso8601(entry.ts),
+        "complete" => (idx == last_idx)
+      }
+      RSMP.Connection.publish_message(state.id, topic, payload, %{retain: false, qos: 1}, %{})
+      if idx < last_idx, do: Process.sleep(10)
+    end)
+  end
+
+  defp filter_buffer_by_range(buffer, nil, nil), do: buffer
+
+  defp filter_buffer_by_range(buffer, from_ts, to_ts) do
+    buffer
+    |> Enum.filter(fn entry ->
+      from_ok = is_nil(from_ts) or DateTime.compare(entry.ts, from_ts) != :lt
+      to_ok = is_nil(to_ts) or DateTime.compare(entry.ts, to_ts) == :lt
+      from_ok and to_ok
+    end)
   end
 
   defp schedule_full_timer(%{update_rate: nil} = state), do: state
