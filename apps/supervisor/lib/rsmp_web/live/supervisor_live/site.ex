@@ -342,9 +342,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def handle_info(%{topic: "data_point", path: "traffic.volume", stream: "live"} = msg, socket) do
     point = %{
       ts: msg.ts,
-      cars: Map.get(msg.values, :cars, 0),
-      bicycles: Map.get(msg.values, :bicycles, 0),
-      busses: Map.get(msg.values, :busses, 0),
+      cars: Map.get(msg.values, "cars", 0),
+      bicycles: Map.get(msg.values, "bicycles", 0),
+      busses: Map.get(msg.values, "busses", 0),
       seq: msg.seq,
       source: msg.source
     }
