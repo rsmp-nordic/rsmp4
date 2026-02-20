@@ -8,26 +8,6 @@ end}></span></h1>
 <div id="client"></div>
 
 <div class="overflow-x-auto rounded-md my-4">
-  <table class="w-full text-left">
-    <caption class="px-1 py-1 bg-blue-900 text-white text-xl text-left">
-      Traffic Volume (live stream)
-    </caption>
-    <tbody>
-      <tr>
-        <td class="px-1 py-2">
-          <div id="volume-chart" phx-hook="VolumeChart" phx-update="ignore" class="w-full rounded bg-stone-900"></div>
-          <div class="flex gap-4 text-xs mt-1">
-            <span class="text-blue-400">&#9644; Cars</span>
-            <span class="text-green-400">&#9644; Bicycles</span>
-            <span class="text-orange-400">&#9644; Busses</span>
-          </div>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
-<div class="overflow-x-auto rounded-md my-4">
   <table id="operate" class="w-full text-left">
     <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
       Operate
@@ -112,6 +92,18 @@ end}></span></h1>
           </div>
         </td>
       </tr>
+      <%= if row.path == "traffic.volume" do %>
+        <tr class="even:bg-stone-100">
+          <td colspan="3" class="px-1 py-2">
+            <div id="volume-chart" phx-hook="VolumeChart" phx-update="ignore" class="w-full rounded bg-stone-900"></div>
+            <div class="flex gap-4 text-xs mt-1">
+              <span class="text-blue-400">&#9644; Cars</span>
+              <span class="text-green-400">&#9644; Bicycles</span>
+              <span class="text-orange-400">&#9644; Busses</span>
+            </div>
+          </td>
+        </tr>
+      <% end %>
     <% end %>
   </table>
 </div>

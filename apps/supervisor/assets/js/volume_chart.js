@@ -1,5 +1,5 @@
 import uPlot from "uplot"
-import { createState, tickSecond, receivePoint, receiveHistory, drawData, MAX_POINTS } from "./volume_chart_state.mjs"
+import { createState, receiveHistory, drawData, MAX_POINTS } from "./volume_chart_state.mjs"
 
 function makeBars(size) {
   return uPlot.paths.bars({ size: [size, 100], gap: 0 })
@@ -79,21 +79,11 @@ const VolumeChart = {
     const width = this.el.offsetWidth || 600
     this.chart = buildChart(this.el, width)
 
-    // Batch history from server (on mount and on reconnect) replaces the buffer.
+    // Server pushes a complete bin array every second — just render it.
     this.handleEvent("volume_history", ({ bins }) => {
       receiveHistory(this.state, bins)
       this.chart.setData(drawData(this.state))
     })
-
-    // Live data point each second — queued for the next timer tick.
-    this.handleEvent("volume_point", (point) => {
-      receivePoint(this.state, point)
-    })
-
-    // Advance the graph by one bin per second.
-    this._interval = setInterval(() => {
-      this.chart.setData(tickSecond(this.state))
-    }, 1000)
 
     this._resizeObserver = new ResizeObserver(() => {
       const w = this.el.offsetWidth
@@ -103,7 +93,6 @@ const VolumeChart = {
   },
 
   destroyed() {
-    if (this._interval) clearInterval(this._interval)
     if (this._resizeObserver) this._resizeObserver.disconnect()
     if (this.chart) this.chart.destroy()
   },

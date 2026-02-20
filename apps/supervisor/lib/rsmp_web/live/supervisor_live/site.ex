@@ -43,10 +43,10 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
         },
         responses: %{
           "tlc.plan.set" => %{"phase" => "idle", "symbol" => "", "reason" => ""}
-        },
-        replay_push_timer: nil
+        }
       )
 
+    if connected?(socket), do: schedule_volume_tick()
     {:ok, push_volume_history(socket)}
   end
 
@@ -342,43 +342,19 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   # MQTT PubSub events
 
-  @impl true
-  def handle_info(%{topic: "data_point", path: "traffic.volume", stream: "live", source: :replay, complete: true}, socket) do
-    # Final replay message — cancel any pending timer and push immediately
-    if socket.assigns.replay_push_timer, do: Process.cancel_timer(socket.assigns.replay_push_timer)
-    {:noreply, socket |> assign(:replay_push_timer, nil) |> push_volume_history()}
-  end
-
-  @impl true
-  def handle_info(%{topic: "data_point", path: "traffic.volume", stream: "live", source: :replay}, socket) do
-    # Throttle history pushes during replay to at most once per second.
-    # This avoids fighting with the JS tick timer which also shifts bins.
-    if socket.assigns.replay_push_timer do
-      {:noreply, socket}
-    else
-      timer = Process.send_after(self(), :replay_history_push, 1000)
-      {:noreply, assign(socket, :replay_push_timer, timer)}
-    end
-  end
-
-  @impl true
-  def handle_info(:replay_history_push, socket) do
-    {:noreply, socket |> assign(:replay_push_timer, nil) |> push_volume_history()}
-  end
-
-  @impl true
-  def handle_info(%{topic: "data_point", path: "traffic.volume", stream: "live"} = msg, socket) do
-    point = %{
-      cars: Map.get(msg.values, :cars, 0),
-      bicycles: Map.get(msg.values, :bicycles, 0),
-      busses: Map.get(msg.values, :busses, 0),
-    }
-    {:noreply, push_event(socket, "volume_point", point)}
-  end
-
+  # Data points are stored in the supervisor GenServer automatically.
+  # The 1-second volume tick picks them up — no per-message push needed.
   @impl true
   def handle_info(%{topic: "data_point"}, socket) do
     {:noreply, socket}
+  end
+
+  # Server-driven 1-second tick: push the full bin array to the JS chart.
+  # This is the single clock driving the graph — no JS-side timer.
+  @impl true
+  def handle_info(:tick_volume, socket) do
+    schedule_volume_tick()
+    {:noreply, push_volume_history(socket)}
   end
 
   @impl true
@@ -413,7 +389,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_info(%{topic: "presence"}, socket) do
-    {:noreply, socket |> assign_site() |> push_volume_history()}
+    {:noreply, socket |> assign_site()}
   end
 
   @impl true
@@ -488,9 +464,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     "#{path}/#{normalize_stream_key(stream_key)}"
   end
 
+  defp schedule_volume_tick, do: Process.send_after(self(), :tick_volume, 1000)
+
   # Fetch stored traffic.volume/live data points from the supervisor, aggregate
   # them into 1-second bins (oldest first), and push a volume_history event so
-  # the JS chart can pre-populate the buffer.
+  # the JS chart renders the current state.
   defp push_volume_history(socket) do
     if connected?(socket) do
       supervisor_id = socket.assigns.supervisor_id

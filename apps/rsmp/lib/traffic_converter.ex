@@ -18,7 +18,6 @@ defmodule RSMP.Converter.Traffic do
     data
     |> normalize_string_keys()
     |> keep_allowed_keys()
-    |> drop_zero_values()
     |> Enum.into(%{}, fn {key, value} -> {String.to_atom(key), value} end)
   end
 

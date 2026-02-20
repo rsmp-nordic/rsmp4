@@ -89,11 +89,14 @@ defmodule RSMP.Service.Traffic do
 	defp random_detection_volume() do
 		count = Enum.random(1..10)
 
-		1..count
-		|> Enum.reduce(%{}, fn _, acc ->
-			type = Enum.random(@vehicle_types)
-			Map.update(acc, type, 1, &(&1 + 1))
-		end)
+		detected =
+			1..count
+			|> Enum.reduce(%{}, fn _, acc ->
+				type = Enum.random(@vehicle_types)
+				Map.update(acc, type, 1, &(&1 + 1))
+			end)
+
+		Map.merge(@zero_volume, detected)
 	end
 
 end
