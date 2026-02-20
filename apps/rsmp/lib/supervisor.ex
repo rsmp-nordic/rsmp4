@@ -410,7 +410,7 @@ defmodule RSMP.Supervisor do
       site: id,
       path: status_key,
       stream: topic.stream_name,
-      values: status,
+      values: new_status,
       ts: DateTime.utc_now(),
       seq: seq,
       source: :live

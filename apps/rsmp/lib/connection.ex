@@ -8,7 +8,9 @@ defmodule RSMP.Connection do
     managers: %{},
     type: :site,
     connected: false,
-    init_options: %{}
+    init_options: %{},
+    offline_at: nil,
+    connected_at: nil
   )
 
   def new(options), do: __struct__(options)
@@ -113,7 +115,7 @@ defmodule RSMP.Connection do
       Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
     end
 
-    {:noreply, %{connection | emqtt: nil, connected: false}}
+    {:noreply, %{connection | emqtt: nil, connected: false, offline_at: DateTime.utc_now()}}
   end
 
   @impl GenServer
@@ -191,15 +193,21 @@ defmodule RSMP.Connection do
   end
 
   @impl true
-  def handle_info({:disconnected, _publish}, connection) do
+  def handle_info({:disconnected, _rc}, connection) do
     Logger.warning("RSMP: Disconnected")
-    {:noreply, %{connection | connected: false}}
+    {:noreply, %{connection | connected: false, offline_at: DateTime.utc_now()}}
+  end
+
+  @impl true
+  def handle_info({:disconnected, _rc, _props}, connection) do
+    Logger.warning("RSMP: Disconnected")
+    {:noreply, %{connection | connected: false, offline_at: DateTime.utc_now()}}
   end
 
   @impl true
   def handle_info({:EXIT, pid, _reason}, %{emqtt: pid} = connection) do
     Logger.warning("RSMP: Connection #{connection.id} emqtt process exited")
-    {:noreply, %{connection | emqtt: nil, connected: false}}
+    {:noreply, %{connection | emqtt: nil, connected: false, offline_at: DateTime.utc_now()}}
   end
 
   def handle_info({:EXIT, _pid, _reason}, connection) do
@@ -253,12 +261,13 @@ defmodule RSMP.Connection do
 
     if connection.type == :site do
       trigger_stream_states(connection.id)
-      trigger_stream_replay(connection.id)
+      since = replay_since(connection)
+      trigger_stream_replay(connection.id, since)
     end
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: true})
 
-    %{connection | connected: true}
+    %{connection | connected: true, offline_at: nil, connected_at: DateTime.utc_now()}
   end
 
   defp trigger_services(id) do
@@ -276,12 +285,20 @@ defmodule RSMP.Connection do
     end)
   end
 
-  defp trigger_stream_replay(id) do
+  defp trigger_stream_replay(id, since) do
     RSMP.Streams.list_streams(id)
     |> Enum.each(fn pid ->
-      RSMP.Stream.replay(pid)
+      RSMP.Stream.replay(pid, since)
     end)
   end
+
+  # Determine replay since-timestamp for reconnect.
+  # If connected is still true (auto-reconnect: no disconnect message was received),
+  # replay from connected_at (the start of the previous connection).
+  # If offline_at is set (explicit disconnect message was received), use that.
+  # Otherwise this is the first connect — no replay.
+  defp replay_since(%{connected: true, connected_at: connected_at}), do: connected_at
+  defp replay_since(%{offline_at: offline_at}), do: offline_at
 
   defp dispatch_fetch(connection, topic, data, properties) do
     from_ts = parse_datetime(data["from"])

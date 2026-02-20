@@ -37,7 +37,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
        stream_pulses: %{},
        plans: get_plans(site),
        alarm_flags: ["active"],
-       volume_points: [],
+
        commands: %{
          "tlc.plan.set" => plan
        },
@@ -255,6 +255,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   defp do_format_status_lines(value) when is_map(value) do
     value
     |> Enum.map(fn {key, val} -> {to_string(key), val} end)
+    |> Enum.sort()
   end
 
   defp do_format_status_lines(nil), do: []
@@ -341,15 +342,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   @impl true
   def handle_info(%{topic: "data_point", path: "traffic.volume", stream: "live"} = msg, socket) do
     point = %{
-      ts: msg.ts,
-      cars: Map.get(msg.values, "cars", 0),
-      bicycles: Map.get(msg.values, "bicycles", 0),
-      busses: Map.get(msg.values, "busses", 0),
-      seq: msg.seq,
-      source: msg.source
+      cars: Map.get(msg.values, :cars, 0),
+      bicycles: Map.get(msg.values, :bicycles, 0),
+      busses: Map.get(msg.values, :busses, 0)
     }
-    volume_points = (socket.assigns.volume_points ++ [point]) |> Enum.take(-200)
-    {:noreply, assign(socket, volume_points: volume_points)}
+    {:noreply, push_event(socket, "volume_point", point)}
   end
 
   @impl true
@@ -462,124 +459,5 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   defp stream_state_key(path, stream_key) do
     "#{path}/#{normalize_stream_key(stream_key)}"
-  end
-
-  # Volume graph rendering
-
-  def render_volume_graph(assigns) do
-    points = assigns.volume_points
-
-    {svg_data, legend} =
-      if length(points) < 2 do
-        {nil, nil}
-      else
-        w = 600
-        h = 80
-        pad_x = 4
-        pad_y = 4
-        gap_threshold_ms = 15_000
-
-        max_val =
-          Enum.flat_map(points, fn p -> [p.cars, p.bicycles, p.busses] end)
-          |> Enum.max(fn -> 1 end)
-          |> max(1)
-
-        first_ts = List.first(points).ts |> DateTime.to_unix(:millisecond)
-        last_ts = List.last(points).ts |> DateTime.to_unix(:millisecond)
-        time_span = max(last_ts - first_ts, 1)
-
-        segments_by_key =
-          Enum.map(
-            [{"#60a5fa", :cars}, {"#4ade80", :bicycles}, {"#fb923c", :busses}],
-            fn {color, key} ->
-              segs = volume_graph_segments(points, key, first_ts, time_span, w, pad_x, h, pad_y, max_val, gap_threshold_ms)
-              {color, segs}
-            end
-          )
-
-        replay_dots =
-          points
-          |> Enum.filter(fn p -> p.source in [:replay, :history] end)
-          |> Enum.map(fn p ->
-            ts_ms = DateTime.to_unix(p.ts, :millisecond)
-            cx = pad_x + trunc((ts_ms - first_ts) / time_span * (w - 2 * pad_x))
-            {cx, pad_y + div(h, 2)}
-          end)
-
-        {{w, h, pad_y, segments_by_key, replay_dots, length(points)}, true}
-      end
-
-    assigns =
-      Map.merge(assigns, %{
-        svg_data: svg_data,
-        legend: legend
-      })
-
-    ~H"""
-    <%= if @svg_data == nil do %>
-      <div class="text-gray-400 text-sm py-2">No volume data yet — set traffic level to generate data</div>
-    <% else %>
-      <% {w, h, pad_y, segments_by_key, replay_dots, num_points} = @svg_data %>
-      <svg viewBox={"0 0 #{w} #{h + pad_y * 2}"} class="w-full rounded bg-stone-900" xmlns="http://www.w3.org/2000/svg">
-        <%= for {color, segs} <- segments_by_key do %>
-          <%= for seg <- segs do %>
-            <polyline
-              points={seg}
-              fill="none"
-              stroke={color}
-              stroke-width="1.5"
-              stroke-linejoin="round"
-              stroke-linecap="round"
-            />
-          <% end %>
-        <% end %>
-        <%= for {cx, cy} <- replay_dots do %>
-          <circle cx={cx} cy={cy} r="2" fill="#fbbf24" opacity="0.7" />
-        <% end %>
-      </svg>
-      <div class="flex gap-4 text-xs mt-1">
-        <span class="text-blue-400">&#9644; Cars</span>
-        <span class="text-green-400">&#9644; Bicycles</span>
-        <span class="text-orange-400">&#9644; Busses</span>
-        <span class="text-yellow-400">&#9679; Replay/History</span>
-        <span class="text-gray-400 ml-auto"><%= num_points %> points</span>
-      </div>
-    <% end %>
-    """
-  end
-
-  defp volume_graph_segments(points, key, first_ts, time_span, w, pad_x, h, pad_y, max_val, gap_threshold_ms) do
-    {segs, last_seg} =
-      Enum.reduce(points, {[], []}, fn point, {segs, cur_seg} ->
-        ts_ms = DateTime.to_unix(point.ts, :millisecond)
-
-        case cur_seg do
-          [] ->
-            {segs, [point]}
-
-          _ ->
-            last_ts_ms = DateTime.to_unix(List.last(cur_seg).ts, :millisecond)
-
-            if ts_ms - last_ts_ms > gap_threshold_ms do
-              {segs ++ [cur_seg], [point]}
-            else
-              {segs, cur_seg ++ [point]}
-            end
-        end
-      end)
-
-    all_segs = if last_seg != [], do: segs ++ [last_seg], else: segs
-
-    Enum.map(all_segs, fn seg ->
-      seg
-      |> Enum.map(fn point ->
-        ts_ms = DateTime.to_unix(point.ts, :millisecond)
-        cx = pad_x + (ts_ms - first_ts) / time_span * (w - 2 * pad_x)
-        val = Map.get(point, key, 0)
-        cy = pad_y + h - trunc(val / max_val * h)
-        "#{trunc(cx)},#{cy}"
-      end)
-      |> Enum.join(" ")
-    end)
   end
 end

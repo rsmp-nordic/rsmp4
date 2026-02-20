@@ -13,7 +13,7 @@ defmodule RSMP.Service.Traffic do
 
 	defstruct(
 		id: nil,
-		live_volume: @zero_volume,
+		last_detection: @zero_volume,
 		traffic_level: :low,
 		detection_timer: nil
 	)
@@ -35,18 +35,12 @@ defmodule RSMP.Service.Traffic do
 
 			level ->
 				detection_volume = random_detection_volume()
-				live_volume = accumulate_volume(service.live_volume, detection_volume)
 
-				live_update =
-					Enum.into(detection_volume, %{}, fn {type, _count} ->
-						{type, Map.fetch!(live_volume, type)}
-					end)
-
-				RSMP.Service.report_to_streams(service.id, "traffic", "volume", live_update)
+				RSMP.Service.report_to_streams(service.id, "traffic", "volume", detection_volume)
 				Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status", changes: ["traffic.volume"]})
 
 				detection_timer = schedule_next_detection(level)
-				{:noreply, %{service | live_volume: live_volume, detection_timer: detection_timer}}
+				{:noreply, %{service | last_detection: detection_volume, detection_timer: detection_timer}}
 		end
 	end
 
@@ -92,12 +86,6 @@ defmodule RSMP.Service.Traffic do
 		Enum.random(50..1_000)
 	end
 
-	defp accumulate_volume(current, delta) do
-		Map.merge(current, delta, fn _key, current_count, delta_count ->
-			current_count + delta_count
-		end)
-	end
-
 	defp random_detection_volume() do
 		count = Enum.random(1..10)
 
@@ -117,6 +105,6 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.Traffic do
 	def receive_command(service, _topic, _data, _properties), do: {service, nil}
 
 	def format_status(service, "volume") do
-		service.live_volume
+		service.last_detection
 	end
 end

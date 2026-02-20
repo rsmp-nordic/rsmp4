@@ -15,7 +15,12 @@ end}></span></h1>
     <tbody>
       <tr>
         <td class="px-1 py-2">
-          <.render_volume_graph volume_points={@volume_points} />
+          <div id="volume-chart" phx-hook="VolumeChart" phx-update="ignore" class="w-full rounded bg-stone-900"></div>
+          <div class="flex gap-4 text-xs mt-1">
+            <span class="text-blue-400">&#9644; Cars</span>
+            <span class="text-green-400">&#9644; Bicycles</span>
+            <span class="text-orange-400">&#9644; Busses</span>
+          </div>
         </td>
       </tr>
     </tbody>

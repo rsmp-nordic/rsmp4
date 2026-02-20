@@ -310,6 +310,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   def format_status_lines(value) when is_map(value) do
     value
     |> Enum.map(fn {key, val} -> {to_string(key), val} end)
+    |> Enum.sort()
   end
 
   def format_status_lines(value), do: [{"value", value}]

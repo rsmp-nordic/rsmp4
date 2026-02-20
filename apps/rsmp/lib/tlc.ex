@@ -69,7 +69,8 @@ defmodule RSMP.Node.TLC do
         delta_rate: :on_change,
         min_interval: 100,
         default_on: true,
-        qos: 0
+        qos: 0,
+        replay_rate: 2
       }},
       {"traffic", %Config{
         code: "volume",
