@@ -18,6 +18,7 @@ defmodule RSMP.Service.TLC do
 
   @tick_interval_ms 1_000
   @group_transition_every_ticks 3
+  @max_groups_history 3600
 
   defstruct(
     id: nil,
@@ -30,7 +31,8 @@ defmodule RSMP.Service.TLC do
     stage: 0,
     plan: 0,
     source: "startup",
-    alarms: %{}
+    alarms: %{},
+    groups_history: []
   )
 
   @impl RSMP.Service.Behaviour
@@ -80,6 +82,12 @@ defmodule RSMP.Service.TLC do
 
     service = %{service | cycle: cycle, groups: groups, stage: stage}
 
+    # Record groups state to history for the timeline chart
+    ts = System.system_time(:millisecond)
+    history_point = %{ts: ts, groups: groups}
+    groups_history = Enum.take(service.groups_history ++ [history_point], -@max_groups_history)
+    service = %{service | groups_history: groups_history}
+
     if groups_changed do
       # signalgroupstatus/stage are the on_change triggers for tlc.groups stream
       values =
@@ -99,6 +107,11 @@ defmodule RSMP.Service.TLC do
     Process.send_after(self(), :tick_groups, @tick_interval_ms)
 
     {:noreply, service}
+  end
+
+  @impl GenServer
+  def handle_call(:get_groups_history, _from, service) do
+    {:reply, service.groups_history, service}
   end
 
   @impl GenServer

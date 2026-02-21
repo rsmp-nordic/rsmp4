@@ -52,6 +52,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     end
 
     schedule_volume_tick()
+    schedule_groups_tick()
 
     {:ok,
      assign(socket,
@@ -229,6 +230,12 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
+  def handle_info(:tick_groups, socket) do
+    schedule_groups_tick()
+    {:noreply, push_groups_history(socket)}
+  end
+
+  @impl true
   def handle_info(%{topic: "local_status"}, socket) do
     site_id = socket.assigns.id
     statuses = TLC.get_statuses(site_id)
@@ -370,11 +377,37 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     Process.send_after(self(), :tick_volume, delay)
   end
 
+  defp schedule_groups_tick do
+    now_ms = System.system_time(:millisecond)
+    delay = 1000 - rem(now_ms, 1000)
+    Process.send_after(self(), :tick_groups, delay)
+  end
+
   defp push_volume_history(socket) do
     if connected?(socket) do
       points = TLC.get_volume_data_points(socket.assigns.id)
       bins = RSMP.Remote.Node.Site.aggregate_into_bins(points, 60)
       push_event(socket, "volume_history", %{bins: bins})
+    else
+      socket
+    end
+  end
+
+  defp push_groups_history(socket) do
+    if connected?(socket) do
+      history = TLC.get_groups_history(socket.assigns.id)
+      now_ms = System.system_time(:millisecond)
+      window_start = now_ms - 60_000
+
+      # Filter to the last 60 seconds, but include the last entry before the window
+      # so we know the initial state at the start of the window
+      filtered =
+        case Enum.split_while(history, fn p -> p.ts < window_start end) do
+          {[], within} -> within
+          {before, within} -> [List.last(before) | within]
+        end
+
+      push_event(socket, "groups_history", %{history: filtered})
     else
       socket
     end

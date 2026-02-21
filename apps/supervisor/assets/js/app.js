@@ -22,8 +22,9 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import VolumeChart from "./volume_chart"
+import GroupsChart from "./groups_chart"
 
-const Hooks = { VolumeChart }
+const Hooks = { VolumeChart, GroupsChart }
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {hooks: Hooks, params: {_csrf_token: csrfToken}})

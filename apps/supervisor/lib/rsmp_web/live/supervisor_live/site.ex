@@ -56,8 +56,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
         }
       )
 
-    if connected?(socket), do: schedule_volume_tick()
-    {:ok, push_volume_history(socket)}
+    if connected?(socket) do
+      schedule_volume_tick()
+      schedule_groups_tick()
+    end
+    {:ok, socket |> push_volume_history() |> push_groups_history()}
   end
 
   def assign_site(socket) do
@@ -389,6 +392,12 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
+  def handle_info(:tick_groups, socket) do
+    schedule_groups_tick()
+    {:noreply, push_groups_history(socket)}
+  end
+
+  @impl true
   def handle_info(%{topic: "connected", connected: connected}, socket) do
     {:noreply, assign(socket, connected: connected)}
   end
@@ -508,6 +517,12 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     Process.send_after(self(), :tick_volume, delay)
   end
 
+  defp schedule_groups_tick do
+    now_ms = System.system_time(:millisecond)
+    delay = 1000 - rem(now_ms, 1000)
+    Process.send_after(self(), :tick_groups, delay)
+  end
+
   # Fetch stored traffic.volume/live data points from the supervisor, aggregate
   # them into 1-second bins (oldest first), and push a volume_history event so
   # the JS chart renders the current state.
@@ -525,5 +540,59 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     else
       socket
     end
+  end
+
+  # Build groups timeline from stored data points.
+  # Data points are deltas (only changed groups). We replay them forward
+  # to reconstruct full group snapshots at each timestamp.
+  defp push_groups_history(socket) do
+    if connected?(socket) do
+      supervisor_id = socket.assigns.supervisor_id
+      site_id = socket.assigns.site_id
+      points = RSMP.Supervisor.data_points(supervisor_id, site_id, "tlc.groups/live")
+
+      now = DateTime.utc_now()
+      window_start = DateTime.add(now, -60, :second)
+
+      # Replay deltas to build full snapshots, respecting gap markers
+      {history, _state} =
+        Enum.reduce(points, {[], %{}}, fn point, {history, state} ->
+          if is_gap_marker?(point.values) do
+            ts = DateTime.to_unix(point.ts, :millisecond)
+            {history ++ [%{ts: ts, gap: true}], state}
+          else
+            groups_delta = get_groups_from_point(point.values)
+            state = Map.merge(state, groups_delta)
+            ts = DateTime.to_unix(point.ts, :millisecond)
+            {history ++ [%{ts: ts, groups: state}], state}
+          end
+        end)
+
+      # Filter to the last 60 seconds, keeping the last entry before the window
+      window_start_ms = DateTime.to_unix(window_start, :millisecond)
+      filtered =
+        case Enum.split_while(history, fn p -> p.ts < window_start_ms end) do
+          {[], within} -> within
+          {before, within} -> [List.last(before) | within]
+        end
+
+      push_event(socket, "groups_history", %{history: filtered})
+    else
+      socket
+    end
+  end
+
+  defp get_groups_from_point(values) do
+    cond do
+      is_map(values[:groups]) -> values[:groups]
+      is_map(values["groups"]) -> values["groups"]
+      is_map(values[:signalgroupstatus]) -> values[:signalgroupstatus]
+      is_map(values["signalgroupstatus"]) -> values["signalgroupstatus"]
+      true -> %{}
+    end
+  end
+
+  defp is_gap_marker?(values) do
+    values == %{gap: true} || values == %{"gap" => true}
   end
 end

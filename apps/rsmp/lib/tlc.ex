@@ -30,7 +30,9 @@ defmodule RSMP.Node.TLC do
         delta_rate: :on_change,
         min_interval: 100,
         default_on: false,
-        qos: 0
+        qos: 0,
+        replay_rate: 4,
+        history_rate: 4
       }},
       {"tlc", %Config{
         code: "plan",
@@ -237,4 +239,12 @@ defmodule RSMP.Node.TLC do
       [] -> []
     end
   end
+
+  def get_groups_history(site_id) do
+    case RSMP.Registry.lookup_service(site_id, "tlc", []) do
+      [{service_pid, _}] -> GenServer.call(service_pid, :get_groups_history)
+      [] -> []
+    end
+  end
+
 end

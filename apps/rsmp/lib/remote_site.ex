@@ -47,6 +47,23 @@ defmodule RSMP.Remote.Node.Site do
     %{site | data_points: Map.put(site.data_points, stream_key, updated)}
   end
 
+  # Store a gap marker to indicate a period with no data (stream off / site offline).
+  def store_gap_marker(site, stream_key) do
+    key = System.unique_integer([:monotonic])
+    ts = DateTime.utc_now()
+    point = %{ts: ts, values: %{gap: true}}
+    existing = Map.get(site.data_points, stream_key, %{})
+    updated = Map.put(existing, key, point)
+    %{site | data_points: Map.put(site.data_points, stream_key, updated)}
+  end
+
+  # Remove all gap markers for a stream key (called when data starts flowing again).
+  def remove_gap_markers(site, stream_key) do
+    existing = Map.get(site.data_points, stream_key, %{})
+    cleaned = Enum.reject(existing, fn {_k, v} -> v.values == %{gap: true} end) |> Map.new()
+    %{site | data_points: Map.put(site.data_points, stream_key, cleaned)}
+  end
+
   # Return data points for a stream key as a list sorted by ts (oldest first).
   def get_data_points(site, stream_key) do
     site.data_points

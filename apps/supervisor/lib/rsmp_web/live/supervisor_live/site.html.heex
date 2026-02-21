@@ -105,6 +105,13 @@ end}></span></h1>
           </div>
         </td>
       </tr>
+      <%= if row.path == "tlc.groups" do %>
+        <tr class="even:bg-stone-100">
+          <td colspan="3" class="p-0">
+            <div id="groups-chart" phx-hook="GroupsChart" phx-update="ignore" class="w-full rounded"></div>
+          </td>
+        </tr>
+      <% end %>
       <%= if row.path == "traffic.volume" do %>
         <tr class="even:bg-stone-100">
           <td colspan="3" class="p-0">
