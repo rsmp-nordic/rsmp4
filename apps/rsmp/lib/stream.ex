@@ -195,11 +195,11 @@ defmodule RSMP.Stream do
   end
 
   @impl GenServer
-  def handle_cast({:report, values, _ts}, %{running: false} = state) do
+  def handle_cast({:report, values, ts}, %{running: false} = state) do
     # Buffer the report with an incremented seq even though we're not publishing.
     # This lets the supervisor detect gaps in the seq numbers and request the
     # missing data via fetch/history once the stream is back on.
-    state = buffer_without_publishing(values, state)
+    state = buffer_without_publishing(values, ts, state)
     {:noreply, state}
   end
 
@@ -277,10 +277,17 @@ defmodule RSMP.Stream do
 
   defp do_start(state) do
     Logger.info("RSMP Stream: Starting #{stream_label(state)}")
-    state = %{state | running: true, last_full: nil, pending_changes: %{}}
+    state = %{state | running: true, last_full: nil, pending_changes: %{}, aggregation_acc: nil}
 
-    # Request initial values from the service and publish full update
-    state = request_and_publish_full(state)
+    # Publish initial full update, unless:
+    # - always_publish is set (event/counter stream, no accumulated state to snapshot)
+    # - aggregation is active (first full comes when the aggregation timer fires)
+    state =
+      if not state.always_publish and state.aggregation == :off do
+        request_and_publish_full(state)
+      else
+        state
+      end
 
     # Schedule periodic full updates
     state = schedule_full_timer(state)
@@ -328,11 +335,11 @@ defmodule RSMP.Stream do
   # Buffer values with a seq number but don't publish to MQTT.
   # Called when the stream is stopped to ensure seq gaps exist for the supervisor
   # to detect and fetch via history.
-  defp buffer_without_publishing(values, state) do
+  defp buffer_without_publishing(values, ts, state) do
     values = Map.take(values, Map.keys(state.attributes))
     last_full = merge_values(state.last_full || %{}, values)
     seq = state.seq + 1
-    entry = %{ts: DateTime.utc_now(), values: values, seq: seq}
+    entry = %{ts: ts || DateTime.utc_now(), values: values, seq: seq}
     buffer = [entry | state.buffer] |> Enum.take(state.buffer_size)
     %{state | seq: seq, last_full: last_full, buffer: buffer}
   end
@@ -437,7 +444,7 @@ defmodule RSMP.Stream do
   end
 
   defp handle_aggregated_report(values, state) do
-    # For aggregated streams, accumulate values
+    # For aggregated streams, accumulate values into lists per attribute
     acc = state.aggregation_acc || %{}
 
     acc =
@@ -447,6 +454,56 @@ defmodule RSMP.Stream do
       end)
 
     %{state | aggregation_acc: acc}
+  end
+
+  # Compute aggregated values from the accumulator.
+  # Returns a map with all attribute keys, defaulting to 0 for missing entries.
+  defp compute_aggregation(:sum, acc, attributes) do
+    acc = acc || %{}
+    Enum.into(attributes, %{}, fn {attr, _type} ->
+      values = Map.get(acc, attr, [])
+      {attr, Enum.sum(values)}
+    end)
+  end
+
+  defp compute_aggregation(:count, acc, attributes) do
+    acc = acc || %{}
+    Enum.into(attributes, %{}, fn {attr, _type} ->
+      values = Map.get(acc, attr, [])
+      {attr, length(values)}
+    end)
+  end
+
+  defp compute_aggregation(:average, acc, attributes) do
+    acc = acc || %{}
+    Enum.into(attributes, %{}, fn {attr, _type} ->
+      values = Map.get(acc, attr, [])
+      {attr, if(values == [], do: 0, else: Enum.sum(values) / length(values))}
+    end)
+  end
+
+  defp compute_aggregation(:max, acc, attributes) do
+    acc = acc || %{}
+    Enum.into(attributes, %{}, fn {attr, _type} ->
+      values = Map.get(acc, attr, [])
+      {attr, if(values == [], do: 0, else: Enum.max(values))}
+    end)
+  end
+
+  defp compute_aggregation(:min, acc, attributes) do
+    acc = acc || %{}
+    Enum.into(attributes, %{}, fn {attr, _type} ->
+      values = Map.get(acc, attr, [])
+      {attr, if(values == [], do: 0, else: Enum.min(values))}
+    end)
+  end
+
+  defp compute_aggregation(:median, acc, attributes) do
+    acc = acc || %{}
+    Enum.into(attributes, %{}, fn {attr, _type} ->
+      values = Map.get(acc, attr, []) |> Enum.sort()
+      {attr, if(values == [], do: 0, else: Enum.at(values, div(length(values), 2)))}
+    end)
   end
 
   defp maybe_publish_delta(state) do
@@ -475,7 +532,16 @@ defmodule RSMP.Stream do
   end
 
   defp publish_full(state) do
-    data = state.last_full || %{}
+    # For aggregated streams, compute the result from the accumulator.
+    # For regular streams, use the current full state.
+    {data, state} =
+      if state.aggregation != :off do
+        aggregated = compute_aggregation(state.aggregation, state.aggregation_acc, state.attributes)
+        {aggregated, %{state | aggregation_acc: nil}}
+      else
+        {state.last_full || %{}, state}
+      end
+
     seq = state.seq + 1
     ts = DateTime.utc_now()
 
@@ -497,8 +563,16 @@ defmodule RSMP.Stream do
 
     broadcast_stream_data(state, seq, "full")
 
-    entry = %{ts: ts, values: data, seq: seq}
-    buffer = [entry | state.buffer] |> Enum.take(state.buffer_size)
+    # For counter/event streams (always_publish), the full is a state snapshot,
+    # not a discrete event. Don't add it to the buffer so it won't appear in
+    # replay/history responses as a phantom data point.
+    buffer =
+      if state.always_publish do
+        state.buffer
+      else
+        [%{ts: ts, values: data, seq: seq} | state.buffer] |> Enum.take(state.buffer_size)
+      end
+
     %{state | seq: seq, buffer: buffer}
   end
 

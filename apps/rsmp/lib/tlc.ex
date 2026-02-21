@@ -78,13 +78,14 @@ defmodule RSMP.Node.TLC do
         code: "volume",
         stream_name: "5s",
         attributes: %{
-          "cars" => :send_along,
-          "bicycles" => :send_along,
-          "busses" => :send_along
+          "cars" => :on_change,
+          "bicycles" => :on_change,
+          "busses" => :on_change
         },
         update_rate: 5_000,
         align_full_updates: true,
         delta_rate: :off,
+        aggregation: :sum,
         min_interval: 0,
         default_on: true,
         qos: 1

@@ -476,26 +476,32 @@ defmodule RSMP.Supervisor do
     stream_pub = %{topic: "stream_data", site: id, stream: stream_key}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", stream_pub)
 
-    # Broadcast individual data point for time-series tracking
-    point_ts = event_ts || DateTime.utc_now()
-    point_pub = %{
-      topic: "data_point",
-      site: id,
-      path: status_key,
-      stream: topic.stream_name,
-      values: new_status,
-      ts: point_ts,
-      seq: seq,
-      source: :live
-    }
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", point_pub)
-
-    # Persist this data point so the LiveView can build history on mount/reconnect
-    stream_key = "#{status_key}/#{topic.stream_name}"
+    # Only create data points for delta messages (events), not retained full messages.
+    # Full messages are state snapshots (e.g. on stream start) — not discrete events.
+    # Replay/history have their own paths that create data points correctly.
     supervisor =
-      update_in(supervisor.sites[id], fn site ->
-        RSMP.Remote.Node.Site.store_data_point(site, stream_key, seq, point_ts, new_status)
-      end)
+      if retain do
+        supervisor
+      else
+        point_ts = event_ts || DateTime.utc_now()
+        point_pub = %{
+          topic: "data_point",
+          site: id,
+          path: status_key,
+          stream: topic.stream_name,
+          values: new_status,
+          ts: point_ts,
+          seq: seq,
+          source: :live
+        }
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", point_pub)
+
+        # Persist this data point so the LiveView can build history on mount/reconnect
+        stream_key = "#{status_key}/#{topic.stream_name}"
+        update_in(supervisor.sites[id], fn site ->
+          RSMP.Remote.Node.Site.store_data_point(site, stream_key, seq, point_ts, new_status)
+        end)
+      end
 
     supervisor
   end
