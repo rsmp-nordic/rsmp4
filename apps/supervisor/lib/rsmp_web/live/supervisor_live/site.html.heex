@@ -20,7 +20,7 @@ end}></span></h1>
           <button
             type="button"
             phx-click="toggle_connection"
-            class={if @connected, do: "bg-green-600 hover:bg-green-800 text-white rounded-lg px-3 py-1", else: "bg-red-600 hover:bg-red-800 text-white rounded-lg px-3 py-1"}
+            class={RSMP.ButtonClasses.selectable(@connected)}
           >
             <%= if @connected, do: "Online", else: "Offline" %>
           </button>
@@ -107,11 +107,11 @@ end}></span></h1>
       </tr>
       <%= if row.path == "traffic.volume" do %>
         <tr class="even:bg-stone-100">
-          <td colspan="3" class="px-1 py-2">
+          <td colspan="3" class="p-0">
             <div id="volume-chart" phx-hook="VolumeChart" phx-update="ignore" class="w-full rounded bg-stone-900"></div>
             <div class="flex gap-4 text-xs mt-1">
-              <span class="text-blue-400">&#9644; Cars</span>
-              <span class="text-green-400">&#9644; Bicycles</span>
+              <span class="text-purple-900">&#9644; Cars</span>
+              <span class="text-blue-600">&#9644; Bicycles</span>
               <span class="text-orange-400">&#9644; Busses</span>
             </div>
             <div class="mt-2">

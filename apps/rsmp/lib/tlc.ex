@@ -67,11 +67,12 @@ defmodule RSMP.Node.TLC do
         },
         update_rate: nil,
         delta_rate: :on_change,
-        min_interval: 100,
+        min_interval: 0,
         default_on: true,
         qos: 0,
         replay_rate: 4,
-        history_rate: 4
+        history_rate: 4,
+        always_publish: true
       }},
       {"traffic", %Config{
         code: "volume",
@@ -226,6 +227,13 @@ defmodule RSMP.Node.TLC do
     case RSMP.Registry.lookup_service(site_id, "tlc", []) do
       [{service_pid, _}] -> GenServer.call(service_pid, {:set_plan_local, plan})
       [] -> :error
+    end
+  end
+
+  def get_volume_data_points(site_id) do
+    case RSMP.Registry.lookup_service(site_id, "traffic", []) do
+      [{service_pid, _}] -> GenServer.call(service_pid, :get_data_points)
+      [] -> []
     end
   end
 end

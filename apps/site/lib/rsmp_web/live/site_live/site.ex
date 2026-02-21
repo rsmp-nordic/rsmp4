@@ -51,6 +51,8 @@ defmodule RSMP.Site.Web.SiteLive.Site do
       _ -> false
     end
 
+    schedule_volume_tick()
+
     {:ok,
      assign(socket,
        id: site_id,
@@ -216,7 +218,14 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   def handle_info(%{topic: "local_status", changes: _changes}, socket) do
     site_id = socket.assigns.id
     statuses = TLC.get_statuses(site_id)
-    {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
+    socket = assign_statuses_and_streams(socket, statuses, site_id)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(:tick_volume, socket) do
+    schedule_volume_tick()
+    {:noreply, push_volume_history(socket)}
   end
 
   @impl true
@@ -351,6 +360,24 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   defp stream_identity(module, code, stream_name) do
     normalized_stream = if stream_name in [nil, ""], do: "default", else: stream_name
     "#{module}.#{code}/#{normalized_stream}"
+  end
+
+  # Schedule tick aligned to the next wall-clock second boundary so that
+  # site and supervisor charts aggregate over identical time windows.
+  defp schedule_volume_tick do
+    now_ms = System.system_time(:millisecond)
+    delay = 1000 - rem(now_ms, 1000)
+    Process.send_after(self(), :tick_volume, delay)
+  end
+
+  defp push_volume_history(socket) do
+    if connected?(socket) do
+      points = TLC.get_volume_data_points(socket.assigns.id)
+      bins = RSMP.Remote.Node.Site.aggregate_into_bins(points, 60)
+      push_event(socket, "volume_history", %{bins: bins})
+    else
+      socket
+    end
   end
 
 end

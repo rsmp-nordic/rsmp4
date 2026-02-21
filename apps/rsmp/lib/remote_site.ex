@@ -14,7 +14,9 @@ defmodule RSMP.Remote.Node.Site do
     alarms: %{},
     num_alarms: 0,
     # %{ "traffic.volume/live" => %{ seq_or_key => %{ts: DateTime, values: map} } }
-    data_points: %{}
+    data_points: %{},
+    # %{ stream_key => DateTime.t() } — when each stream was last stopped
+    stream_stopped_at: %{}
   )
 
   # api

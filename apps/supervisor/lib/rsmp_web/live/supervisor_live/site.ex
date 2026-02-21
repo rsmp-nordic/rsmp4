@@ -500,7 +500,13 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     "#{path}/#{normalize_stream_key(stream_key)}"
   end
 
-  defp schedule_volume_tick, do: Process.send_after(self(), :tick_volume, 1000)
+  # Schedule tick aligned to the next wall-clock second boundary so that
+  # site and supervisor charts aggregate over identical time windows.
+  defp schedule_volume_tick do
+    now_ms = System.system_time(:millisecond)
+    delay = 1000 - rem(now_ms, 1000)
+    Process.send_after(self(), :tick_volume, delay)
+  end
 
   # Fetch stored traffic.volume/live data points from the supervisor, aggregate
   # them into 1-second bins (oldest first), and push a volume_history event so

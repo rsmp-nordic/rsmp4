@@ -3,6 +3,9 @@ defmodule RSMP.Supervisor do
   require Logger
   alias RSMP.{Utility, Topic, Path}
 
+  # Must match MAX_POINTS in volume_chart_state.mjs
+  @graph_window_seconds 60
+
   defstruct(
     pid: nil,
     id: nil,
@@ -378,6 +381,7 @@ defmodule RSMP.Supervisor do
   # helpers
   defp receive_presence(supervisor, id, data) when data in ["online", "offline", "shutdown"] do
     {supervisor, site} = get_site(supervisor, id)
+    previous_presence = site.presence
     site = %{site | presence: data}
     supervisor = put_in(supervisor.sites[id], site)
     Logger.info("RSMP: Supervisor received presence from #{id}: #{data}")
@@ -385,6 +389,19 @@ defmodule RSMP.Supervisor do
     pub = %{topic: "presence", site: id, presence: data}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
+
+    # When a site comes online, fetch any missing traffic.volume data to fill
+    # the graph window. Covers sites that come back after a supervisor outage or
+    # that connect for the first time while the supervisor is already running.
+    supervisor =
+      if data == "online" && previous_presence != "online" do
+        from_ts =
+          supervisor.last_disconnected_at ||
+            DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
+        fetch_volume_gaps_for_site(supervisor, id, from_ts)
+      else
+        supervisor
+      end
 
     supervisor
   end
@@ -421,7 +438,7 @@ defmodule RSMP.Supervisor do
 
     # New format: {"values": {...}, "seq": N}, retain flag determines full vs delta.
     # Legacy format: {"type": "full|delta", "seq": N, "data": {...}} also supported.
-    {status_type, seq, values} = extract_status_envelope(data, retain)
+    {status_type, seq, values, event_ts} = extract_status_envelope(data, retain)
 
     # Use code (without stream name) as the status key
     status_key = to_string(path)
@@ -460,13 +477,14 @@ defmodule RSMP.Supervisor do
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", stream_pub)
 
     # Broadcast individual data point for time-series tracking
+    point_ts = event_ts || DateTime.utc_now()
     point_pub = %{
       topic: "data_point",
       site: id,
       path: status_key,
       stream: topic.stream_name,
       values: new_status,
-      ts: DateTime.utc_now(),
+      ts: point_ts,
       seq: seq,
       source: :live
     }
@@ -476,7 +494,7 @@ defmodule RSMP.Supervisor do
     stream_key = "#{status_key}/#{topic.stream_name}"
     supervisor =
       update_in(supervisor.sites[id], fn site ->
-        RSMP.Remote.Node.Site.store_data_point(site, stream_key, seq, point_pub.ts, new_status)
+        RSMP.Remote.Node.Site.store_data_point(site, stream_key, seq, point_ts, new_status)
       end)
 
     supervisor
@@ -522,9 +540,18 @@ defmodule RSMP.Supervisor do
 
       true ->
         id = topic.id
-        {supervisor, _site} = get_site(supervisor, id)
+        {supervisor, site} = get_site(supervisor, id)
         path = Path.new(topic.path.module, topic.path.code, [])
         stream_key = stream_state_key(path, stream_name)
+        previous_state = get_in(site.streams, [stream_key])
+
+        # Record the timestamp when a stream is stopped
+        supervisor =
+          if state == "stopped" do
+            put_in(supervisor.sites[id].stream_stopped_at[stream_key], DateTime.utc_now())
+          else
+            supervisor
+          end
 
         supervisor = put_in(supervisor.sites[id].streams[stream_key], state)
 
@@ -533,6 +560,15 @@ defmodule RSMP.Supervisor do
         pub = %{topic: "stream", site: id, stream: stream_key, state: state}
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
+
+        # When traffic.volume/live restarts after being stopped, fetch missed data
+        supervisor =
+          if state == "running" && previous_state == "stopped" && stream_key == "traffic.volume/live" do
+            stopped_at = get_in(supervisor.sites[id].stream_stopped_at, [stream_key])
+            fetch_volume_gaps_for_site(supervisor, id, stopped_at)
+          else
+            supervisor
+          end
 
         supervisor
     end
@@ -705,11 +741,12 @@ defmodule RSMP.Supervisor do
   end
 
   defp extract_status_envelope(data, retain) when is_map(data) do
-    # New format: {"values": {...}, "seq": N} — full vs delta determined by retain flag
+    # New format: {"values": {...}, "seq": N, "ts": "..."} — full vs delta determined by retain flag
     if Map.has_key?(data, "values") do
       type = if retain, do: "full", else: "delta"
       seq = data["seq"]
-      {type, seq, data["values"] || %{}}
+      ts = parse_iso8601(data["ts"])
+      {type, seq, data["values"] || %{}, ts}
     else
       # Legacy format: {"type": "full|delta", "seq": N, "data": {...}}
       type = map_get_any(data, ["type", :type, "t", :t])
@@ -718,18 +755,18 @@ defmodule RSMP.Supervisor do
 
       cond do
         not is_nil(inner_data) and not is_nil(type) ->
-          {type, seq, inner_data}
+          {type, seq, inner_data, nil}
 
         not is_nil(inner_data) ->
-          {"full", seq, inner_data}
+          {"full", seq, inner_data, nil}
 
         true ->
-          {"full", seq, data}
+          {"full", seq, data, nil}
       end
     end
   end
 
-  defp extract_status_envelope(data, _retain), do: {"full", nil, data}
+  defp extract_status_envelope(data, _retain), do: {"full", nil, data, nil}
 
   defp map_get_any(map, keys) do
     Enum.find_value(keys, fn key ->
@@ -791,15 +828,42 @@ defmodule RSMP.Supervisor do
     end
   end
 
-  defp send_pending_fetches(%{last_disconnected_at: nil} = supervisor), do: supervisor
-
   defp send_pending_fetches(supervisor) do
-    from_ts = supervisor.last_disconnected_at
-    to_ts = DateTime.utc_now()
+    # Use last_disconnected_at when available so the full gap is covered.
+    # Fall back to the graph window width for first connect (no prior disconnect).
+    from_ts =
+      supervisor.last_disconnected_at ||
+        DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
 
     supervisor.sites
     |> Enum.filter(fn {_id, site} -> site.presence == "online" end)
     |> Enum.reduce(supervisor, fn {site_id, _site}, sup ->
+      fetch_volume_gaps_for_site(sup, site_id, from_ts)
+    end)
+  end
+
+  # Fetch missing traffic.volume/live data for a site.
+  # Uses seq-based gap detection (same as the Fetch button) as the primary
+  # mechanism. Falls back to fallback_from_ts → now when no seq gaps have been
+  # detected yet (e.g. right after reconnect or stream restart, before new data
+  # has arrived past the gap).
+  defp fetch_volume_gaps_for_site(supervisor, site_id, fallback_from_ts) do
+    stream_key = "traffic.volume/live"
+
+    time_ranges =
+      case supervisor.sites[site_id] do
+        nil -> []
+        site -> RSMP.Remote.Node.Site.gap_time_ranges(site, stream_key)
+      end
+
+    time_ranges =
+      if time_ranges == [] && fallback_from_ts != nil do
+        [{fallback_from_ts, DateTime.utc_now()}]
+      else
+        time_ranges
+      end
+
+    Enum.reduce(time_ranges, supervisor, fn {from_ts, to_ts}, sup ->
       do_send_fetch(sup, site_id, "traffic", "volume", "live", from_ts, to_ts)
     end)
   end

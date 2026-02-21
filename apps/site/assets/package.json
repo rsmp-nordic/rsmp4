@@ -1,0 +1,9 @@
+{
+  "name": "assets",
+  "version": "1.0.0",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "uplot": "^1.6.32"
+  }
+}

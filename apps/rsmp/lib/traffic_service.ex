@@ -4,6 +4,7 @@ defmodule RSMP.Service.Traffic do
 	@vehicle_types ["cars", "bicycles", "busses"]
 	@zero_volume %{"cars" => 0, "bicycles" => 0, "busses" => 0}
 	@traffic_levels [:none, :low, :high]
+	@max_data_points 3600
 
 	@impl true
 	def status_codes(), do: ["volume"]
@@ -15,7 +16,8 @@ defmodule RSMP.Service.Traffic do
 		id: nil,
 		last_detection: @zero_volume,
 		traffic_level: :low,
-		detection_timer: nil
+		detection_timer: nil,
+		data_points: []
 	)
 
 	@impl RSMP.Service.Behaviour
@@ -35,18 +37,27 @@ defmodule RSMP.Service.Traffic do
 
 			level ->
 				detection_volume = random_detection_volume()
+				ts = DateTime.utc_now()
 
-				RSMP.Service.report_to_streams(service.id, "traffic", "volume", detection_volume)
+				RSMP.Service.report_to_streams(service.id, "traffic", "volume", detection_volume, ts)
 				Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status", changes: ["traffic.volume"]})
 
+				point = %{ts: ts, values: to_atom_keys(detection_volume)}
+				data_points = Enum.take(service.data_points ++ [point], -@max_data_points)
+
 				detection_timer = schedule_next_detection(level)
-				{:noreply, %{service | last_detection: detection_volume, detection_timer: detection_timer}}
+				{:noreply, %{service | last_detection: detection_volume, detection_timer: detection_timer, data_points: data_points}}
 		end
 	end
 
 	@impl GenServer
 	def handle_call(:get_traffic_level, _from, service) do
 		{:reply, service.traffic_level, service}
+	end
+
+	@impl GenServer
+	def handle_call(:get_data_points, _from, service) do
+		{:reply, service.data_points, service}
 	end
 
 	@impl GenServer
@@ -84,6 +95,10 @@ defmodule RSMP.Service.Traffic do
 
 	defp random_detection_interval_ms(:high) do
 		Enum.random(50..1_000)
+	end
+
+	defp to_atom_keys(map) when is_map(map) do
+		Enum.into(map, %{}, fn {k, v} -> {String.to_existing_atom(k), v} end)
 	end
 
 	defp random_detection_volume() do

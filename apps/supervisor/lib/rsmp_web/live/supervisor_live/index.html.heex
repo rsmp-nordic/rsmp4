@@ -5,7 +5,7 @@
   <button
     type="button"
     phx-click="toggle_connection"
-    class={if @connected, do: "bg-green-600 hover:bg-green-800 text-white rounded-lg px-3 py-1", else: "bg-red-600 hover:bg-red-800 text-white rounded-lg px-3 py-1"}
+    class={RSMP.ButtonClasses.selectable(@connected)}
   >
     <%= if @connected, do: "Online", else: "Offline" %>
   </button>

@@ -36,6 +36,7 @@ defmodule RSMP.Stream do
     :prune_timeout,   # ms | nil
     :replay_rate,     # messages/second for replay, nil = unlimited
     :history_rate,     # messages/second for history response, nil = unlimited
+    :always_publish,  # boolean — always publish all values on every report (for counter data)
     buffer: [],           # list of %{ts, values, seq}, newest first
     buffer_size: 300,     # max buffer entries
     running: false,
@@ -43,6 +44,7 @@ defmodule RSMP.Stream do
     last_full: nil,        # last full values published
     last_delta_time: nil,  # timestamp of last delta publish
     pending_changes: %{},  # accumulator for coalesced changes
+    pending_ts: nil,       # timestamp from the report that triggered pending changes
     full_timer: nil,
     delta_timer: nil,
     min_interval_timer: nil,
@@ -69,7 +71,8 @@ defmodule RSMP.Stream do
       qos: 0,
       prune_timeout: nil,
       replay_rate: nil,
-      history_rate: nil
+      history_rate: nil,
+      always_publish: false
     ]
   end
 
@@ -93,6 +96,7 @@ defmodule RSMP.Stream do
       prune_timeout: config.prune_timeout,
       replay_rate: config.replay_rate,
       history_rate: config.history_rate,
+      always_publish: config.always_publish,
       running: false
     }
 
@@ -107,7 +111,7 @@ defmodule RSMP.Stream do
   def stop_stream(pid), do: GenServer.call(pid, :stop_stream)
 
   @doc "Report new attribute values. Only call when the stream is running."
-  def report(pid, values), do: GenServer.cast(pid, {:report, values})
+  def report(pid, values, ts \\ nil), do: GenServer.cast(pid, {:report, values, ts})
 
   @doc "Publish current stream running/stopped state."
   def publish_state(pid), do: GenServer.call(pid, :publish_state)
@@ -191,7 +195,7 @@ defmodule RSMP.Stream do
   end
 
   @impl GenServer
-  def handle_cast({:report, values}, %{running: false} = state) do
+  def handle_cast({:report, values, _ts}, %{running: false} = state) do
     # Buffer the report with an incremented seq even though we're not publishing.
     # This lets the supervisor detect gaps in the seq numbers and request the
     # missing data via fetch/history once the stream is back on.
@@ -199,8 +203,8 @@ defmodule RSMP.Stream do
     {:noreply, state}
   end
 
-  def handle_cast({:report, values}, state) do
-    state = handle_report(values, state)
+  def handle_cast({:report, values, ts}, state) do
+    state = handle_report(values, ts, state)
     {:noreply, state}
   end
 
@@ -298,7 +302,7 @@ defmodule RSMP.Stream do
     # Clear retained message
     publish_clear(state)
 
-    state = %{state | running: false, last_full: nil, pending_changes: %{}}
+    state = %{state | running: false, last_full: nil, pending_changes: %{}, pending_ts: nil}
     publish_stream_state(state)
     state
   end
@@ -333,18 +337,18 @@ defmodule RSMP.Stream do
     %{state | seq: seq, last_full: last_full, buffer: buffer}
   end
 
-  defp handle_report(values, state) do
+  defp handle_report(values, ts, state) do
     # Filter to only attributes we care about
     values = Map.take(values, Map.keys(state.attributes))
 
     if state.aggregation != :off do
       handle_aggregated_report(values, state)
     else
-      handle_live_report(values, state)
+      handle_live_report(values, ts, state)
     end
   end
 
-  defp handle_live_report(values, state) do
+  defp handle_live_report(values, ts, state) do
     # Check if any :on_change attribute actually changed
     on_change_attrs =
       state.attributes
@@ -358,7 +362,16 @@ defmodule RSMP.Stream do
         on_change_changed?(new_val, old_val)
       end)
 
-    if changed_on_change == [] do
+    # When always_publish is set, include all on_change attrs in every delta
+    # (for counter/volume data where each report is an independent event).
+    attrs_for_delta =
+      if state.always_publish do
+        on_change_attrs
+      else
+        changed_on_change
+      end
+
+    if attrs_for_delta == [] do
       # No on_change attributes changed, just update last_full with send_along values
       last_full = merge_values(state.last_full || %{}, values)
       %{state | last_full: last_full}
@@ -370,7 +383,7 @@ defmodule RSMP.Stream do
         |> Enum.map(fn {name, _type} -> name end)
 
       delta_values =
-        changed_on_change
+        attrs_for_delta
         |> Enum.reduce(%{}, fn attr, acc -> Map.put(acc, attr, values[attr]) end)
         |> then(fn delta ->
           Enum.reduce(send_along_attrs, delta, fn attr, acc ->
@@ -387,7 +400,7 @@ defmodule RSMP.Stream do
         :on_change ->
           # Coalesce with pending changes
           pending = merge_values(state.pending_changes, delta_values)
-          state = %{state | pending_changes: pending}
+          state = %{state | pending_changes: pending, pending_ts: ts}
           maybe_publish_delta(state)
 
         :off ->
@@ -396,7 +409,7 @@ defmodule RSMP.Stream do
         {:interval, _ms} ->
           # Accumulate for next interval tick
           pending = merge_values(state.pending_changes, delta_values)
-          %{state | pending_changes: pending}
+          %{state | pending_changes: pending, pending_ts: ts}
       end
     end
   end
@@ -464,10 +477,12 @@ defmodule RSMP.Stream do
   defp publish_full(state) do
     data = state.last_full || %{}
     seq = state.seq + 1
+    ts = DateTime.utc_now()
 
     payload = %{
       "values" => data,
-      "seq" => seq
+      "seq" => seq,
+      "ts" => DateTime.to_iso8601(ts)
     }
 
     topic = make_topic(state)
@@ -482,7 +497,7 @@ defmodule RSMP.Stream do
 
     broadcast_stream_data(state, seq, "full")
 
-    entry = %{ts: DateTime.utc_now(), values: data, seq: seq}
+    entry = %{ts: ts, values: data, seq: seq}
     buffer = [entry | state.buffer] |> Enum.take(state.buffer_size)
     %{state | seq: seq, buffer: buffer}
   end
@@ -490,10 +505,12 @@ defmodule RSMP.Stream do
   defp publish_delta(state) do
     data = state.pending_changes
     seq = state.seq + 1
+    ts = state.pending_ts || DateTime.utc_now()
 
     payload = %{
       "values" => data,
-      "seq" => seq
+      "seq" => seq,
+      "ts" => DateTime.to_iso8601(ts)
     }
 
     topic = make_topic(state)
@@ -511,12 +528,13 @@ defmodule RSMP.Stream do
     now = System.monotonic_time(:millisecond)
 
     # Buffer the delta values (not the accumulated state) so replay sends per-event counts
-    entry = %{ts: DateTime.utc_now(), values: data, seq: seq}
+    entry = %{ts: ts, values: data, seq: seq}
     buffer = [entry | state.buffer] |> Enum.take(state.buffer_size)
 
     %{state |
       seq: seq,
       pending_changes: %{},
+      pending_ts: nil,
       last_delta_time: now,
       min_interval_timer: nil,
       buffer: buffer

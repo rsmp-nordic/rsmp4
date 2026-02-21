@@ -144,13 +144,13 @@ defmodule RSMP.Service do
     report_to_streams(id, module, code, values)
   end
 
-  def report_to_streams(id, module, code, values) do
+  def report_to_streams(id, module, code, values, ts \\ nil) do
     # Find all streams for this code (any stream_name, any component)
     match_pattern = {{{id, :stream, module, code, :_, :_}, :"$1", :_}, [], [:"$1"]}
     pids = Registry.select(RSMP.Registry, [match_pattern])
 
     Enum.each(pids, fn pid ->
-      RSMP.Stream.report(pid, values)
+      RSMP.Stream.report(pid, values, ts)
     end)
   end
 
