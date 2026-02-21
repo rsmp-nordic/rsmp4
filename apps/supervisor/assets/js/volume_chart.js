@@ -85,11 +85,12 @@ const VolumeChart = {
       this.chart.setData(drawData(this.state))
     })
 
+    const containerEl = this.el.closest('.overflow-x-auto') || this.el.closest('main')
     this._resizeObserver = new ResizeObserver(() => {
-      const w = this.el.offsetWidth
+      const w = containerEl.clientWidth
       if (w > 0) this.chart.setSize({ width: w, height: 130 })
     })
-    this._resizeObserver.observe(this.el)
+    this._resizeObserver.observe(containerEl)
   },
 
   destroyed() {
