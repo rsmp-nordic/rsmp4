@@ -15,6 +15,19 @@ end}></span></h1>
 
     <tbody>
       <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">Supervisor</td>
+        <td class="px-1 py-1 align-top">
+          <button
+            type="button"
+            phx-click="toggle_connection"
+            class={if @connected, do: "bg-green-600 hover:bg-green-800 text-white rounded-lg px-3 py-1", else: "bg-red-600 hover:bg-red-800 text-white rounded-lg px-3 py-1"}
+          >
+            <%= if @connected, do: "Online", else: "Offline" %>
+          </button>
+        </td>
+        <td></td>
+      </tr>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
         <td class="px-1 py-1 align-top w-40">Plan</td>
         <td class="px-1 py-1 align-top">
           <div class="flex gap-2 flex-wrap">
@@ -100,6 +113,19 @@ end}></span></h1>
               <span class="text-blue-400">&#9644; Cars</span>
               <span class="text-green-400">&#9644; Bicycles</span>
               <span class="text-orange-400">&#9644; Busses</span>
+            </div>
+            <div class="mt-2">
+              <button
+                type="button"
+                phx-click="fetch_missing"
+                disabled={!@has_volume_gaps}
+                class={"px-3 py-1 rounded text-sm " <>
+                  if(@has_volume_gaps,
+                    do: "bg-blue-600 text-white hover:bg-blue-700",
+                    else: "bg-stone-300 text-stone-500 cursor-not-allowed")}
+              >
+                Fetch
+              </button>
             </div>
           </td>
         </tr>

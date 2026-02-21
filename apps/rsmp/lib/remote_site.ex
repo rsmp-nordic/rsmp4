@@ -53,6 +53,55 @@ defmodule RSMP.Remote.Node.Site do
     |> Enum.sort_by(fn %{ts: ts} -> DateTime.to_unix(ts, :microsecond) end)
   end
 
+  # Detect gaps in seq numbers for a stream key.
+  # Returns a list of {from_seq, to_seq} ranges representing missing seq numbers.
+  def seq_gaps(site, stream_key) do
+    seqs =
+      site.data_points
+      |> Map.get(stream_key, %{})
+      |> Map.keys()
+      |> Enum.filter(&is_integer/1)
+      |> Enum.sort()
+
+    find_gaps(seqs)
+  end
+
+  # Returns true if there are any gaps in seq numbers for the stream key.
+  def has_seq_gaps?(site, stream_key) do
+    seq_gaps(site, stream_key) != []
+  end
+
+  # Convert seq gaps to time ranges using the timestamps of the neighboring seqs.
+  # Returns a list of {from_ts, to_ts} where from_ts is the ts of the seq before
+  # the gap and to_ts is the ts of the seq after the gap.
+  def gap_time_ranges(site, stream_key) do
+    points = Map.get(site.data_points, stream_key, %{})
+    gaps = seq_gaps(site, stream_key)
+
+    Enum.flat_map(gaps, fn {gap_start, gap_end} ->
+      before_ts = get_in(points, [gap_start - 1, :ts])
+      after_ts = get_in(points, [gap_end + 1, :ts])
+
+      case {before_ts, after_ts} do
+        {nil, nil} -> []
+        {from, nil} -> [{from, nil}]
+        {nil, to} -> [{nil, to}]
+        {from, to} -> [{from, to}]
+      end
+    end)
+  end
+
+  defp find_gaps([]), do: []
+  defp find_gaps([_single]), do: []
+
+  defp find_gaps(sorted_seqs) do
+    sorted_seqs
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.flat_map(fn [a, b] ->
+      if b - a > 1, do: [{a + 1, b - 1}], else: []
+    end)
+  end
+
   # Aggregate data points into 1-second bins aligned to wall-clock time.
   # Returns exactly `max_bins` bin maps (oldest first), ending at `now`.
   # Each bin sums the values of all data points falling within that second.

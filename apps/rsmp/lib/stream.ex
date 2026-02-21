@@ -35,6 +35,7 @@ defmodule RSMP.Stream do
     :qos,             # 0 | 1
     :prune_timeout,   # ms | nil
     :replay_rate,     # messages/second for replay, nil = unlimited
+    :history_rate,     # messages/second for history response, nil = unlimited
     buffer: [],           # list of %{ts, values, seq}, newest first
     buffer_size: 300,     # max buffer entries
     running: false,
@@ -67,7 +68,8 @@ defmodule RSMP.Stream do
       default_on: false,
       qos: 0,
       prune_timeout: nil,
-      replay_rate: nil
+      replay_rate: nil,
+      history_rate: nil
     ]
   end
 
@@ -90,6 +92,7 @@ defmodule RSMP.Stream do
       qos: config.qos,
       prune_timeout: config.prune_timeout,
       replay_rate: config.replay_rate,
+      history_rate: config.history_rate,
       running: false
     }
 
@@ -188,8 +191,11 @@ defmodule RSMP.Stream do
   end
 
   @impl GenServer
-  def handle_cast({:report, _values}, %{running: false} = state) do
-    # Ignore reports when not running
+  def handle_cast({:report, values}, %{running: false} = state) do
+    # Buffer the report with an incremented seq even though we're not publishing.
+    # This lets the supervisor detect gaps in the seq numbers and request the
+    # missing data via fetch/history once the stream is back on.
+    state = buffer_without_publishing(values, state)
     {:noreply, state}
   end
 
@@ -214,21 +220,7 @@ defmodule RSMP.Stream do
       payload = %{"complete" => true}
       RSMP.Connection.publish_message(state.id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
     else
-      sorted = Enum.reverse(entries)
-      last_idx = length(sorted) - 1
-
-      sorted
-      |> Enum.with_index()
-      |> Enum.each(fn {entry, idx} ->
-        payload = %{
-          "values" => entry.values,
-          "seq" => entry.seq,
-          "ts" => DateTime.to_iso8601(entry.ts),
-          "complete" => (idx == last_idx)
-        }
-        RSMP.Connection.publish_message(state.id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
-        if idx < last_idx, do: Process.sleep(10)
-      end)
+      do_send_history(state, entries, response_topic, correlation_data)
     end
 
     {:noreply, state}
@@ -327,6 +319,18 @@ defmodule RSMP.Stream do
         Logger.warning("RSMP Stream: No service found for #{stream_label(state)}")
         state
     end
+  end
+
+  # Buffer values with a seq number but don't publish to MQTT.
+  # Called when the stream is stopped to ensure seq gaps exist for the supervisor
+  # to detect and fetch via history.
+  defp buffer_without_publishing(values, state) do
+    values = Map.take(values, Map.keys(state.attributes))
+    last_full = merge_values(state.last_full || %{}, values)
+    seq = state.seq + 1
+    entry = %{ts: DateTime.utc_now(), values: values, seq: seq}
+    buffer = [entry | state.buffer] |> Enum.take(state.buffer_size)
+    %{state | seq: seq, last_full: last_full, buffer: buffer}
   end
 
   defp handle_report(values, state) do
@@ -599,6 +603,31 @@ defmodule RSMP.Stream do
 
   defp replay_interval_ms(nil), do: 0
   defp replay_interval_ms(rate) when rate > 0, do: div(1000, rate)
+
+  defp do_send_history(state, entries, response_topic, correlation_data) do
+    sorted = Enum.reverse(entries)
+    id = state.id
+    sleep_ms = history_interval_ms(state.history_rate)
+    last_idx = length(sorted) - 1
+
+    spawn(fn ->
+      sorted
+      |> Enum.with_index()
+      |> Enum.each(fn {entry, idx} ->
+        payload = %{
+          "values" => entry.values,
+          "seq" => entry.seq,
+          "ts" => DateTime.to_iso8601(entry.ts),
+          "complete" => (idx == last_idx)
+        }
+        RSMP.Connection.publish_message(id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
+        if idx < last_idx, do: Process.sleep(sleep_ms)
+      end)
+    end)
+  end
+
+  defp history_interval_ms(nil), do: 0
+  defp history_interval_ms(rate) when rate > 0, do: div(1000, rate)
 
   defp filter_buffer_by_range(buffer, nil, nil), do: buffer
 

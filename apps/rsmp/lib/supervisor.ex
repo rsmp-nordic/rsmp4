@@ -60,6 +60,18 @@ defmodule RSMP.Supervisor do
     GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:data_points, site_id, stream_key})
   end
 
+  def has_seq_gaps?(supervisor_id, site_id, stream_key) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:has_seq_gaps?, site_id, stream_key})
+  end
+
+  def seq_gaps(supervisor_id, site_id, stream_key) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:seq_gaps, site_id, stream_key})
+  end
+
+  def gap_time_ranges(supervisor_id, site_id, stream_key) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:gap_time_ranges, site_id, stream_key})
+  end
+
 
 
   # Callbacks
@@ -143,6 +155,36 @@ defmodule RSMP.Supervisor do
   end
 
   @impl true
+  def handle_call({:has_seq_gaps?, site_id, stream_key}, _from, supervisor) do
+    result =
+      case supervisor.sites[site_id] do
+        nil -> false
+        site -> RSMP.Remote.Node.Site.has_seq_gaps?(site, stream_key)
+      end
+    {:reply, result, supervisor}
+  end
+
+  @impl true
+  def handle_call({:seq_gaps, site_id, stream_key}, _from, supervisor) do
+    result =
+      case supervisor.sites[site_id] do
+        nil -> []
+        site -> RSMP.Remote.Node.Site.seq_gaps(site, stream_key)
+      end
+    {:reply, result, supervisor}
+  end
+
+  @impl true
+  def handle_call({:gap_time_ranges, site_id, stream_key}, _from, supervisor) do
+    result =
+      case supervisor.sites[site_id] do
+        nil -> []
+        site -> RSMP.Remote.Node.Site.gap_time_ranges(site, stream_key)
+      end
+    {:reply, result, supervisor}
+  end
+
+  @impl true
   def handle_call(:connected?, _from, supervisor) do
     {:reply, supervisor.connected, supervisor}
   end
@@ -182,18 +224,17 @@ defmodule RSMP.Supervisor do
 
   @impl true
   def handle_cast(:toggle_connection, %{connected: true} = supervisor) do
-    if supervisor.pid do
-      :emqtt.disconnect(supervisor.pid)
-    end
+    pid = supervisor.pid
     now = DateTime.utc_now()
-    supervisor = %{supervisor | connected: false, last_disconnected_at: now}
+    supervisor = %{supervisor | pid: nil, connected: false, last_disconnected_at: now}
+    if pid, do: :emqtt.disconnect(pid)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", %{topic: "connected", connected: false})
     {:noreply, supervisor}
   end
 
   @impl true
   def handle_cast(:toggle_connection, %{connected: false} = supervisor) do
-    send(self(), :connect)
+    send(self(), :restart_mqtt)
     {:noreply, supervisor}
   end
 
@@ -551,10 +592,12 @@ defmodule RSMP.Supervisor do
       if fetch_info && data["values"] do
         site_id = fetch_info.site_id
         path = topic.path
-        {_supervisor, site} = get_site(supervisor, site_id)
+        {supervisor, site} = get_site(supervisor, site_id)
         ts = parse_iso8601(data["ts"]) || DateTime.utc_now()
         seq = data["seq"]
         values = from_rsmp_status(site, path, data["values"])
+
+        Logger.info("RSMP: #{supervisor.id}: Received history #{path}/#{topic.stream_name} seq=#{seq} values=#{inspect(values)}")
 
         point_pub = %{
           topic: "data_point",
@@ -568,7 +611,12 @@ defmodule RSMP.Supervisor do
           complete: data["complete"]
         }
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", point_pub)
-        supervisor
+
+        # Persist data point so the LiveView can build history on mount/reconnect
+        stream_key = "#{path}/#{topic.stream_name}"
+        update_in(supervisor.sites[site_id], fn site ->
+          RSMP.Remote.Node.Site.store_data_point(site, stream_key, seq, ts, values)
+        end)
       else
         supervisor
       end

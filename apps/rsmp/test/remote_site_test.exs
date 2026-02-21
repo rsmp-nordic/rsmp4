@@ -390,4 +390,121 @@ defmodule RSMP.Remote.Node.SiteTest do
       assert Enum.at(bins, 29).cars == 3  # second 27 live
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # seq_gaps / has_seq_gaps?
+  # ---------------------------------------------------------------------------
+
+  describe "seq_gaps" do
+    test "returns empty for no data" do
+      site = Site.new()
+      assert Site.seq_gaps(site, "traffic.volume/live") == []
+    end
+
+    test "returns empty for single data point" do
+      site = Site.new()
+      site = Site.store_data_point(site, "traffic.volume/live", 1, ~U[2025-01-01 00:00:01Z], %{cars: 1})
+      assert Site.seq_gaps(site, "traffic.volume/live") == []
+    end
+
+    test "returns empty for contiguous seqs" do
+      site = Site.new()
+      site = Enum.reduce(1..5, site, fn seq, s ->
+        Site.store_data_point(s, "traffic.volume/live", seq, ~U[2025-01-01 00:00:01Z], %{cars: seq})
+      end)
+      assert Site.seq_gaps(site, "traffic.volume/live") == []
+    end
+
+    test "detects single gap" do
+      site = Site.new()
+      site = Enum.reduce([1, 2, 4, 5], site, fn seq, s ->
+        Site.store_data_point(s, "traffic.volume/live", seq, ~U[2025-01-01 00:00:01Z], %{cars: seq})
+      end)
+      assert Site.seq_gaps(site, "traffic.volume/live") == [{3, 3}]
+    end
+
+    test "detects multi-element gap" do
+      site = Site.new()
+      site = Enum.reduce([1, 2, 6, 7], site, fn seq, s ->
+        Site.store_data_point(s, "traffic.volume/live", seq, ~U[2025-01-01 00:00:01Z], %{cars: seq})
+      end)
+      assert Site.seq_gaps(site, "traffic.volume/live") == [{3, 5}]
+    end
+
+    test "detects multiple gaps" do
+      site = Site.new()
+      site = Enum.reduce([1, 2, 5, 6, 9, 10], site, fn seq, s ->
+        Site.store_data_point(s, "traffic.volume/live", seq, ~U[2025-01-01 00:00:01Z], %{cars: seq})
+      end)
+      assert Site.seq_gaps(site, "traffic.volume/live") == [{3, 4}, {7, 8}]
+    end
+
+    test "has_seq_gaps? returns boolean" do
+      site = Site.new()
+      site = Enum.reduce([1, 3], site, fn seq, s ->
+        Site.store_data_point(s, "traffic.volume/live", seq, ~U[2025-01-01 00:00:01Z], %{cars: seq})
+      end)
+      assert Site.has_seq_gaps?(site, "traffic.volume/live") == true
+
+      site = Enum.reduce([1, 2, 3], Site.new(), fn seq, s ->
+        Site.store_data_point(s, "traffic.volume/live", seq, ~U[2025-01-01 00:00:01Z], %{cars: seq})
+      end)
+      assert Site.has_seq_gaps?(site, "traffic.volume/live") == false
+    end
+
+    test "gaps are filled after storing missing data points" do
+      site = Site.new()
+      site = Enum.reduce([1, 2, 5, 6], site, fn seq, s ->
+        Site.store_data_point(s, "traffic.volume/live", seq, ~U[2025-01-01 00:00:01Z], %{cars: seq})
+      end)
+      assert Site.has_seq_gaps?(site, "traffic.volume/live") == true
+      assert Site.seq_gaps(site, "traffic.volume/live") == [{3, 4}]
+
+      # Fill the gaps
+      site = Enum.reduce([3, 4], site, fn seq, s ->
+        Site.store_data_point(s, "traffic.volume/live", seq, ~U[2025-01-01 00:00:01Z], %{cars: seq})
+      end)
+      assert Site.has_seq_gaps?(site, "traffic.volume/live") == false
+      assert Site.seq_gaps(site, "traffic.volume/live") == []
+    end
+  end
+
+  describe "gap_time_ranges" do
+    test "returns empty when no gaps" do
+      site = Site.new()
+      site = Site.store_data_point(site, "s", 1, ~U[2025-01-01 00:00:01Z], %{cars: 1})
+      site = Site.store_data_point(site, "s", 2, ~U[2025-01-01 00:00:02Z], %{cars: 2})
+      site = Site.store_data_point(site, "s", 3, ~U[2025-01-01 00:00:03Z], %{cars: 3})
+      assert Site.gap_time_ranges(site, "s") == []
+    end
+
+    test "returns time range bounded by neighboring seqs" do
+      site = Site.new()
+      site = Site.store_data_point(site, "s", 1, ~U[2025-01-01 00:00:01Z], %{cars: 1})
+      site = Site.store_data_point(site, "s", 2, ~U[2025-01-01 00:00:02Z], %{cars: 2})
+      # Gap: seq 3, 4
+      site = Site.store_data_point(site, "s", 5, ~U[2025-01-01 00:00:05Z], %{cars: 5})
+      site = Site.store_data_point(site, "s", 6, ~U[2025-01-01 00:00:06Z], %{cars: 6})
+
+      ranges = Site.gap_time_ranges(site, "s")
+      assert ranges == [{~U[2025-01-01 00:00:02Z], ~U[2025-01-01 00:00:05Z]}]
+    end
+
+    test "returns multiple time ranges for multiple gaps" do
+      site = Site.new()
+      site = Site.store_data_point(site, "s", 1, ~U[2025-01-01 00:00:01Z], %{cars: 1})
+      site = Site.store_data_point(site, "s", 2, ~U[2025-01-01 00:00:02Z], %{cars: 2})
+      # Gap: seq 3
+      site = Site.store_data_point(site, "s", 4, ~U[2025-01-01 00:00:04Z], %{cars: 4})
+      site = Site.store_data_point(site, "s", 5, ~U[2025-01-01 00:00:05Z], %{cars: 5})
+      # Gap: seq 6, 7
+      site = Site.store_data_point(site, "s", 8, ~U[2025-01-01 00:00:08Z], %{cars: 8})
+
+      ranges = Site.gap_time_ranges(site, "s")
+      assert ranges == [
+        {~U[2025-01-01 00:00:02Z], ~U[2025-01-01 00:00:04Z]},
+        {~U[2025-01-01 00:00:05Z], ~U[2025-01-01 00:00:08Z]}
+      ]
+    end
+  end
 end

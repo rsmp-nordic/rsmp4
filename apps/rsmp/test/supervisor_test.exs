@@ -389,4 +389,259 @@ defmodule RSMP.SupervisorTest do
     total_cars = Enum.reduce(bins, 0, fn b, acc -> acc + b.cars end)
     assert total_cars == 5
   end
+
+  # ---------------------------------------------------------------------------
+  # Gap detection
+  # ---------------------------------------------------------------------------
+
+  test "has_seq_gaps? returns false when no data", %{supervisor_id: supervisor_id} do
+    site_id = "supervisor_gaps_empty_#{System.unique_integer([:positive])}"
+    assert RSMP.Supervisor.has_seq_gaps?(supervisor_id, site_id, "traffic.volume/live") == false
+  end
+
+  test "has_seq_gaps? returns false for contiguous seqs", %{supervisor_id: supervisor_id, pid: pid} do
+    site_id = "supervisor_gaps_contiguous_#{System.unique_integer([:positive])}"
+
+    for seq <- 1..5 do
+      payload =
+        RSMP.Utility.to_payload(%{
+          "type" => "full",
+          "seq" => seq,
+          "data" => %{"cars" => seq}
+        })
+
+      send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
+    end
+
+    :timer.sleep(50)
+    assert RSMP.Supervisor.has_seq_gaps?(supervisor_id, site_id, "traffic.volume/live") == false
+  end
+
+  test "has_seq_gaps? returns true when seqs have gaps", %{supervisor_id: supervisor_id, pid: pid} do
+    site_id = "supervisor_gaps_missing_#{System.unique_integer([:positive])}"
+
+    for seq <- [1, 2, 5, 6] do
+      payload =
+        RSMP.Utility.to_payload(%{
+          "type" => "full",
+          "seq" => seq,
+          "data" => %{"cars" => seq}
+        })
+
+      send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
+    end
+
+    :timer.sleep(50)
+    assert RSMP.Supervisor.has_seq_gaps?(supervisor_id, site_id, "traffic.volume/live") == true
+    gaps = RSMP.Supervisor.seq_gaps(supervisor_id, site_id, "traffic.volume/live")
+    assert gaps == [{3, 4}]
+  end
+
+  test "seq_gaps returns multiple gap ranges", %{supervisor_id: supervisor_id, pid: pid} do
+    site_id = "supervisor_gaps_multi_#{System.unique_integer([:positive])}"
+
+    for seq <- [1, 2, 5, 6, 9, 10] do
+      payload =
+        RSMP.Utility.to_payload(%{
+          "type" => "full",
+          "seq" => seq,
+          "data" => %{"cars" => seq}
+        })
+
+      send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
+    end
+
+    :timer.sleep(50)
+    gaps = RSMP.Supervisor.seq_gaps(supervisor_id, site_id, "traffic.volume/live")
+    assert gaps == [{3, 4}, {7, 8}]
+  end
+
+  # ---------------------------------------------------------------------------
+  # History (fetch response)
+  # ---------------------------------------------------------------------------
+
+  test "receive_history broadcasts data_point with source :history", %{supervisor_id: supervisor_id, pid: pid} do
+    site_id = "supervisor_history_source_#{System.unique_integer([:positive])}"
+    Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}:#{site_id}")
+
+    # First, set up a pending fetch so receive_history accepts the message
+    correlation_id = "test-corr-#{System.unique_integer([:positive])}"
+    :sys.replace_state(pid, fn state ->
+      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", stream_name: "live"}
+      %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
+    end)
+
+    payload =
+      RSMP.Utility.to_payload(%{
+        "values" => %{"cars" => 3, "bicycles" => 1},
+        "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
+        "seq" => 42,
+        "complete" => false
+      })
+
+    properties = %{"Correlation-Data": correlation_id}
+    send(pid, {:publish, %{topic: "#{supervisor_id}/history/traffic.volume/live", payload: payload, properties: properties}})
+
+    assert_receive %{topic: "data_point", source: :history, path: "traffic.volume", stream: "live", seq: 42}
+  end
+
+  test "receive_history stores data points by seq", %{supervisor_id: supervisor_id, pid: pid} do
+    site_id = "supervisor_history_store_#{System.unique_integer([:positive])}"
+
+    correlation_id = "test-corr-#{System.unique_integer([:positive])}"
+    :sys.replace_state(pid, fn state ->
+      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", stream_name: "live"}
+      %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
+    end)
+
+    # First put some existing data with gaps (missing seq 3,4)
+    for seq <- [1, 2, 5, 6] do
+      payload =
+        RSMP.Utility.to_payload(%{
+          "type" => "full",
+          "seq" => seq,
+          "data" => %{"cars" => seq}
+        })
+
+      send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
+    end
+
+    :timer.sleep(50)
+    assert RSMP.Supervisor.has_seq_gaps?(supervisor_id, site_id, "traffic.volume/live") == true
+
+    # Now send history messages to fill the gaps
+    for seq <- [3, 4] do
+      payload =
+        RSMP.Utility.to_payload(%{
+          "values" => %{"cars" => seq},
+          "ts" => DateTime.utc_now() |> DateTime.add(-10 + seq) |> DateTime.to_iso8601(),
+          "seq" => seq,
+          "complete" => (seq == 4)
+        })
+
+      properties = %{"Correlation-Data": correlation_id}
+      send(pid, {:publish, %{topic: "#{supervisor_id}/history/traffic.volume/live", payload: payload, properties: properties}})
+    end
+
+    :timer.sleep(50)
+
+    # Gaps should now be filled
+    assert RSMP.Supervisor.has_seq_gaps?(supervisor_id, site_id, "traffic.volume/live") == false
+    points = RSMP.Supervisor.data_points(supervisor_id, site_id, "traffic.volume/live")
+    assert length(points) == 6
+  end
+
+  test "receive_history clears pending fetch on complete", %{supervisor_id: supervisor_id, pid: pid} do
+    site_id = "supervisor_history_complete_#{System.unique_integer([:positive])}"
+
+    correlation_id = "test-corr-#{System.unique_integer([:positive])}"
+    :sys.replace_state(pid, fn state ->
+      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", stream_name: "live"}
+      %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
+    end)
+
+    payload =
+      RSMP.Utility.to_payload(%{
+        "values" => %{"cars" => 1},
+        "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
+        "seq" => 1,
+        "complete" => true
+      })
+
+    properties = %{"Correlation-Data": correlation_id}
+    send(pid, {:publish, %{topic: "#{supervisor_id}/history/traffic.volume/live", payload: payload, properties: properties}})
+
+    :timer.sleep(50)
+
+    state = :sys.get_state(pid)
+    assert Map.get(state.pending_fetches, correlation_id) == nil
+  end
+
+  test "receive_history ignores messages with unknown correlation data", %{supervisor_id: supervisor_id, pid: pid} do
+    site_id = "supervisor_history_unknown_#{System.unique_integer([:positive])}"
+    Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}:#{site_id}")
+
+    payload =
+      RSMP.Utility.to_payload(%{
+        "values" => %{"cars" => 1},
+        "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
+        "seq" => 1,
+        "complete" => true
+      })
+
+    properties = %{"Correlation-Data": "unknown-corr-id"}
+    send(pid, {:publish, %{topic: "#{supervisor_id}/history/traffic.volume/live", payload: payload, properties: properties}})
+
+    # Should not broadcast data_point since correlation is unknown
+    refute_receive %{topic: "data_point"}, 50
+  end
+
+  test "receive_history with empty response (complete: true, no values)", %{supervisor_id: supervisor_id, pid: pid} do
+    site_id = "supervisor_history_empty_#{System.unique_integer([:positive])}"
+
+    correlation_id = "test-corr-#{System.unique_integer([:positive])}"
+    :sys.replace_state(pid, fn state ->
+      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", stream_name: "live"}
+      %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
+    end)
+
+    payload = RSMP.Utility.to_payload(%{"complete" => true})
+
+    properties = %{"Correlation-Data": correlation_id}
+    send(pid, {:publish, %{topic: "#{supervisor_id}/history/traffic.volume/live", payload: payload, properties: properties}})
+
+    :timer.sleep(50)
+
+    # Pending fetch should be cleared
+    state = :sys.get_state(pid)
+    assert Map.get(state.pending_fetches, correlation_id) == nil
+  end
+
+  test "history fills gaps making graph data contiguous", %{supervisor_id: supervisor_id, pid: pid} do
+    site_id = "supervisor_history_graph_#{System.unique_integer([:positive])}"
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    correlation_id = "test-corr-#{System.unique_integer([:positive])}"
+    :sys.replace_state(pid, fn state ->
+      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", stream_name: "live"}
+      %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
+    end)
+
+    # Send live data missing seq 3
+    for seq <- [1, 2, 4, 5] do
+      _ts = DateTime.add(now, -6 + seq)
+
+      payload =
+        RSMP.Utility.to_payload(%{
+          "type" => "full",
+          "seq" => seq,
+          "data" => %{"cars" => seq}
+        })
+
+      send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
+    end
+
+    :timer.sleep(50)
+    assert RSMP.Supervisor.has_seq_gaps?(supervisor_id, site_id, "traffic.volume/live") == true
+
+    # Send history to fill seq 3
+    payload =
+      RSMP.Utility.to_payload(%{
+        "values" => %{"cars" => 3},
+        "ts" => DateTime.add(now, -3) |> DateTime.to_iso8601(),
+        "seq" => 3,
+        "complete" => true
+      })
+
+    properties = %{"Correlation-Data": correlation_id}
+    send(pid, {:publish, %{topic: "#{supervisor_id}/history/traffic.volume/live", payload: payload, properties: properties}})
+
+    :timer.sleep(50)
+
+    assert RSMP.Supervisor.has_seq_gaps?(supervisor_id, site_id, "traffic.volume/live") == false
+    points = RSMP.Supervisor.data_points(supervisor_id, site_id, "traffic.volume/live")
+    assert length(points) == 5
+    cars = Enum.map(points, fn %{values: v} -> v.cars end)
+    assert Enum.sort(cars) == [1, 2, 3, 4, 5]
+  end
 end

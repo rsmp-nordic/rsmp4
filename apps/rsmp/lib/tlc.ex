@@ -70,7 +70,8 @@ defmodule RSMP.Node.TLC do
         min_interval: 100,
         default_on: true,
         qos: 0,
-        replay_rate: 4
+        replay_rate: 4,
+        history_rate: 4
       }},
       {"traffic", %Config{
         code: "volume",

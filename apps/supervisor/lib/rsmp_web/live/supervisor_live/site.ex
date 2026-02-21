@@ -13,8 +13,16 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
     if connected?(socket) do
       RSMP.Supervisors.ensure_supervisor(supervisor_id)
+      Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}")
       Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}:#{site_id}")
     end
+
+    connected =
+      if connected?(socket) do
+        RSMP.Supervisor.connected?(supervisor_id)
+      else
+        false
+      end
 
     site =
       if connected?(socket) do
@@ -33,10 +41,12 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
       assign(socket,
         supervisor_id: supervisor_id,
         site_id: site_id,
+        connected: connected,
         site: site,
         stream_pulses: %{},
         plans: get_plans(site),
         alarm_flags: ["active"],
+        has_volume_gaps: false,
 
         commands: %{
           "tlc.plan.set" => plan
@@ -271,6 +281,12 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   # UI events
 
   @impl true
+  def handle_event("toggle_connection", _params, socket) do
+    RSMP.Supervisor.toggle_connection(socket.assigns.supervisor_id)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("command", params, socket) do
     path = params["path"]
     plan = params["plan"] || params["value"]
@@ -335,6 +351,21 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
+  def handle_event("fetch_missing", _params, socket) do
+    supervisor_id = socket.assigns.supervisor_id
+    site_id = socket.assigns.site_id
+
+    # Get gap time ranges and send a fetch for each
+    time_ranges = RSMP.Supervisor.gap_time_ranges(supervisor_id, site_id, "traffic.volume/live")
+
+    for {from_ts, to_ts} <- time_ranges do
+      RSMP.Supervisor.send_fetch(supervisor_id, site_id, "traffic", "volume", "live", from_ts, to_ts)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event(name, data, socket) do
     Logger.info("unhandled event: #{inspect([name, data])}")
     {:noreply, socket}
@@ -355,6 +386,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def handle_info(:tick_volume, socket) do
     schedule_volume_tick()
     {:noreply, push_volume_history(socket)}
+  end
+
+  @impl true
+  def handle_info(%{topic: "connected", connected: connected}, socket) do
+    {:noreply, assign(socket, connected: connected)}
   end
 
   @impl true
@@ -475,7 +511,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
       site_id = socket.assigns.site_id
       points = RSMP.Supervisor.data_points(supervisor_id, site_id, "traffic.volume/live")
       bins = RSMP.Remote.Node.Site.aggregate_into_bins(points, 60)
-      push_event(socket, "volume_history", %{bins: bins})
+      has_gaps = RSMP.Supervisor.has_seq_gaps?(supervisor_id, site_id, "traffic.volume/live")
+
+      socket
+      |> push_event("volume_history", %{bins: bins})
+      |> assign(:has_volume_gaps, has_gaps)
     else
       socket
     end
