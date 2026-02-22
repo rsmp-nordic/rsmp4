@@ -679,6 +679,18 @@ defmodule RSMP.Supervisor do
           |> RSMP.Remote.Node.Site.store_data_point(stream_key, seq, ts, values, next_ts)
         end)
 
+      # If the stream is currently stopped, re-stamp next_ts on the last data point
+      # so the chart shows grey instead of extending the last color to now
+      supervisor =
+        if get_in(supervisor.sites[site_id].streams, [stream_key]) == "stopped" do
+          stopped_at = get_in(supervisor.sites[site_id].stream_stopped_at, [stream_key]) || DateTime.utc_now()
+          update_in(supervisor.sites[site_id], fn site ->
+            RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, stream_key, stopped_at)
+          end)
+        else
+          supervisor
+        end
+
       supervisor
     else
       Logger.warning("RSMP: #{supervisor.id}: Replay message missing 'values': #{inspect(data)}")
@@ -719,11 +731,23 @@ defmodule RSMP.Supervisor do
         # Persist data point so the LiveView can build history on mount/reconnect
         stream_key = "#{path}/#{topic.stream_name}"
         next_ts = parse_iso8601(data["next_ts"])
-        update_in(supervisor.sites[site_id], fn site ->
-          site
-          |> RSMP.Remote.Node.Site.clear_next_ts_before(stream_key, ts)
-          |> RSMP.Remote.Node.Site.store_data_point(stream_key, seq, ts, values, next_ts)
-        end)
+        supervisor =
+          update_in(supervisor.sites[site_id], fn site ->
+            site
+            |> RSMP.Remote.Node.Site.clear_next_ts_before(stream_key, ts)
+            |> RSMP.Remote.Node.Site.store_data_point(stream_key, seq, ts, values, next_ts)
+          end)
+
+        # If the stream is currently stopped, re-stamp next_ts on the last data point
+        # so the chart shows grey instead of extending the last color to now
+        if get_in(supervisor.sites[site_id].streams, [stream_key]) == "stopped" do
+          stopped_at = get_in(supervisor.sites[site_id].stream_stopped_at, [stream_key]) || DateTime.utc_now()
+          update_in(supervisor.sites[site_id], fn site ->
+            RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, stream_key, stopped_at)
+          end)
+        else
+          supervisor
+        end
       else
         supervisor
       end
