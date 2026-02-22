@@ -27,11 +27,12 @@ defmodule RSMP.Remote.Node.Site do
 
   # Store a data point for a given stream key. Deduplicates by seq when non-nil.
   # Trims to @max_data_points oldest-first by ts.
-  def store_data_point(site, stream_key, seq, ts, values) do
+  # Optionally stores next_ts to indicate when the next event occurs.
+  def store_data_point(site, stream_key, seq, ts, values, next_ts \\ nil) do
     existing = Map.get(site.data_points, stream_key, %{})
     # Use seq as map key when available; fall back to a monotonic integer
     key = if seq != nil, do: seq, else: System.unique_integer([:monotonic])
-    point = %{ts: ts, values: values}
+    point = %{ts: ts, values: values, next_ts: next_ts}
 
     updated =
       if map_size(existing) >= @max_data_points do
@@ -47,21 +48,54 @@ defmodule RSMP.Remote.Node.Site do
     %{site | data_points: Map.put(site.data_points, stream_key, updated)}
   end
 
-  # Store a gap marker to indicate a period with no data (stream off / site offline).
-  def store_gap_marker(site, stream_key) do
-    key = System.unique_integer([:monotonic])
-    ts = DateTime.utc_now()
-    point = %{ts: ts, values: %{gap: true}}
-    existing = Map.get(site.data_points, stream_key, %{})
-    updated = Map.put(existing, key, point)
-    %{site | data_points: Map.put(site.data_points, stream_key, updated)}
+  # Set next_ts on the most recent data point for a stream key.
+  # Called when a stream stops or site goes offline, to mark the
+  # end of the last known state.
+  def stamp_next_ts_on_last(site, stream_key, next_ts) do
+    points_map = Map.get(site.data_points, stream_key, %{})
+
+    if map_size(points_map) == 0 do
+      site
+    else
+      {latest_key, latest_point} =
+        Enum.max_by(points_map, fn {_k, v} -> DateTime.to_unix(v.ts, :microsecond) end)
+
+      # Only stamp if next_ts is not already set
+      if latest_point[:next_ts] do
+        site
+      else
+        updated_point = Map.put(latest_point, :next_ts, next_ts)
+        updated = Map.put(points_map, latest_key, updated_point)
+        %{site | data_points: Map.put(site.data_points, stream_key, updated)}
+      end
+    end
   end
 
-  # Remove all gap markers for a stream key (called when data starts flowing again).
-  def remove_gap_markers(site, stream_key) do
-    existing = Map.get(site.data_points, stream_key, %{})
-    cleaned = Enum.reject(existing, fn {_k, v} -> v.values == %{gap: true} end) |> Map.new()
-    %{site | data_points: Map.put(site.data_points, stream_key, cleaned)}
+  # Clear next_ts on the data point just before a given timestamp.
+  # Called when replay data arrives to remove the disconnect gap marker,
+  # since the replay fills the gap. Only clears the point whose ts is
+  # earlier than `before_ts`, so replay-provided next_ts values are preserved.
+  def clear_next_ts_before(site, stream_key, before_ts) do
+    points_map = Map.get(site.data_points, stream_key, %{})
+    before_us = DateTime.to_unix(before_ts, :microsecond)
+
+    earlier =
+      Enum.filter(points_map, fn {_k, v} -> DateTime.to_unix(v.ts, :microsecond) < before_us end)
+
+    if earlier == [] do
+      site
+    else
+      {latest_key, latest_point} =
+        Enum.max_by(earlier, fn {_k, v} -> DateTime.to_unix(v.ts, :microsecond) end)
+
+      if latest_point[:next_ts] do
+        updated_point = Map.delete(latest_point, :next_ts)
+        updated = Map.put(points_map, latest_key, updated_point)
+        %{site | data_points: Map.put(site.data_points, stream_key, updated)}
+      else
+        site
+      end
+    end
   end
 
   # Return data points for a stream key as a list sorted by ts (oldest first).
@@ -70,6 +104,13 @@ defmodule RSMP.Remote.Node.Site do
     |> Map.get(stream_key, %{})
     |> Map.values()
     |> Enum.sort_by(fn %{ts: ts} -> DateTime.to_unix(ts, :microsecond) end)
+  end
+
+  # Return data points with their keys as {key, point} tuples sorted by ts.
+  def get_data_points_with_keys(site, stream_key) do
+    site.data_points
+    |> Map.get(stream_key, %{})
+    |> Enum.sort_by(fn {_k, v} -> DateTime.to_unix(v.ts, :microsecond) end)
   end
 
   # Detect gaps in seq numbers for a stream key.

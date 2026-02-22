@@ -54,16 +54,43 @@ function draw(canvas, state) {
       const entry = entries[j]
       const nextEntry = entries[j + 1]
 
+      // Determine end of this segment:
+      // 1. If entry has endTs, use it (from replay/history next_ts)
+      // 2. Otherwise, if there's a next entry, extend to its ts
+      // 3. Otherwise, extend to now
+      const segmentEnd = entry.endTs ? entry.endTs : (nextEntry ? nextEntry.ts : nowMs)
+
       const startMs = Math.max(entry.ts, windowStart)
-      const endMs = nextEntry ? Math.min(nextEntry.ts, nowMs) : nowMs
+      const endMs = Math.min(segmentEnd, nowMs)
 
       if (endMs <= windowStart || startMs >= nowMs) continue
 
       const x1 = barLeft + barWidth * ((startMs - windowStart) / (WINDOW_SECONDS * 1000))
       const x2 = barLeft + barWidth * ((endMs - windowStart) / (WINDOW_SECONDS * 1000))
 
-      ctx.fillStyle = entry.state === null ? "#d1d5db" : (STATE_COLORS[entry.state] || "#9ca3af")
+      ctx.fillStyle = STATE_COLORS[entry.state] || "#9ca3af"
       ctx.fillRect(x1, y, Math.max(x2 - x1, 1), ROW_HEIGHT)
+
+      // If there's a gap between this segment's end and the next entry's start, draw grey
+      if (nextEntry && segmentEnd < nextEntry.ts) {
+        const gapStart = Math.max(segmentEnd, windowStart)
+        const gapEnd = Math.min(nextEntry.ts, nowMs)
+        if (gapEnd > gapStart) {
+          const gx1 = barLeft + barWidth * ((gapStart - windowStart) / (WINDOW_SECONDS * 1000))
+          const gx2 = barLeft + barWidth * ((gapEnd - windowStart) / (WINDOW_SECONDS * 1000))
+          ctx.fillStyle = "#d1d5db"
+          ctx.fillRect(gx1, y, Math.max(gx2 - gx1, 1), ROW_HEIGHT)
+        }
+      }
+
+      // Trailing gap: last entry has endTs before now — draw grey from endTs to now
+      if (!nextEntry && entry.endTs && segmentEnd < nowMs) {
+        const gapStart = Math.max(segmentEnd, windowStart)
+        const gx1 = barLeft + barWidth * ((gapStart - windowStart) / (WINDOW_SECONDS * 1000))
+        const gx2 = barLeft + barWidth * ((nowMs - windowStart) / (WINDOW_SECONDS * 1000))
+        ctx.fillStyle = "#d1d5db"
+        ctx.fillRect(gx1, y, Math.max(gx2 - gx1, 1), ROW_HEIGHT)
+      }
     }
   }
 }

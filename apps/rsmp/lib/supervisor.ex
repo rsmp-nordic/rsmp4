@@ -63,6 +63,10 @@ defmodule RSMP.Supervisor do
     GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:data_points, site_id, stream_key})
   end
 
+  def data_points_with_keys(supervisor_id, site_id, stream_key) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:data_points_with_keys, site_id, stream_key})
+  end
+
   def has_seq_gaps?(supervisor_id, site_id, stream_key) do
     GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:has_seq_gaps?, site_id, stream_key})
   end
@@ -158,6 +162,16 @@ defmodule RSMP.Supervisor do
   end
 
   @impl true
+  def handle_call({:data_points_with_keys, site_id, stream_key}, _from, supervisor) do
+    points =
+      case supervisor.sites[site_id] do
+        nil -> []
+        site -> RSMP.Remote.Node.Site.get_data_points_with_keys(site, stream_key)
+      end
+    {:reply, points, supervisor}
+  end
+
+  @impl true
   def handle_call({:has_seq_gaps?, site_id, stream_key}, _from, supervisor) do
     result =
       case supervisor.sites[site_id] do
@@ -232,13 +246,13 @@ defmodule RSMP.Supervisor do
     supervisor = %{supervisor | pid: nil, connected: false, last_disconnected_at: now}
     if pid, do: :emqtt.disconnect(pid)
 
-    # Insert gap markers for all known sites — no data will arrive while disconnected
+    # Stamp next_ts on last data point for all known sites — no data will arrive while disconnected
     supervisor =
       Enum.reduce(supervisor.sites, supervisor, fn {id, _site}, sup ->
         update_in(sup.sites[id], fn site ->
           site
-          |> RSMP.Remote.Node.Site.store_gap_marker("traffic.volume/live")
-          |> RSMP.Remote.Node.Site.store_gap_marker("tlc.groups/live")
+          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("traffic.volume/live", now)
+          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("tlc.groups/live", now)
         end)
       end)
 
@@ -318,7 +332,6 @@ defmodule RSMP.Supervisor do
         state = %{state | connected: true}
         state = clear_gaps_and_fetch_all_sites(state)
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{state.id}", %{topic: "connected", connected: true})
-        state = send_pending_fetches(state)
         {:noreply, state}
 
       {:error, reason} ->
@@ -336,22 +349,22 @@ defmodule RSMP.Supervisor do
     supervisor = %{supervisor | connected: true}
     supervisor = clear_gaps_and_fetch_all_sites(supervisor)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", %{topic: "connected", connected: true})
-    supervisor = send_pending_fetches(supervisor)
     {:noreply, supervisor}
   end
 
   @impl true
   def handle_info({:disconnected, _publish}, supervisor) do
     Logger.info("RSMP: Disconnected")
-    supervisor = %{supervisor | connected: false, last_disconnected_at: DateTime.utc_now()}
+    now = DateTime.utc_now()
+    supervisor = %{supervisor | connected: false, last_disconnected_at: now}
 
-    # Insert gap markers for all known sites — no data will arrive while disconnected
+    # Stamp next_ts on last data point for all known sites — no data will arrive while disconnected
     supervisor =
       Enum.reduce(supervisor.sites, supervisor, fn {id, _site}, sup ->
         update_in(sup.sites[id], fn site ->
           site
-          |> RSMP.Remote.Node.Site.store_gap_marker("traffic.volume/live")
-          |> RSMP.Remote.Node.Site.store_gap_marker("tlc.groups/live")
+          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("traffic.volume/live", now)
+          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("tlc.groups/live", now)
         end)
       end)
 
@@ -414,30 +427,27 @@ defmodule RSMP.Supervisor do
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
-    # When a site goes offline, insert gap markers for streams with charts
+    # When a site goes offline, stamp next_ts on last data point for streams with charts
     supervisor =
       if data in ["offline", "shutdown"] && previous_presence == "online" do
+        now = DateTime.utc_now()
         update_in(supervisor.sites[id], fn site ->
           site
-          |> RSMP.Remote.Node.Site.store_gap_marker("traffic.volume/live")
-          |> RSMP.Remote.Node.Site.store_gap_marker("tlc.groups/live")
+          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("traffic.volume/live", now)
+          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("tlc.groups/live", now)
         end)
       else
         supervisor
       end
 
-    # When a site comes online, clear gap markers and fetch any missing data
+    # When a site comes online, fetch any missing data
     supervisor =
       if data == "online" && previous_presence != "online" do
         from_ts =
           supervisor.last_disconnected_at ||
             DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
 
-        update_in(supervisor.sites[id], fn site ->
-          site
-          |> RSMP.Remote.Node.Site.remove_gap_markers("traffic.volume/live")
-          |> RSMP.Remote.Node.Site.remove_gap_markers("tlc.groups/live")
-        end)
+        supervisor
         |> fetch_stream_gaps(id, "traffic", "volume", "live", from_ts)
         |> fetch_stream_gaps(id, "tlc", "groups", "live", from_ts)
       else
@@ -592,12 +602,13 @@ defmodule RSMP.Supervisor do
         stream_key = stream_state_key(path, stream_name)
         previous_state = get_in(site.streams, [stream_key])
 
-        # Record the timestamp when a stream is stopped, and insert a gap marker
+        # Record the timestamp when a stream is stopped, and stamp next_ts on last data point
         supervisor =
           if state == "stopped" do
-            supervisor = put_in(supervisor.sites[id].stream_stopped_at[stream_key], DateTime.utc_now())
+            now = DateTime.utc_now()
+            supervisor = put_in(supervisor.sites[id].stream_stopped_at[stream_key], now)
             update_in(supervisor.sites[id], fn site ->
-              RSMP.Remote.Node.Site.store_gap_marker(site, stream_key)
+              RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, stream_key, now)
             end)
           else
             supervisor
@@ -611,14 +622,9 @@ defmodule RSMP.Supervisor do
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
-        # When a stream restarts after being stopped, clear gap markers and fetch missed data
+        # When a stream restarts after being stopped, fetch missed data
         supervisor =
           if state == "running" && previous_state == "stopped" do
-            supervisor =
-              update_in(supervisor.sites[id], fn site ->
-                RSMP.Remote.Node.Site.remove_gap_markers(site, stream_key)
-              end)
-
             stopped_at = get_in(supervisor.sites[id].stream_stopped_at, [stream_key])
             case stream_key do
               "traffic.volume/live" -> fetch_stream_gaps(supervisor, id, "traffic", "volume", "live", stopped_at)
@@ -665,9 +671,12 @@ defmodule RSMP.Supervisor do
 
       # Persist so the LiveView can read history on mount/reconnect
       stream_key = "#{path}/#{topic.stream_name}"
+      next_ts = parse_iso8601(data["next_ts"])
       supervisor =
         update_in(supervisor.sites[site_id], fn site ->
-          RSMP.Remote.Node.Site.store_data_point(site, stream_key, seq, ts, values)
+          site
+          |> RSMP.Remote.Node.Site.clear_next_ts_before(stream_key, ts)
+          |> RSMP.Remote.Node.Site.store_data_point(stream_key, seq, ts, values, next_ts)
         end)
 
       supervisor
@@ -709,8 +718,11 @@ defmodule RSMP.Supervisor do
 
         # Persist data point so the LiveView can build history on mount/reconnect
         stream_key = "#{path}/#{topic.stream_name}"
+        next_ts = parse_iso8601(data["next_ts"])
         update_in(supervisor.sites[site_id], fn site ->
-          RSMP.Remote.Node.Site.store_data_point(site, stream_key, seq, ts, values)
+          site
+          |> RSMP.Remote.Node.Site.clear_next_ts_before(stream_key, ts)
+          |> RSMP.Remote.Node.Site.store_data_point(stream_key, seq, ts, values, next_ts)
         end)
       else
         supervisor
@@ -887,24 +899,8 @@ defmodule RSMP.Supervisor do
     end
   end
 
-  defp send_pending_fetches(supervisor) do
-    # Use last_disconnected_at when available so the full gap is covered.
-    # Fall back to the graph window width for first connect (no prior disconnect).
-    from_ts =
-      supervisor.last_disconnected_at ||
-        DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
-
-    supervisor.sites
-    |> Enum.filter(fn {_id, site} -> site.presence == "online" end)
-    |> Enum.reduce(supervisor, fn {site_id, _site}, sup ->
-      sup
-      |> fetch_stream_gaps(site_id, "traffic", "volume", "live", from_ts)
-      |> fetch_stream_gaps(site_id, "tlc", "groups", "live", from_ts)
-    end)
-  end
-
-  # Called when the supervisor reconnects to MQTT. Clears gap markers and fetches
-  # missed data for all known sites.
+  # Called when the supervisor reconnects to MQTT. Fetches missed data for all
+  # known sites. Gap markers are progressively consumed as replay data fills in.
   defp clear_gaps_and_fetch_all_sites(supervisor) do
     from_ts =
       supervisor.last_disconnected_at ||
@@ -912,11 +908,6 @@ defmodule RSMP.Supervisor do
 
     Enum.reduce(supervisor.sites, supervisor, fn {id, _site}, sup ->
       sup
-      |> update_in([Access.key(:sites), id], fn site ->
-        site
-        |> RSMP.Remote.Node.Site.remove_gap_markers("traffic.volume/live")
-        |> RSMP.Remote.Node.Site.remove_gap_markers("tlc.groups/live")
-      end)
       |> fetch_stream_gaps(id, "traffic", "volume", "live", from_ts)
       |> fetch_stream_gaps(id, "tlc", "groups", "live", from_ts)
     end)

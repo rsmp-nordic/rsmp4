@@ -675,15 +675,23 @@ defmodule RSMP.Stream do
       id = state.id
       sleep_ms = replay_interval_ms(state.replay_rate)
       last_idx = length(entries) - 1
+      indexed = Enum.with_index(entries)
 
       spawn(fn ->
-        entries
-        |> Enum.with_index()
-        |> Enum.each(fn {entry, idx} ->
+        Enum.each(indexed, fn {entry, idx} ->
+          next_ts =
+            if idx < last_idx do
+              {next_entry, _} = Enum.at(indexed, idx + 1)
+              DateTime.to_iso8601(next_entry.ts)
+            else
+              nil
+            end
+
           payload = %{
             "values" => entry.values,
             "seq" => entry.seq,
             "ts" => DateTime.to_iso8601(entry.ts),
+            "next_ts" => next_ts,
             "complete" => (idx == last_idx)
           }
           RSMP.Connection.publish_message(id, topic, payload, %{retain: false, qos: 1}, %{})
@@ -701,15 +709,23 @@ defmodule RSMP.Stream do
     id = state.id
     sleep_ms = history_interval_ms(state.history_rate)
     last_idx = length(sorted) - 1
+    indexed = Enum.with_index(sorted)
 
     spawn(fn ->
-      sorted
-      |> Enum.with_index()
-      |> Enum.each(fn {entry, idx} ->
+      Enum.each(indexed, fn {entry, idx} ->
+        next_ts =
+          if idx < last_idx do
+            {next_entry, _} = Enum.at(indexed, idx + 1)
+            DateTime.to_iso8601(next_entry.ts)
+          else
+            nil
+          end
+
         payload = %{
           "values" => entry.values,
           "seq" => entry.seq,
           "ts" => DateTime.to_iso8601(entry.ts),
+          "next_ts" => next_ts,
           "complete" => (idx == last_idx)
         }
         RSMP.Connection.publish_message(id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})

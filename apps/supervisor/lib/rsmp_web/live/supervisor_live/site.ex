@@ -545,30 +545,34 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   # Build groups timeline from stored data points.
   # Data points are deltas (only changed groups). We replay them forward
   # to reconstruct full group snapshots at each timestamp.
+  #
+  # Each data point has a next_ts field (from replay/history) or none (live).
+  # Gaps are implicit: any time discontinuity between a point's end time
+  # and the next point's start time renders as grey. No gap markers needed.
   defp push_groups_history(socket) do
     if connected?(socket) do
       supervisor_id = socket.assigns.supervisor_id
       site_id = socket.assigns.site_id
-      points = RSMP.Supervisor.data_points(supervisor_id, site_id, "tlc.groups/live")
+      keyed_points = RSMP.Supervisor.data_points_with_keys(supervisor_id, site_id, "tlc.groups/live")
 
-      now = DateTime.utc_now()
-      window_start = DateTime.add(now, -60, :second)
-
-      # Replay deltas to build full snapshots, respecting gap markers
+      # Replay deltas to build full snapshots
       {history, _state} =
-        Enum.reduce(points, {[], %{}}, fn point, {history, state} ->
-          if is_gap_marker?(point.values) do
-            ts = DateTime.to_unix(point.ts, :millisecond)
-            {history ++ [%{ts: ts, gap: true}], state}
-          else
-            groups_delta = get_groups_from_point(point.values)
-            state = Map.merge(state, groups_delta)
-            ts = DateTime.to_unix(point.ts, :millisecond)
-            {history ++ [%{ts: ts, groups: state}], state}
-          end
+        Enum.reduce(keyed_points, {[], %{}}, fn {_key, point}, {history, state} ->
+          groups_delta = get_groups_from_point(point.values)
+          state = Map.merge(state, groups_delta)
+          ts = DateTime.to_unix(point.ts, :millisecond)
+          next_ts =
+            case point[:next_ts] do
+              %DateTime{} = dt -> DateTime.to_unix(dt, :millisecond)
+              _ -> nil
+            end
+
+          {history ++ [%{ts: ts, next_ts: next_ts, groups: state}], state}
         end)
 
       # Filter to the last 60 seconds, keeping the last entry before the window
+      now = DateTime.utc_now()
+      window_start = DateTime.add(now, -60, :second)
       window_start_ms = DateTime.to_unix(window_start, :millisecond)
       filtered =
         case Enum.split_while(history, fn p -> p.ts < window_start_ms end) do
@@ -590,9 +594,5 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
       is_map(values["signalgroupstatus"]) -> values["signalgroupstatus"]
       true -> %{}
     end
-  end
-
-  defp is_gap_marker?(values) do
-    values == %{gap: true} || values == %{"gap" => true}
   end
 end
