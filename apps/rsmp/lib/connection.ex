@@ -260,9 +260,9 @@ defmodule RSMP.Connection do
     trigger_services(connection.id)
 
     if connection.type == :site do
-      trigger_stream_states(connection.id)
+      trigger_channel_states(connection.id)
       since = replay_since(connection)
-      trigger_stream_replay(connection.id, since)
+      trigger_channel_replay(connection.id, since)
     end
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: true})
@@ -278,17 +278,17 @@ defmodule RSMP.Connection do
     end)
   end
 
-  defp trigger_stream_states(id) do
-    RSMP.Streams.list_streams(id)
+  defp trigger_channel_states(id) do
+    RSMP.Channels.list_channels(id)
     |> Enum.each(fn pid ->
-      RSMP.Stream.publish_state(pid)
+      RSMP.Channel.publish_state(pid)
     end)
   end
 
-  defp trigger_stream_replay(id, since) do
-    RSMP.Streams.list_streams(id)
+  defp trigger_channel_replay(id, since) do
+    RSMP.Channels.list_channels(id)
     |> Enum.each(fn pid ->
-      RSMP.Stream.replay(pid, since)
+      RSMP.Channel.replay(pid, since)
     end)
   end
 
@@ -306,12 +306,12 @@ defmodule RSMP.Connection do
     response_topic = properties[:"Response-Topic"]
     correlation_data = properties[:"Correlation-Data"]
 
-    case RSMP.Registry.lookup_stream(connection.id, topic.path.module, topic.path.code, topic.stream_name, topic.path.component) do
+    case RSMP.Registry.lookup_channel(connection.id, topic.path.module, topic.path.code, topic.channel_name, topic.path.component) do
       [{pid, _}] ->
         GenServer.cast(pid, {:handle_fetch, from_ts, to_ts, response_topic, correlation_data})
 
       [] ->
-        Logger.warning("#{connection.id}: Fetch for unknown stream: #{topic}")
+        Logger.warning("#{connection.id}: Fetch for unknown channel: #{topic}")
         if response_topic do
           payload = %{"complete" => true}
           RSMP.Connection.publish_message(connection.id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
@@ -380,7 +380,7 @@ defmodule RSMP.Connection do
 
     case {topic.type, topic.path.module, topic.path.code} do
       {"throttle", module, code} when is_binary(module) and is_binary(code) ->
-        handle_stream_throttle(connection, module, code, topic.path.component, data, properties)
+        handle_channel_throttle(connection, module, code, topic.path.component, data, properties)
 
       _ ->
         case RSMP.Registry.lookup_service(topic.id, topic.path.module, topic.path.component) do
@@ -396,11 +396,11 @@ defmodule RSMP.Connection do
     end
   end
 
-  defp handle_stream_throttle(connection, module, code, stream_parts, data, _properties) do
+  defp handle_channel_throttle(connection, module, code, channel_parts, data, _properties) do
     action = if is_map(data), do: data["action"], else: nil
 
-    stream_name =
-      case stream_parts do
+    channel_name =
+      case channel_parts do
         [] -> nil
         [name] when name in ["", "default"] -> nil
         [name] when is_binary(name) -> name
@@ -411,32 +411,32 @@ defmodule RSMP.Connection do
       action not in ["start", "stop"] ->
         Logger.warning("#{connection.id}: Invalid throttle action: #{inspect(data)}")
 
-      stream_name == :invalid ->
-        Logger.warning("#{connection.id}: Invalid throttle topic path for #{module}.#{code}: #{inspect(stream_parts)}")
+      channel_name == :invalid ->
+        Logger.warning("#{connection.id}: Invalid throttle topic path for #{module}.#{code}: #{inspect(channel_parts)}")
 
       true ->
-        stream_action = if action == "start", do: :start, else: :stop
-        execute_stream_action(connection, module, code, stream_name, stream_action)
+        channel_action = if action == "start", do: :start, else: :stop
+        execute_channel_action(connection, module, code, channel_name, channel_action)
     end
   end
 
-  defp execute_stream_action(connection, module, code, stream_name, action) do
-    case RSMP.Registry.lookup_stream(connection.id, module, code, stream_name, []) do
+  defp execute_channel_action(connection, module, code, channel_name, action) do
+    case RSMP.Registry.lookup_channel(connection.id, module, code, channel_name, []) do
       [{pid, _}] ->
         case action do
-          :start -> RSMP.Stream.start_stream(pid)
-          :stop -> RSMP.Stream.stop_stream(pid)
+          :start -> RSMP.Channel.start_channel(pid)
+          :stop -> RSMP.Channel.stop_channel(pid)
         end
 
-        stream_segment = stream_name || "default"
-        stream_key = "#{module}.#{code}/#{stream_segment}"
+        channel_segment = channel_name || "default"
+        channel_key = "#{module}.#{code}/#{channel_segment}"
         state = if action == :start, do: "running", else: "stopped"
-        pub = %{topic: "stream", stream: stream_key, state: state}
+        pub = %{topic: "channel", channel: channel_key, state: state}
         Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", pub)
 
       [] ->
-        stream_label = stream_name || "default"
-        Logger.warning("#{connection.id}: Stream not found: #{module}.#{code}/#{stream_label}")
+        channel_label = channel_name || "default"
+        Logger.warning("#{connection.id}: Channel not found: #{module}.#{code}/#{channel_label}")
     end
   end
 

@@ -1,26 +1,26 @@
 defmodule RSMP.Node.TLC do
-  alias RSMP.Stream.Config
+  alias RSMP.Channel.Config
 
   def make_site_id(), do: SecureRandom.hex(4)
 
   @doc """
-  Stream configurations demonstrating various stream patterns:
+  Channel configurations demonstrating various channel patterns:
 
   1. groups/live - Live signal group status with Send on Change/Send Along.
      cyclecounter is Send Along so it doesn't trigger updates alone.
      Default off (high-frequency, start when needed).
 
-  2. plan (no stream name) - Current plan, single stream.
+  2. plan (no channel name) - Current plan, single channel.
      Default on (low-frequency, always useful).
 
-  3. plans (no stream name) - Available plans, single stream.
+  3. plans (no channel name) - Available plans, single channel.
      Default on (rarely changes).
   """
-  def stream_configs do
+  def channel_configs do
     [
       {"tlc", %Config{
         code: "groups",
-        stream_name: "live",
+        channel_name: "live",
         attributes: %{
           "signalgroupstatus" => :on_change,
           "stage" => :on_change,
@@ -36,7 +36,7 @@ defmodule RSMP.Node.TLC do
       }},
       {"tlc", %Config{
         code: "plan",
-        stream_name: nil,
+        channel_name: nil,
         attributes: %{
           "status" => :on_change,
           "source" => :send_along
@@ -49,7 +49,7 @@ defmodule RSMP.Node.TLC do
       }},
       {"tlc", %Config{
         code: "plans",
-        stream_name: nil,
+        channel_name: nil,
         attributes: %{
           "status" => :on_change
         },
@@ -61,7 +61,7 @@ defmodule RSMP.Node.TLC do
       }},
       {"traffic", %Config{
         code: "volume",
-        stream_name: "live",
+        channel_name: "live",
         attributes: %{
           "cars" => :on_change,
           "bicycles" => :on_change,
@@ -78,7 +78,7 @@ defmodule RSMP.Node.TLC do
       }},
       {"traffic", %Config{
         code: "volume",
-        stream_name: "5s",
+        channel_name: "5s",
         attributes: %{
           "cars" => :on_change,
           "bicycles" => :on_change,
@@ -111,7 +111,7 @@ defmodule RSMP.Node.TLC do
     managers = %{
     }
 
-    options = options ++ [streams: stream_configs()]
+    options = options ++ [channels: channel_configs()]
 
     RSMP.Node.start_link(id, services, managers, options)
   end
@@ -168,20 +168,20 @@ defmodule RSMP.Node.TLC do
     end
   end
 
-  def get_streams(site_id) do
-    RSMP.Streams.list_stream_info(site_id)
+  def get_channels(site_id) do
+    RSMP.Channels.list_channel_info(site_id)
   end
 
-  def start_stream(site_id, module, code, stream_name) do
-    case RSMP.Registry.lookup_stream(site_id, module, code, stream_name, []) do
-      [{pid, _}] -> RSMP.Stream.start_stream(pid)
+  def start_channel(site_id, module, code, channel_name) do
+    case RSMP.Registry.lookup_channel(site_id, module, code, channel_name, []) do
+      [{pid, _}] -> RSMP.Channel.start_channel(pid)
       [] -> {:error, :not_found}
     end
   end
 
-  def stop_stream(site_id, module, code, stream_name) do
-    case RSMP.Registry.lookup_stream(site_id, module, code, stream_name, []) do
-      [{pid, _}] -> RSMP.Stream.stop_stream(pid)
+  def stop_channel(site_id, module, code, channel_name) do
+    case RSMP.Registry.lookup_channel(site_id, module, code, channel_name, []) do
+      [{pid, _}] -> RSMP.Channel.stop_channel(pid)
       [] -> {:error, :not_found}
     end
   end

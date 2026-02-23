@@ -120,12 +120,12 @@ defmodule RSMP.Site do
     # subscribe to commands
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/command/#", 1})
 
-    # subscribe to stream throttling
+    # subscribe to channel throttling
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/throttle/#", 1})
   end
 
   def handle_throttle(site, path, data) do
-    stream_name =
+    channel_name =
       case path.component do
         [] -> nil
         [name] when name in ["", "default"] -> nil
@@ -140,25 +140,25 @@ defmodule RSMP.Site do
         Logger.warning("RSMP: Invalid throttle action for #{path}: #{inspect(data)}")
         site
 
-      stream_name == :invalid ->
-        Logger.warning("RSMP: Invalid throttle stream segment for #{path}: #{inspect(path.component)}")
+      channel_name == :invalid ->
+        Logger.warning("RSMP: Invalid throttle channel segment for #{path}: #{inspect(path.component)}")
         site
 
       true ->
-        case RSMP.Registry.lookup_stream(site.id, path.module, path.code, stream_name, []) do
+        case RSMP.Registry.lookup_channel(site.id, path.module, path.code, channel_name, []) do
           [{pid, _}] ->
             case action do
-              "start" -> RSMP.Stream.start_stream(pid)
-              "stop" -> RSMP.Stream.stop_stream(pid)
+              "start" -> RSMP.Channel.start_channel(pid)
+              "stop" -> RSMP.Channel.stop_channel(pid)
             end
 
-            stream_segment = stream_name || "default"
-            stream_key = "#{to_string(path)}/#{stream_segment}"
-            pub = %{topic: "stream", stream: stream_key, state: if(action == "start", do: "running", else: "stopped")}
+            channel_segment = channel_name || "default"
+            channel_key = "#{to_string(path)}/#{channel_segment}"
+            pub = %{topic: "channel", channel: channel_key, state: if(action == "start", do: "running", else: "stopped")}
             Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
 
           [] ->
-            Logger.warning("RSMP: Stream not found for throttle: #{path}")
+            Logger.warning("RSMP: Channel not found for throttle: #{path}")
         end
 
         site

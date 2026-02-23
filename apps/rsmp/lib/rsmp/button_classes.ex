@@ -20,7 +20,7 @@ defmodule RSMP.ButtonClasses do
     state(selected, dimmed: not selected, hover_inactive: true)
   end
 
-  def stream(running) when is_boolean(running) do
+  def channel(running) when is_boolean(running) do
     state(running, dimmed: not running)
   end
 

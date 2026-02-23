@@ -2,7 +2,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   use RSMP.Site.Web, :live_view
   alias RSMP.Site
   alias RSMP.Node.TLC
-  @stream_glow_ms 500
+  @channel_glow_ms 500
 
   @impl true
   def mount(params, session, socket) do
@@ -26,9 +26,9 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        removed: false,
        statuses: %{},
        alarms: %{},
-       stream_list: [],
-       streams_by_status: %{},
-       stream_pulses: %{},
+       channel_list: [],
+       channels_by_status: %{},
+       channel_pulses: %{},
        traffic_level: :low,
        plan_result: %{"message" => ""},
        command_logs: [],
@@ -44,7 +44,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
 
     statuses = TLC.get_statuses(site_id)
     alarms = TLC.get_alarms(site_id)
-    stream_list = TLC.get_streams(site_id)
+    channel_list = TLC.get_channels(site_id)
     mqtt_connected = try do
       RSMP.Connection.connected?(site_id)
     rescue
@@ -61,9 +61,9 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        removed: false,
        statuses: statuses,
        alarms: alarm_map(alarms),
-       stream_list: stream_list,
-       streams_by_status: streams_by_status(stream_list),
-       stream_pulses: %{},
+       channel_list: channel_list,
+       channels_by_status: channels_by_status(channel_list),
+       channel_pulses: %{},
        traffic_level: TLC.get_traffic_level(site_id),
        plan_result: %{"message" => ""},
        command_logs: [],
@@ -139,20 +139,20 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
-  def handle_event("start_stream", %{"module" => module, "code" => code, "stream" => stream_name}, socket) do
+  def handle_event("start_channel", %{"module" => module, "code" => code, "channel" => channel_name}, socket) do
     site_id = socket.assigns[:id]
-    stream_name = if stream_name == "", do: nil, else: stream_name
-    TLC.start_stream(site_id, module, code, stream_name)
-    stream_list = TLC.get_streams(site_id)
+    channel_name = if channel_name == "", do: nil, else: channel_name
+    TLC.start_channel(site_id, module, code, channel_name)
+    channel_list = TLC.get_channels(site_id)
 
-    stream_key = stream_identity(module, code, stream_name)
-
-    socket =
-      assign(socket, stream_list: stream_list, streams_by_status: streams_by_status(stream_list))
+    channel_key = channel_identity(module, code, channel_name)
 
     socket =
-      if Enum.any?(stream_list, fn stream -> stream_identity(stream) == stream_key and stream.running end) do
-        pulse_stream(socket, stream_key)
+      assign(socket, channel_list: channel_list, channels_by_status: channels_by_status(channel_list))
+
+    socket =
+      if Enum.any?(channel_list, fn channel -> channel_identity(channel) == channel_key and channel.running end) do
+        pulse_channel(socket, channel_key)
       else
         socket
       end
@@ -161,12 +161,12 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
-  def handle_event("stop_stream", %{"module" => module, "code" => code, "stream" => stream_name}, socket) do
+  def handle_event("stop_channel", %{"module" => module, "code" => code, "channel" => channel_name}, socket) do
     site_id = socket.assigns[:id]
-    stream_name = if stream_name == "", do: nil, else: stream_name
-    TLC.stop_stream(site_id, module, code, stream_name)
-    stream_list = TLC.get_streams(site_id)
-    {:noreply, assign(socket, stream_list: stream_list, streams_by_status: streams_by_status(stream_list))}
+    channel_name = if channel_name == "", do: nil, else: channel_name
+    TLC.stop_channel(site_id, module, code, channel_name)
+    channel_list = TLC.get_channels(site_id)
+    {:noreply, assign(socket, channel_list: channel_list, channels_by_status: channels_by_status(channel_list))}
   end
 
   @impl true
@@ -219,7 +219,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   def handle_info(%{topic: "local_status", changes: _changes}, socket) do
     site_id = socket.assigns.id
     statuses = TLC.get_statuses(site_id)
-    socket = assign_statuses_and_streams(socket, statuses, site_id)
+    socket = assign_statuses_and_channels(socket, statuses, site_id)
     {:noreply, socket}
   end
 
@@ -239,45 +239,45 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   def handle_info(%{topic: "local_status"}, socket) do
     site_id = socket.assigns.id
     statuses = TLC.get_statuses(site_id)
-    {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
+    {:noreply, assign_statuses_and_channels(socket, statuses, site_id)}
   end
 
   @impl true
   def handle_info(%{topic: "status", changes: _changes}, socket) do
     site_id = socket.assigns.id
     statuses = TLC.get_statuses(site_id)
-    {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
+    {:noreply, assign_statuses_and_channels(socket, statuses, site_id)}
   end
 
   @impl true
   def handle_info(%{topic: "status", status: _status_payload}, socket) do
     site_id = socket.assigns.id
     statuses = TLC.get_statuses(site_id)
-    {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
+    {:noreply, assign_statuses_and_channels(socket, statuses, site_id)}
   end
 
   @impl true
   def handle_info(%{topic: "status"}, socket) do
     site_id = socket.assigns.id
     statuses = TLC.get_statuses(site_id)
-    {:noreply, assign_statuses_and_streams(socket, statuses, site_id)}
+    {:noreply, assign_statuses_and_channels(socket, statuses, site_id)}
   end
 
   @impl true
-  def handle_info(%{topic: "stream_data", stream: stream_key}, socket) when is_binary(stream_key) do
-    {:noreply, pulse_stream(socket, stream_key)}
+  def handle_info(%{topic: "channel_data", channel: channel_key}, socket) when is_binary(channel_key) do
+    {:noreply, pulse_channel(socket, channel_key)}
   end
 
   @impl true
-  def handle_info({:clear_stream_pulse, stream_key}, socket) do
-    {:noreply, update(socket, :stream_pulses, &Map.delete(&1, stream_key))}
+  def handle_info({:clear_channel_pulse, channel_key}, socket) do
+    {:noreply, update(socket, :channel_pulses, &Map.delete(&1, channel_key))}
   end
 
   @impl true
-  def handle_info(%{topic: "stream"}, socket) do
+  def handle_info(%{topic: "channel"}, socket) do
     site_id = socket.assigns.id
-    stream_list = TLC.get_streams(site_id)
-    {:noreply, assign(socket, stream_list: stream_list, streams_by_status: streams_by_status(stream_list))}
+    channel_list = TLC.get_channels(site_id)
+    {:noreply, assign(socket, channel_list: channel_list, channels_by_status: channels_by_status(channel_list))}
   end
 
   @impl true
@@ -319,8 +319,8 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     |> Enum.into(%{})
   end
 
-  def streams_by_status(stream_list) do
-    Enum.group_by(stream_list, fn stream -> "#{stream.module}.#{stream.code}" end)
+  def channels_by_status(channel_list) do
+    Enum.group_by(channel_list, fn channel -> "#{channel.module}.#{channel.code}" end)
   end
 
   def format_status_lines(value) when is_map(value) do
@@ -334,39 +334,39 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   def format_status_value(value) when is_map(value) or is_list(value), do: Poison.encode!(value)
   def format_status_value(value), do: to_string(value)
 
-  def stream_button_class(stream, stream_pulses) do
-    class = RSMP.ButtonClasses.stream(stream.running)
+  def channel_button_class(channel, channel_pulses) do
+    class = RSMP.ButtonClasses.channel(channel.running)
 
-    if Map.get(stream_pulses, stream_identity(stream), false) do
-      class <> " animate-stream-glow"
+    if Map.get(channel_pulses, channel_identity(channel), false) do
+      class <> " animate-channel-glow"
     else
       class
     end
   end
 
-  defp assign_statuses_and_streams(socket, statuses, site_id) do
-    stream_list = TLC.get_streams(site_id)
+  defp assign_statuses_and_channels(socket, statuses, site_id) do
+    channel_list = TLC.get_channels(site_id)
 
     assign(socket,
       statuses: statuses,
-      stream_list: stream_list,
-      streams_by_status: streams_by_status(stream_list)
+      channel_list: channel_list,
+      channels_by_status: channels_by_status(channel_list)
     )
   end
 
-  defp pulse_stream(socket, stream_key) do
-    Process.send_after(self(), {:clear_stream_pulse, stream_key}, @stream_glow_ms)
-    update(socket, :stream_pulses, &Map.put(&1, stream_key, true))
+  defp pulse_channel(socket, channel_key) do
+    Process.send_after(self(), {:clear_channel_pulse, channel_key}, @channel_glow_ms)
+    update(socket, :channel_pulses, &Map.put(&1, channel_key, true))
   end
 
-  defp stream_identity(%{module: module, code: code} = stream) do
-    stream_name = Map.get(stream, :stream_name) || Map.get(stream, "stream_name")
-    stream_identity(module, code, stream_name)
+  defp channel_identity(%{module: module, code: code} = channel) do
+    channel_name = Map.get(channel, :channel_name) || Map.get(channel, "channel_name")
+    channel_identity(module, code, channel_name)
   end
 
-  defp stream_identity(module, code, stream_name) do
-    normalized_stream = if stream_name in [nil, ""], do: "default", else: stream_name
-    "#{module}.#{code}/#{normalized_stream}"
+  defp channel_identity(module, code, channel_name) do
+    normalized_channel = if channel_name in [nil, ""], do: "default", else: channel_name
+    "#{module}.#{code}/#{normalized_channel}"
   end
 
   # Schedule tick aligned to the next wall-clock second boundary so that

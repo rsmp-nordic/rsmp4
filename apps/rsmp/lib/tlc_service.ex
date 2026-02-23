@@ -89,7 +89,7 @@ defmodule RSMP.Service.TLC do
     service = %{service | groups_history: groups_history}
 
     if groups_changed do
-      # signalgroupstatus/stage are the on_change triggers for tlc.groups stream
+      # signalgroupstatus/stage are the on_change triggers for tlc.groups channel
       values =
         %{
           "signalgroupstatus" => changed_groups,
@@ -97,7 +97,7 @@ defmodule RSMP.Service.TLC do
         }
         |> maybe_put_stage(service.stage, stage)
 
-      RSMP.Service.report_to_streams(service.id, "tlc", "groups", values)
+      RSMP.Service.report_to_channels(service.id, "tlc", "groups", values)
     end
 
     # Notify local Site LiveView without signaling supervisor status updates
@@ -152,7 +152,7 @@ defmodule RSMP.Service.TLC do
         })
 
         service = %{service | plan: plan, source: "forced"}
-        RSMP.Service.report_to_streams(service, "plan")
+        RSMP.Service.report_to_channels(service, "plan")
         Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status"})
 
         message =

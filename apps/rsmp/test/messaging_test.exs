@@ -123,8 +123,8 @@ defmodule RSMP.MessagingTest do
     state = :sys.get_state(pid)
     assert state.plan == 2
 
-    # Status is now delivered via streams only, so no raw status is published.
-    # The report_to_streams call will find no streams in this test (none started).
+    # Status is now delivered via channels only, so no raw status is published.
+    # The report_to_channels call will find no channels in this test (none started).
 
     # Verify Published Result (from generic handle_call)
     assert_receive {:published, topic_result, _data_result}

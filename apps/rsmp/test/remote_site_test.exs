@@ -34,7 +34,7 @@ defmodule RSMP.Remote.Node.SiteTest do
       assert hd(points).values == %{cars: 99}
     end
 
-    test "separate stream keys are independent" do
+    test "separate channel keys are independent" do
       site = Site.new()
       site = Site.store_data_point(site, "traffic.volume/live", 1, ~U[2025-01-01 00:00:01Z], %{cars: 1})
       site = Site.store_data_point(site, "traffic.volume/5s", 1, ~U[2025-01-01 00:00:01Z], %{cars: 2})
@@ -296,21 +296,21 @@ defmodule RSMP.Remote.Node.SiteTest do
     test "full online/offline/replay cycle" do
       base = ~U[2025-01-01 00:00:00Z]
       site = Site.new()
-      stream = "traffic.volume/live"
+      channel = "traffic.volume/live"
 
       # Phase 1: Site online, sends live data seq 1-10 (one per second)
       site = Enum.reduce(1..10, site, fn i, s ->
-        Site.store_data_point(s, stream, i, ts(base, i), %{cars: 1, bicycles: 0, busses: 0})
+        Site.store_data_point(s, channel, i, ts(base, i), %{cars: 1, bicycles: 0, busses: 0})
       end)
 
-      assert length(Site.get_data_points(site, stream)) == 10
+      assert length(Site.get_data_points(site, channel)) == 10
 
       # Phase 2: Site offline for 10 seconds (seq 11-20 buffered on site side)
       # Supervisor has no new data — aggregate shows gap
 
       # "now" is second 25 (10 seconds of data + 10s offline + 5s for replay to start)
       now_phase2 = ts(base, 25)
-      bins = Site.aggregate_into_bins(Site.get_data_points(site, stream), 30, now_phase2)
+      bins = Site.aggregate_into_bins(Site.get_data_points(site, channel), 30, now_phase2)
 
       # Bins cover seconds -4..25 (30 bins). Our data is at seconds 1-10.
       # Second 1 is at bin index 5 (bin 0 = second -4)
@@ -330,14 +330,14 @@ defmodule RSMP.Remote.Node.SiteTest do
 
       # Replay: seq 11-15 arrive (original timestamps)
       site = Enum.reduce(11..15, site, fn i, s ->
-        Site.store_data_point(s, stream, i, ts(base, i), %{cars: 2, bicycles: 0, busses: 0})
+        Site.store_data_point(s, channel, i, ts(base, i), %{cars: 2, bicycles: 0, busses: 0})
       end)
       # Live: seq 21-22 arrive (current timestamps)
-      site = Site.store_data_point(site, stream, 21, ts(base, 25), %{cars: 3, bicycles: 0, busses: 0})
-      site = Site.store_data_point(site, stream, 22, ts(base, 26), %{cars: 3, bicycles: 0, busses: 0})
+      site = Site.store_data_point(site, channel, 21, ts(base, 25), %{cars: 3, bicycles: 0, busses: 0})
+      site = Site.store_data_point(site, channel, 22, ts(base, 26), %{cars: 3, bicycles: 0, busses: 0})
 
       now_phase3 = ts(base, 26)
-      bins = Site.aggregate_into_bins(Site.get_data_points(site, stream), 30, now_phase3)
+      bins = Site.aggregate_into_bins(Site.get_data_points(site, channel), 30, now_phase3)
       # Window: seconds -3..26 (30 bins)
       # Bin 0 = second -3, bin 3 = second 0, bin 4 = second 1, ...
       # Second 1 => bin index 4
@@ -362,13 +362,13 @@ defmodule RSMP.Remote.Node.SiteTest do
 
       # Phase 4: More replay arrives, filling gap further
       site = Enum.reduce(16..20, site, fn i, s ->
-        Site.store_data_point(s, stream, i, ts(base, i), %{cars: 2, bicycles: 0, busses: 0})
+        Site.store_data_point(s, channel, i, ts(base, i), %{cars: 2, bicycles: 0, busses: 0})
       end)
       # More live data
-      site = Site.store_data_point(site, stream, 23, ts(base, 27), %{cars: 3, bicycles: 0, busses: 0})
+      site = Site.store_data_point(site, channel, 23, ts(base, 27), %{cars: 3, bicycles: 0, busses: 0})
 
       now_phase4 = ts(base, 27)
-      bins = Site.aggregate_into_bins(Site.get_data_points(site, stream), 30, now_phase4)
+      bins = Site.aggregate_into_bins(Site.get_data_points(site, channel), 30, now_phase4)
       # Window: seconds -2..27
       # Second 1 => bin 3, Second 10 => bin 12
       # Second 11-20 => bins 13-22 (all replay now)

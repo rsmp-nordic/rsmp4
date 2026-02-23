@@ -2,7 +2,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   use RSMP.Supervisor.Web, :live_view
   use Phoenix.Component
   require Logger
-  @stream_glow_ms 500
+  @channel_glow_ms 500
 
   @impl true
   def mount(params, _session, socket) do
@@ -26,9 +26,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
     site =
       if connected?(socket) do
-        RSMP.Supervisor.site(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, streams: %{}, alarms: %{}}
+        RSMP.Supervisor.site(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, channels: %{}, alarms: %{}}
       else
-        %{presence: "offline", statuses: %{}, streams: %{}, alarms: %{}}
+        %{presence: "offline", statuses: %{}, channels: %{}, alarms: %{}}
       end
     plan =
       get_in(site, [
@@ -43,7 +43,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
         site_id: site_id,
         connected: connected,
         site: site,
-        stream_pulses: %{},
+        channel_pulses: %{},
         plans: get_plans(site),
         alarm_flags: ["active"],
         has_volume_gaps: false,
@@ -66,7 +66,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def assign_site(socket) do
     supervisor_id = socket.assigns.supervisor_id
     site_id = socket.assigns.site_id
-    site = RSMP.Supervisor.site(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, streams: %{}, alarms: %{}}
+    site = RSMP.Supervisor.site(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, channels: %{}, alarms: %{}}
 
     plan =
       get_in(site, [
@@ -96,9 +96,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
       seq when is_map(seq) ->
         seq
-        |> Enum.map(fn {stream, number} -> {stream_label(stream), number} end)
-        |> Enum.sort_by(fn {stream, _number} -> stream end)
-        |> Enum.map_join("\n", fn {stream, number} -> "#{stream}: #{number}" end)
+        |> Enum.map(fn {channel, number} -> {channel_label(channel), number} end)
+        |> Enum.sort_by(fn {channel, _number} -> channel end)
+        |> Enum.map_join("\n", fn {channel, number} -> "#{channel}: #{number}" end)
 
       seq ->
         "default: #{to_string(seq)}"
@@ -109,18 +109,18 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   def status_rows(site) do
     statuses = Map.get(site, :statuses, %{})
-    streams = Map.get(site, :streams, %{})
+    channels = Map.get(site, :channels, %{})
 
     status_paths = Map.keys(statuses)
 
-    stream_paths =
-      streams
+    channel_paths =
+      channels
       |> Map.keys()
-      |> Enum.map(&parse_stream_state_key/1)
+      |> Enum.map(&parse_channel_state_key/1)
       |> Enum.reject(&is_nil/1)
-      |> Enum.map(fn {path, _stream_key} -> path end)
+      |> Enum.map(fn {path, _channel_key} -> path end)
 
-    (status_paths ++ stream_paths)
+    (status_paths ++ channel_paths)
     |> Enum.uniq()
     |> Enum.sort()
     |> Enum.map(fn path ->
@@ -129,37 +129,37 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
       %{
         path: path,
         value: value,
-        streams: status_streams(path, value, site)
+        channels: status_channels(path, value, site)
       }
     end)
   end
 
-  def status_streams(path, value, site) do
-    seq_map = stream_seq_map(value)
+  def status_channels(path, value, site) do
+    seq_map = channel_seq_map(value)
 
-    stream_keys =
-      (Map.keys(seq_map) ++ stream_keys_from_state(site, path))
+    channel_keys =
+      (Map.keys(seq_map) ++ channel_keys_from_state(site, path))
       |> Enum.uniq()
       |> Enum.sort()
 
-    Enum.map(stream_keys, fn stream_key ->
-      label = stream_label(stream_key)
-      seq = Map.get(seq_map, stream_key)
-      state = stream_state(site, path, stream_key)
+    Enum.map(channel_keys, fn channel_key ->
+      label = channel_label(channel_key)
+      seq = Map.get(seq_map, channel_key)
+      state = channel_state(site, path, channel_key)
 
       title =
         if is_nil(seq) do
-          "Stream: #{label}\nState: #{state}"
+          "Channel: #{label}\nState: #{state}"
         else
-          "Stream: #{label}\nSeq: #{seq}\nState: #{state}"
+          "Channel: #{label}\nSeq: #{seq}\nState: #{state}"
         end
 
       %{
-        key: stream_key,
+        key: channel_key,
         label: label,
         seq: seq,
         state: state,
-        class: stream_state_class(state),
+        class: channel_state_class(state),
         title: title
       }
     end)
@@ -182,26 +182,26 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   def status_value(value), do: value
 
-  defp stream_label(stream) do
-    case stream do
+  defp channel_label(channel) do
+    case channel do
       nil -> "default"
       "" -> "default"
-      _ -> to_string(stream)
+      _ -> to_string(channel)
     end
   end
 
-  defp normalize_stream_key(stream) do
-    case stream do
+  defp normalize_channel_key(channel) do
+    case channel do
       nil -> "default"
       "" -> "default"
       other -> to_string(other)
     end
   end
 
-  defp stream_seq_map(value) when is_map(value) do
+  defp channel_seq_map(value) when is_map(value) do
     case Map.get(value, "seq") || Map.get(value, :seq) do
       seq when is_map(seq) ->
-        Enum.into(seq, %{}, fn {stream, number} -> {normalize_stream_key(stream), number} end)
+        Enum.into(seq, %{}, fn {channel, number} -> {normalize_channel_key(channel), number} end)
 
       nil ->
         %{}
@@ -211,52 +211,52 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     end
   end
 
-  defp stream_seq_map(_value), do: %{}
+  defp channel_seq_map(_value), do: %{}
 
-  defp stream_keys_from_state(site, path) do
-    streams = Map.get(site, :streams, %{})
+  defp channel_keys_from_state(site, path) do
+    channels = Map.get(site, :channels, %{})
 
-    streams
+    channels
     |> Map.keys()
-    |> Enum.map(&parse_stream_state_key/1)
+    |> Enum.map(&parse_channel_state_key/1)
     |> Enum.reject(&is_nil/1)
-    |> Enum.filter(fn {stream_path, _stream_key} -> stream_path == path end)
-    |> Enum.map(fn {_stream_path, stream_key} -> stream_key end)
+    |> Enum.filter(fn {channel_path, _channel_key} -> channel_path == path end)
+    |> Enum.map(fn {_channel_path, channel_key} -> channel_key end)
   end
 
-  defp parse_stream_state_key(key) when is_binary(key) do
+  defp parse_channel_state_key(key) when is_binary(key) do
     case String.split(key, "/") do
-      [_stream_only] ->
+      [_channel_only] ->
         nil
 
       parts ->
-        stream_key = List.last(parts)
+        channel_key = List.last(parts)
 
         path =
           parts
           |> Enum.slice(0, length(parts) - 1)
           |> Enum.join("/")
 
-        {path, stream_key}
+        {path, channel_key}
     end
   end
 
-  defp parse_stream_state_key(_), do: nil
+  defp parse_channel_state_key(_), do: nil
 
-  defp stream_state(site, path, stream_key) do
-    streams = Map.get(site, :streams, %{})
-    Map.get(streams, "#{path}/#{stream_key}", "stopped")
+  defp channel_state(site, path, channel_key) do
+    channels = Map.get(site, :channels, %{})
+    Map.get(channels, "#{path}/#{channel_key}", "stopped")
   end
 
-  defp stream_state_class("running"), do: RSMP.ButtonClasses.stream(true)
-  defp stream_state_class(_), do: RSMP.ButtonClasses.stream(false)
+  defp channel_state_class("running"), do: RSMP.ButtonClasses.channel(true)
+  defp channel_state_class(_), do: RSMP.ButtonClasses.channel(false)
 
-  def stream_button_class(stream, path, stream_pulses) do
-    class = stream_state_class(stream.state)
-    stream_key = stream_state_key(path, stream.key)
+  def channel_button_class(channel, path, channel_pulses) do
+    class = channel_state_class(channel.state)
+    channel_key = channel_state_key(path, channel.key)
 
-    if Map.get(stream_pulses, stream_key, false) do
-      class <> " animate-stream-glow"
+    if Map.get(channel_pulses, channel_key, false) do
+      class <> " animate-channel-glow"
     else
       class
     end
@@ -313,41 +313,41 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
-  def handle_event("throttle", %{"path" => path, "stream" => stream_name, "state" => state}, socket) do
+  def handle_event("throttle", %{"path" => path, "channel" => channel_name, "state" => state}, socket) do
     supervisor_id = socket.assigns.supervisor_id
     site_id = socket.assigns.site_id
-    stream_state_key = stream_state_key(path, stream_name)
+    channel_state_key = channel_state_key(path, channel_name)
 
     case String.split(path, "/", parts: 2) do
       [full_code | _rest] ->
         case String.split(full_code, ".", parts: 2) do
           [module, code] ->
-            stream =
-              case stream_name do
+            channel =
+              case channel_name do
                 "" -> nil
                 "default" -> nil
                 value -> value
               end
 
             if state == "running" do
-              RSMP.Supervisor.stop_stream(supervisor_id, site_id, module, code, stream)
+              RSMP.Supervisor.stop_channel(supervisor_id, site_id, module, code, channel)
             else
-              RSMP.Supervisor.start_stream(supervisor_id, site_id, module, code, stream)
+              RSMP.Supervisor.start_channel(supervisor_id, site_id, module, code, channel)
             end
 
           _ ->
-            Logger.warning("Unable to parse stream path for throttle: #{path}")
+            Logger.warning("Unable to parse channel path for throttle: #{path}")
         end
 
       _ ->
-        Logger.warning("Invalid stream path for throttle: #{path}")
+        Logger.warning("Invalid channel path for throttle: #{path}")
     end
 
     socket =
       if state == "running" do
         socket
       else
-        pulse_stream(socket, stream_state_key)
+        pulse_channel(socket, channel_state_key)
       end
 
     {:noreply, socket}
@@ -423,13 +423,13 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
-  def handle_info(%{topic: "stream_data", stream: stream_key}, socket) when is_binary(stream_key) do
-    {:noreply, pulse_stream(socket, stream_key)}
+  def handle_info(%{topic: "channel_data", channel: channel_key}, socket) when is_binary(channel_key) do
+    {:noreply, pulse_channel(socket, channel_key)}
   end
 
   @impl true
-  def handle_info({:clear_stream_pulse, stream_key}, socket) do
-    {:noreply, update(socket, :stream_pulses, &Map.delete(&1, stream_key))}
+  def handle_info({:clear_channel_pulse, channel_key}, socket) do
+    {:noreply, update(socket, :channel_pulses, &Map.delete(&1, channel_key))}
   end
 
   @impl true
@@ -438,7 +438,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
-  def handle_info(%{topic: "stream"}, socket) do
+  def handle_info(%{topic: "channel"}, socket) do
     {:noreply, socket |> assign_site()}
   end
 
@@ -500,13 +500,13 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     {:noreply, socket}
   end
 
-  defp pulse_stream(socket, stream_key) do
-    Process.send_after(self(), {:clear_stream_pulse, stream_key}, @stream_glow_ms)
-    update(socket, :stream_pulses, &Map.put(&1, stream_key, true))
+  defp pulse_channel(socket, channel_key) do
+    Process.send_after(self(), {:clear_channel_pulse, channel_key}, @channel_glow_ms)
+    update(socket, :channel_pulses, &Map.put(&1, channel_key, true))
   end
 
-  defp stream_state_key(path, stream_key) do
-    "#{path}/#{normalize_stream_key(stream_key)}"
+  defp channel_state_key(path, channel_key) do
+    "#{path}/#{normalize_channel_key(channel_key)}"
   end
 
   # Schedule tick aligned to the next wall-clock second boundary so that

@@ -90,7 +90,7 @@ end}></span></h1>
       <tr class="text-base bg-stone-100">
         <th class="px-1 py-1">Code</th>
         <th class="px-1 py-1">Value</th>
-        <th class="px-1 py-1">Streams</th>
+        <th class="px-1 py-1">Channels</th>
         <th class="px-1 py-1"></th>
       </tr>
     </thead>
@@ -103,25 +103,25 @@ end}></span></h1>
           <% end %>
         </td>
         <td class="px-1 py-1 align-top">
-          <%= if related_streams = @streams_by_status[status] do %>
+          <%= if related_channels = @channels_by_status[status] do %>
             <div class="flex flex-wrap gap-1">
-              <%= for stream <- related_streams do %>
+              <%= for channel <- related_channels do %>
                 <button
-                  class={stream_button_class(stream, @stream_pulses)}
-                  phx-click={if stream.running, do: "stop_stream", else: "start_stream"}
-                  phx-value-module={stream.module}
-                  phx-value-code={stream.code}
-                  phx-value-stream={stream.stream_name || ""}
+                  class={channel_button_class(channel, @channel_pulses)}
+                  phx-click={if channel.running, do: "stop_channel", else: "start_channel"}
+                  phx-value-module={channel.module}
+                  phx-value-code={channel.code}
+                  phx-value-channel={channel.channel_name || ""}
                   title={
-                    "Seq: #{stream.seq} | Default: #{if stream.default_on, do: "on", else: "off"} | Delta: " <>
-                      (case stream.delta_rate do
+                    "Seq: #{channel.seq} | Default: #{if channel.default_on, do: "on", else: "off"} | Delta: " <>
+                      (case channel.delta_rate do
                          :on_change -> "on change"
                          {:interval, ms} -> "#{ms}ms"
                          other -> inspect(other)
-                       end) <> " | QoS: #{stream.qos}"
+                       end) <> " | QoS: #{channel.qos}"
                   }
                 >
-                  <%= stream.stream_name || "default" %>
+                  <%= channel.channel_name || "default" %>
                 </button>
               <% end %>
             </div>

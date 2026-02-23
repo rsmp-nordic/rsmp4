@@ -39,12 +39,12 @@ defmodule RSMP.Supervisor do
     GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:set_plan, site_id, plan})
   end
 
-  def start_stream(supervisor_id, site_id, module, code, stream_name) do
-    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_stream, site_id, module, code, stream_name, "start"})
+  def start_channel(supervisor_id, site_id, module, code, channel_name) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_channel, site_id, module, code, channel_name, "start"})
   end
 
-  def stop_stream(supervisor_id, site_id, module, code, stream_name) do
-    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_stream, site_id, module, code, stream_name, "stop"})
+  def stop_channel(supervisor_id, site_id, module, code, channel_name) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_channel, site_id, module, code, channel_name, "stop"})
   end
 
   def toggle_connection(supervisor_id) do
@@ -55,28 +55,28 @@ defmodule RSMP.Supervisor do
     GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), :connected?)
   end
 
-  def send_fetch(supervisor_id, site_id, module, code, stream_name, from_ts, to_ts) do
-    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:send_fetch, site_id, module, code, stream_name, from_ts, to_ts})
+  def send_fetch(supervisor_id, site_id, module, code, channel_name, from_ts, to_ts) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:send_fetch, site_id, module, code, channel_name, from_ts, to_ts})
   end
 
-  def data_points(supervisor_id, site_id, stream_key) do
-    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:data_points, site_id, stream_key})
+  def data_points(supervisor_id, site_id, channel_key) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:data_points, site_id, channel_key})
   end
 
-  def data_points_with_keys(supervisor_id, site_id, stream_key) do
-    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:data_points_with_keys, site_id, stream_key})
+  def data_points_with_keys(supervisor_id, site_id, channel_key) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:data_points_with_keys, site_id, channel_key})
   end
 
-  def has_seq_gaps?(supervisor_id, site_id, stream_key) do
-    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:has_seq_gaps?, site_id, stream_key})
+  def has_seq_gaps?(supervisor_id, site_id, channel_key) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:has_seq_gaps?, site_id, channel_key})
   end
 
-  def seq_gaps(supervisor_id, site_id, stream_key) do
-    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:seq_gaps, site_id, stream_key})
+  def seq_gaps(supervisor_id, site_id, channel_key) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:seq_gaps, site_id, channel_key})
   end
 
-  def gap_time_ranges(supervisor_id, site_id, stream_key) do
-    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:gap_time_ranges, site_id, stream_key})
+  def gap_time_ranges(supervisor_id, site_id, channel_key) do
+    GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), {:gap_time_ranges, site_id, channel_key})
   end
 
 
@@ -152,51 +152,51 @@ defmodule RSMP.Supervisor do
   end
 
   @impl true
-  def handle_call({:data_points, site_id, stream_key}, _from, supervisor) do
+  def handle_call({:data_points, site_id, channel_key}, _from, supervisor) do
     points =
       case supervisor.sites[site_id] do
         nil -> []
-        site -> RSMP.Remote.Node.Site.get_data_points(site, stream_key)
+        site -> RSMP.Remote.Node.Site.get_data_points(site, channel_key)
       end
     {:reply, points, supervisor}
   end
 
   @impl true
-  def handle_call({:data_points_with_keys, site_id, stream_key}, _from, supervisor) do
+  def handle_call({:data_points_with_keys, site_id, channel_key}, _from, supervisor) do
     points =
       case supervisor.sites[site_id] do
         nil -> []
-        site -> RSMP.Remote.Node.Site.get_data_points_with_keys(site, stream_key)
+        site -> RSMP.Remote.Node.Site.get_data_points_with_keys(site, channel_key)
       end
     {:reply, points, supervisor}
   end
 
   @impl true
-  def handle_call({:has_seq_gaps?, site_id, stream_key}, _from, supervisor) do
+  def handle_call({:has_seq_gaps?, site_id, channel_key}, _from, supervisor) do
     result =
       case supervisor.sites[site_id] do
         nil -> false
-        site -> RSMP.Remote.Node.Site.has_seq_gaps?(site, stream_key)
+        site -> RSMP.Remote.Node.Site.has_seq_gaps?(site, channel_key)
       end
     {:reply, result, supervisor}
   end
 
   @impl true
-  def handle_call({:seq_gaps, site_id, stream_key}, _from, supervisor) do
+  def handle_call({:seq_gaps, site_id, channel_key}, _from, supervisor) do
     result =
       case supervisor.sites[site_id] do
         nil -> []
-        site -> RSMP.Remote.Node.Site.seq_gaps(site, stream_key)
+        site -> RSMP.Remote.Node.Site.seq_gaps(site, channel_key)
       end
     {:reply, result, supervisor}
   end
 
   @impl true
-  def handle_call({:gap_time_ranges, site_id, stream_key}, _from, supervisor) do
+  def handle_call({:gap_time_ranges, site_id, channel_key}, _from, supervisor) do
     result =
       case supervisor.sites[site_id] do
         nil -> []
-        site -> RSMP.Remote.Node.Site.gap_time_ranges(site, stream_key)
+        site -> RSMP.Remote.Node.Site.gap_time_ranges(site, channel_key)
       end
     {:reply, result, supervisor}
   end
@@ -267,24 +267,24 @@ defmodule RSMP.Supervisor do
   end
 
   @impl true
-  def handle_cast({:send_fetch, site_id, module, code, stream_name, from_ts, to_ts}, supervisor) do
-    supervisor = do_send_fetch(supervisor, site_id, module, code, stream_name, from_ts, to_ts)
+  def handle_cast({:send_fetch, site_id, module, code, channel_name, from_ts, to_ts}, supervisor) do
+    supervisor = do_send_fetch(supervisor, site_id, module, code, channel_name, from_ts, to_ts)
     {:noreply, supervisor}
   end
 
   @impl true
-  def handle_cast({:throttle_stream, site_id, module, code, stream_name, action}, supervisor) do
-    stream_segment =
-      case stream_name do
+  def handle_cast({:throttle_channel, site_id, module, code, channel_name, action}, supervisor) do
+    channel_segment =
+      case channel_name do
         nil -> "default"
         "" -> "default"
         value -> to_string(value)
       end
 
-    topic = Topic.new(site_id, "throttle", module, code, [stream_segment])
+    topic = Topic.new(site_id, "throttle", module, code, [channel_segment])
 
     Logger.info(
-      "RSMP: Sending throttle #{action} for #{module}.#{code}/#{stream_segment} to #{site_id}"
+      "RSMP: Sending throttle #{action} for #{module}.#{code}/#{channel_segment} to #{site_id}"
     )
 
     :emqtt.publish_async(
@@ -385,7 +385,7 @@ defmodule RSMP.Supervisor do
 
         "status" ->
           if data == nil do
-            # Stream cleared (empty retained message)
+            # Channel cleared (empty retained message)
             supervisor
           else
             retain = publish[:retain] == true or publish[:retain] == 1
@@ -427,7 +427,7 @@ defmodule RSMP.Supervisor do
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
-    # When a site goes offline, stamp next_ts on last data point for streams with charts
+    # When a site goes offline, stamp next_ts on last data point for channels with charts
     supervisor =
       if data in ["offline", "shutdown"] && previous_presence == "online" do
         now = DateTime.utc_now()
@@ -448,8 +448,8 @@ defmodule RSMP.Supervisor do
             DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
 
         supervisor
-        |> fetch_stream_gaps(id, "traffic", "volume", "live", from_ts)
-        |> fetch_stream_gaps(id, "tlc", "groups", "live", from_ts)
+        |> fetch_channel_gaps(id, "traffic", "volume", "live", from_ts)
+        |> fetch_channel_gaps(id, "tlc", "groups", "live", from_ts)
       else
         supervisor
       end
@@ -491,7 +491,7 @@ defmodule RSMP.Supervisor do
     # Legacy format: {"type": "full|delta", "seq": N, "data": {...}} also supported.
     {status_type, seq, values, event_ts} = extract_status_envelope(data, retain)
 
-    # Use code (without stream name) as the status key
+    # Use code (without channel name) as the status key
     status_key = to_string(path)
 
     new_status = from_rsmp_status(site, path, values)
@@ -505,7 +505,7 @@ defmodule RSMP.Supervisor do
         new_status
       end
 
-    status = maybe_put_status_seq(status, current_status, topic.stream_name, seq)
+    status = maybe_put_status_seq(status, current_status, topic.channel_name, seq)
 
     supervisor = put_in(supervisor.sites[id].statuses[status_key], status)
 
@@ -523,12 +523,12 @@ defmodule RSMP.Supervisor do
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
-    stream_key = stream_state_key(path, topic.stream_name)
-    stream_pub = %{topic: "stream_data", site: id, stream: stream_key}
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", stream_pub)
+    channel_key = channel_state_key(path, topic.channel_name)
+    channel_pub = %{topic: "channel_data", site: id, channel: channel_key}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", channel_pub)
 
     # Only create data points for delta messages (events), not retained full messages.
-    # Full messages are state snapshots (e.g. on stream start) — not discrete events.
+    # Full messages are state snapshots (e.g. on channel start) — not discrete events.
     # Replay/history have their own paths that create data points correctly.
     supervisor =
       if retain do
@@ -539,7 +539,7 @@ defmodule RSMP.Supervisor do
           topic: "data_point",
           site: id,
           path: status_key,
-          stream: topic.stream_name,
+          channel: topic.channel_name,
           values: new_status,
           ts: point_ts,
           seq: seq,
@@ -548,9 +548,9 @@ defmodule RSMP.Supervisor do
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", point_pub)
 
         # Persist this data point so the LiveView can build history on mount/reconnect
-        stream_key = "#{status_key}/#{topic.stream_name}"
+        channel_key = "#{status_key}/#{topic.channel_name}"
         update_in(supervisor.sites[id], fn site ->
-          RSMP.Remote.Node.Site.store_data_point(site, stream_key, seq, point_ts, new_status)
+          RSMP.Remote.Node.Site.store_data_point(site, channel_key, seq, point_ts, new_status)
         end)
       end
 
@@ -578,8 +578,8 @@ defmodule RSMP.Supervisor do
   end
 
   defp receive_channel(supervisor, topic, data) when is_map(data) do
-    stream_name =
-      case topic.stream_name do
+    channel_name =
+      case topic.channel_name do
         name when is_binary(name) and name != "" -> name
         _ -> nil
       end
@@ -587,48 +587,48 @@ defmodule RSMP.Supervisor do
     state = data["state"] || data[:state]
 
     cond do
-      is_nil(stream_name) ->
-        Logger.warning("RSMP: #{topic.id}: Ignoring stream state without stream name: #{inspect(topic)}")
+      is_nil(channel_name) ->
+        Logger.warning("RSMP: #{topic.id}: Ignoring channel state without channel name: #{inspect(topic)}")
         supervisor
 
       state not in ["running", "stopped"] ->
-        Logger.warning("RSMP: #{topic.id}: Ignoring invalid stream state payload: #{inspect(data)}")
+        Logger.warning("RSMP: #{topic.id}: Ignoring invalid channel state payload: #{inspect(data)}")
         supervisor
 
       true ->
         id = topic.id
         {supervisor, site} = get_site(supervisor, id)
         path = Path.new(topic.path.module, topic.path.code, [])
-        stream_key = stream_state_key(path, stream_name)
-        previous_state = get_in(site.streams, [stream_key])
+        channel_key = channel_state_key(path, channel_name)
+        previous_state = get_in(site.channels, [channel_key])
 
-        # Record the timestamp when a stream is stopped, and stamp next_ts on last data point
+        # Record the timestamp when a channel is stopped, and stamp next_ts on last data point
         supervisor =
           if state == "stopped" do
             now = DateTime.utc_now()
-            supervisor = put_in(supervisor.sites[id].stream_stopped_at[stream_key], now)
+            supervisor = put_in(supervisor.sites[id].channel_stopped_at[channel_key], now)
             update_in(supervisor.sites[id], fn site ->
-              RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, stream_key, now)
+              RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, channel_key, now)
             end)
           else
             supervisor
           end
 
-        supervisor = put_in(supervisor.sites[id].streams[stream_key], state)
+        supervisor = put_in(supervisor.sites[id].channels[channel_key], state)
 
-        Logger.info("RSMP: #{id}: Received stream state #{stream_key}: #{state}")
+        Logger.info("RSMP: #{id}: Received channel state #{channel_key}: #{state}")
 
-        pub = %{topic: "stream", site: id, stream: stream_key, state: state}
+        pub = %{topic: "channel", site: id, channel: channel_key, state: state}
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
-        # When a stream restarts after being stopped, fetch missed data
+        # When a channel restarts after being stopped, fetch missed data
         supervisor =
           if state == "running" && previous_state == "stopped" do
-            stopped_at = get_in(supervisor.sites[id].stream_stopped_at, [stream_key])
-            case stream_key do
-              "traffic.volume/live" -> fetch_stream_gaps(supervisor, id, "traffic", "volume", "live", stopped_at)
-              "tlc.groups/live" -> fetch_stream_gaps(supervisor, id, "tlc", "groups", "live", stopped_at)
+            stopped_at = get_in(supervisor.sites[id].channel_stopped_at, [channel_key])
+            case channel_key do
+              "traffic.volume/live" -> fetch_channel_gaps(supervisor, id, "traffic", "volume", "live", stopped_at)
+              "tlc.groups/live" -> fetch_channel_gaps(supervisor, id, "tlc", "groups", "live", stopped_at)
               _ -> supervisor
             end
           else
@@ -654,13 +654,13 @@ defmodule RSMP.Supervisor do
       seq = data["seq"]
       values = from_rsmp_status(site, path, data["values"])
 
-      Logger.info("RSMP: #{supervisor.id}: Received replay #{path}/#{topic.stream_name} seq=#{seq} values=#{inspect(values)}")
+      Logger.info("RSMP: #{supervisor.id}: Received replay #{path}/#{topic.channel_name} seq=#{seq} values=#{inspect(values)}")
 
       point_pub = %{
         topic: "data_point",
         site: site_id,
         path: to_string(path),
-        stream: topic.stream_name,
+        channel: topic.channel_name,
         values: values,
         ts: ts,
         seq: seq,
@@ -670,22 +670,22 @@ defmodule RSMP.Supervisor do
       Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", point_pub)
 
       # Persist so the LiveView can read history on mount/reconnect
-      stream_key = "#{path}/#{topic.stream_name}"
+      channel_key = "#{path}/#{topic.channel_name}"
       next_ts = parse_iso8601(data["next_ts"])
       supervisor =
         update_in(supervisor.sites[site_id], fn site ->
           site
-          |> RSMP.Remote.Node.Site.clear_next_ts_before(stream_key, ts)
-          |> RSMP.Remote.Node.Site.store_data_point(stream_key, seq, ts, values, next_ts)
+          |> RSMP.Remote.Node.Site.clear_next_ts_before(channel_key, ts)
+          |> RSMP.Remote.Node.Site.store_data_point(channel_key, seq, ts, values, next_ts)
         end)
 
-      # If the stream is currently stopped, re-stamp next_ts on the last data point
+      # If the channel is currently stopped, re-stamp next_ts on the last data point
       # so the chart shows grey instead of extending the last color to now
       supervisor =
-        if get_in(supervisor.sites[site_id].streams, [stream_key]) == "stopped" do
-          stopped_at = get_in(supervisor.sites[site_id].stream_stopped_at, [stream_key]) || DateTime.utc_now()
+        if get_in(supervisor.sites[site_id].channels, [channel_key]) == "stopped" do
+          stopped_at = get_in(supervisor.sites[site_id].channel_stopped_at, [channel_key]) || DateTime.utc_now()
           update_in(supervisor.sites[site_id], fn site ->
-            RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, stream_key, stopped_at)
+            RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, channel_key, stopped_at)
           end)
         else
           supervisor
@@ -713,13 +713,13 @@ defmodule RSMP.Supervisor do
         seq = data["seq"]
         values = from_rsmp_status(site, path, data["values"])
 
-        Logger.info("RSMP: #{supervisor.id}: Received history #{path}/#{topic.stream_name} seq=#{seq} values=#{inspect(values)}")
+        Logger.info("RSMP: #{supervisor.id}: Received history #{path}/#{topic.channel_name} seq=#{seq} values=#{inspect(values)}")
 
         point_pub = %{
           topic: "data_point",
           site: site_id,
           path: to_string(path),
-          stream: topic.stream_name,
+          channel: topic.channel_name,
           values: values,
           ts: ts,
           seq: seq,
@@ -729,21 +729,21 @@ defmodule RSMP.Supervisor do
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", point_pub)
 
         # Persist data point so the LiveView can build history on mount/reconnect
-        stream_key = "#{path}/#{topic.stream_name}"
+        channel_key = "#{path}/#{topic.channel_name}"
         next_ts = parse_iso8601(data["next_ts"])
         supervisor =
           update_in(supervisor.sites[site_id], fn site ->
             site
-            |> RSMP.Remote.Node.Site.clear_next_ts_before(stream_key, ts)
-            |> RSMP.Remote.Node.Site.store_data_point(stream_key, seq, ts, values, next_ts)
+            |> RSMP.Remote.Node.Site.clear_next_ts_before(channel_key, ts)
+            |> RSMP.Remote.Node.Site.store_data_point(channel_key, seq, ts, values, next_ts)
           end)
 
-        # If the stream is currently stopped, re-stamp next_ts on the last data point
+        # If the channel is currently stopped, re-stamp next_ts on the last data point
         # so the chart shows grey instead of extending the last color to now
-        if get_in(supervisor.sites[site_id].streams, [stream_key]) == "stopped" do
-          stopped_at = get_in(supervisor.sites[site_id].stream_stopped_at, [stream_key]) || DateTime.utc_now()
+        if get_in(supervisor.sites[site_id].channels, [channel_key]) == "stopped" do
+          stopped_at = get_in(supervisor.sites[site_id].channel_stopped_at, [channel_key]) || DateTime.utc_now()
           update_in(supervisor.sites[site_id], fn site ->
-            RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, stream_key, stopped_at)
+            RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, channel_key, stopped_at)
           end)
         else
           supervisor
@@ -828,10 +828,10 @@ defmodule RSMP.Supervisor do
     maybe_put_seq(status, seq)
   end
 
-  defp maybe_put_status_seq(status, current_status, stream_name, incoming_seq) do
+  defp maybe_put_status_seq(status, current_status, channel_name, incoming_seq) do
     current_seq = status_seq(current_status)
     seq_map = if is_map(current_seq), do: current_seq, else: %{}
-    seq_map = if incoming_seq, do: Map.put(seq_map, stream_name, incoming_seq), else: seq_map
+    seq_map = if incoming_seq, do: Map.put(seq_map, channel_name, incoming_seq), else: seq_map
     if seq_map == %{}, do: status, else: maybe_put_seq(status, seq_map)
   end
 
@@ -876,31 +876,31 @@ defmodule RSMP.Supervisor do
   defp status_seq(_value), do: nil
 
 
-  defp stream_state_key(path, stream_name) do
-    normalized_stream =
-      case stream_name do
+  defp channel_state_key(path, channel_name) do
+    normalized_channel =
+      case channel_name do
         nil -> "default"
         "" -> "default"
         other -> to_string(other)
       end
 
-    "#{to_string(path)}/#{normalized_stream}"
+    "#{to_string(path)}/#{normalized_channel}"
   end
 
-  defp do_send_fetch(supervisor, site_id, module, code, stream_name, from_ts, to_ts) do
+  defp do_send_fetch(supervisor, site_id, module, code, channel_name, from_ts, to_ts) do
     if supervisor.pid == nil do
       supervisor
     else
       correlation_id = SecureRandom.hex(8)
-      stream_segment = if stream_name && stream_name != "", do: stream_name, else: "default"
-      response_topic = "#{supervisor.id}/history/#{module}.#{code}/#{stream_segment}"
-      fetch_topic = "#{site_id}/fetch/#{module}.#{code}/#{stream_segment}"
+      channel_segment = if channel_name && channel_name != "", do: channel_name, else: "default"
+      response_topic = "#{supervisor.id}/history/#{module}.#{code}/#{channel_segment}"
+      fetch_topic = "#{site_id}/fetch/#{module}.#{code}/#{channel_segment}"
 
       payload = %{}
       payload = if from_ts, do: Map.put(payload, "from", DateTime.to_iso8601(from_ts)), else: payload
       payload = if to_ts, do: Map.put(payload, "to", DateTime.to_iso8601(to_ts)), else: payload
 
-      Logger.info("RSMP: Sending fetch #{module}.#{code}/#{stream_segment} to #{site_id} from #{inspect(from_ts)} to #{inspect(to_ts)}")
+      Logger.info("RSMP: Sending fetch #{module}.#{code}/#{channel_segment} to #{site_id} from #{inspect(from_ts)} to #{inspect(to_ts)}")
 
       properties = %{
         "Response-Topic": response_topic,
@@ -917,7 +917,7 @@ defmodule RSMP.Supervisor do
         {&publish_done/1, []}
       )
 
-      pending_fetch = %{site_id: site_id, module: module, code: code, stream_name: stream_name}
+      pending_fetch = %{site_id: site_id, module: module, code: code, channel_name: channel_name}
       pending_fetches = Map.put(supervisor.pending_fetches, correlation_id, pending_fetch)
       %{supervisor | pending_fetches: pending_fetches}
     end
@@ -932,22 +932,22 @@ defmodule RSMP.Supervisor do
 
     Enum.reduce(supervisor.sites, supervisor, fn {id, _site}, sup ->
       sup
-      |> fetch_stream_gaps(id, "traffic", "volume", "live", from_ts)
-      |> fetch_stream_gaps(id, "tlc", "groups", "live", from_ts)
+      |> fetch_channel_gaps(id, "traffic", "volume", "live", from_ts)
+      |> fetch_channel_gaps(id, "tlc", "groups", "live", from_ts)
     end)
   end
 
-  # Fetch missing data for a stream. Uses seq-based gap detection as the primary
+  # Fetch missing data for a channel. Uses seq-based gap detection as the primary
   # mechanism. Falls back to fallback_from_ts → now when no seq gaps have been
-  # detected yet (e.g. right after reconnect or stream restart, before new data
+  # detected yet (e.g. right after reconnect or channel restart, before new data
   # has arrived past the gap).
-  defp fetch_stream_gaps(supervisor, site_id, module, code, stream_name, fallback_from_ts) do
-    stream_key = "#{module}.#{code}/#{stream_name}"
+  defp fetch_channel_gaps(supervisor, site_id, module, code, channel_name, fallback_from_ts) do
+    channel_key = "#{module}.#{code}/#{channel_name}"
 
     time_ranges =
       case supervisor.sites[site_id] do
         nil -> []
-        site -> RSMP.Remote.Node.Site.gap_time_ranges(site, stream_key)
+        site -> RSMP.Remote.Node.Site.gap_time_ranges(site, channel_key)
       end
 
     time_ranges =
@@ -958,7 +958,7 @@ defmodule RSMP.Supervisor do
       end
 
     Enum.reduce(time_ranges, supervisor, fn {from_ts, to_ts}, sup ->
-      do_send_fetch(sup, site_id, module, code, stream_name, from_ts, to_ts)
+      do_send_fetch(sup, site_id, module, code, channel_name, from_ts, to_ts)
     end)
   end
 

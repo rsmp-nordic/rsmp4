@@ -1,17 +1,17 @@
-defmodule RSMP.Stream do
+defmodule RSMP.Channel do
   @moduledoc """
-  A stream defines how a particular status is published via MQTT.
+  A channel defines how a particular status is published via MQTT.
 
-  Each stream has:
+  Each channel has:
   - code: module and status code (e.g. "groups")
-  - stream_name: name to distinguish multiple streams (e.g. "live", "hourly")
+  - channel_name: name to distinguish multiple channels (e.g. "live", "hourly")
   - attributes: map of attribute names to types (:on_change or :send_along)
   - update_rate: interval in ms for full retained updates (nil = on start only)
   - align_full_updates: align full update timer to wall-clock interval boundaries
   - delta_rate: :on_change | {:interval, ms} | :off
   - min_interval: minimum ms between delta publications
   - aggregation: :off | :sum | :count | :average | :median | :max | :min
-  - default_on: whether the stream starts automatically
+  - default_on: whether the channel starts automatically
   - qos: MQTT QoS level (0 or 1)
   - prune_timeout: ms before auto-stopping when all consumers are offline (nil = no prune)
   """
@@ -23,7 +23,7 @@ defmodule RSMP.Stream do
     :id,              # node id
     :module,          # e.g. "tlc"
     :code,            # e.g. "groups"
-    :stream_name,     # e.g. "live", "hourly", nil for single-stream statuses
+    :channel_name,     # e.g. "live", "hourly", nil for single-channel statuses
     :component,       # e.g. [] or ["dl", "1"]
     :attributes,      # %{"signalgroupstatus" => :on_change, "cyclecounter" => :send_along, ...}
     :update_rate,     # ms | nil (full update interval)
@@ -51,15 +51,15 @@ defmodule RSMP.Stream do
     aggregation_acc: nil   # accumulator for aggregation
   ]
 
-  # ---- Config struct for defining streams without runtime state ----
+  # ---- Config struct for defining channels without runtime state ----
 
   defmodule Config do
     @moduledoc """
-    Static configuration for a stream, used to define streams in service modules.
+    Static configuration for a channel, used to define channels in service modules.
     """
     defstruct [
       :code,
-      :stream_name,
+      :channel_name,
       :component,
       attributes: %{},
       update_rate: nil,
@@ -83,7 +83,7 @@ defmodule RSMP.Stream do
       id: id,
       module: module,
       code: config.code,
-      stream_name: config.stream_name,
+      channel_name: config.channel_name,
       component: config.component || [],
       attributes: config.attributes,
       update_rate: config.update_rate,
@@ -100,26 +100,26 @@ defmodule RSMP.Stream do
       running: false
     }
 
-    via = RSMP.Registry.via_stream(id, module, config.code, config.stream_name, config.component || [])
+    via = RSMP.Registry.via_channel(id, module, config.code, config.channel_name, config.component || [])
     GenServer.start_link(__MODULE__, state, name: via)
   end
 
-  @doc "Start publishing data on this stream."
-  def start_stream(pid), do: GenServer.call(pid, :start_stream)
+  @doc "Start publishing data on this channel."
+  def start_channel(pid), do: GenServer.call(pid, :start_channel)
 
-  @doc "Stop publishing data on this stream."
-  def stop_stream(pid), do: GenServer.call(pid, :stop_stream)
+  @doc "Stop publishing data on this channel."
+  def stop_channel(pid), do: GenServer.call(pid, :stop_channel)
 
-  @doc "Report new attribute values. Only call when the stream is running."
+  @doc "Report new attribute values. Only call when the channel is running."
   def report(pid, values, ts \\ nil), do: GenServer.cast(pid, {:report, values, ts})
 
-  @doc "Publish current stream running/stopped state."
+  @doc "Publish current channel running/stopped state."
   def publish_state(pid), do: GenServer.call(pid, :publish_state)
 
-  @doc "Get current stream info."
+  @doc "Get current channel info."
   def info(pid), do: GenServer.call(pid, :info)
 
-  @doc "Publish a full update immediately if the stream is running."
+  @doc "Publish a full update immediately if the channel is running."
   def force_full(pid), do: GenServer.call(pid, :force_full)
 
   @doc "Replay buffered data since `since` (DateTime) on reconnect. Pass nil to skip replay."
@@ -132,28 +132,28 @@ defmodule RSMP.Stream do
     if state.default_on do
       send(self(), :auto_start)
     else
-      publish_stream_state(state)
+      publish_channel_state(state)
     end
 
     {:ok, state}
   end
 
   @impl GenServer
-  def handle_call(:start_stream, _from, %{running: true} = state) do
+  def handle_call(:start_channel, _from, %{running: true} = state) do
     {:reply, {:error, :already_running}, state}
   end
 
-  def handle_call(:start_stream, _from, state) do
+  def handle_call(:start_channel, _from, state) do
     state = do_start(state)
     {:reply, :ok, state}
   end
 
   @impl GenServer
-  def handle_call(:stop_stream, _from, %{running: false} = state) do
+  def handle_call(:stop_channel, _from, %{running: false} = state) do
     {:reply, {:error, :not_running}, state}
   end
 
-  def handle_call(:stop_stream, _from, state) do
+  def handle_call(:stop_channel, _from, state) do
     state = do_stop(state)
     {:reply, :ok, state}
   end
@@ -162,7 +162,7 @@ defmodule RSMP.Stream do
   def handle_call(:info, _from, state) do
     info = %{
       code: state.code,
-      stream_name: state.stream_name,
+      channel_name: state.channel_name,
       module: state.module,
       component: state.component,
       running: state.running,
@@ -190,7 +190,7 @@ defmodule RSMP.Stream do
   end
 
   def handle_call(:publish_state, _from, state) do
-    publish_stream_state(state)
+    publish_channel_state(state)
     {:reply, :ok, state}
   end
 
@@ -198,7 +198,7 @@ defmodule RSMP.Stream do
   def handle_cast({:report, values, ts}, %{running: false} = state) do
     # Buffer the report with an incremented seq even though we're not publishing.
     # This lets the supervisor detect gaps in the seq numbers and request the
-    # missing data via fetch/history once the stream is back on.
+    # missing data via fetch/history once the channel is back on.
     state = buffer_without_publishing(values, ts, state)
     {:noreply, state}
   end
@@ -276,11 +276,11 @@ defmodule RSMP.Stream do
   # ---- Internal ----
 
   defp do_start(state) do
-    Logger.info("RSMP Stream: Starting #{stream_label(state)}")
+    Logger.info("RSMP Channel: Starting #{channel_label(state)}")
     state = %{state | running: true, last_full: nil, pending_changes: %{}, aggregation_acc: nil}
 
     # Publish initial full update, unless:
-    # - always_publish is set (event/counter stream, no accumulated state to snapshot)
+    # - always_publish is set (event/counter channel, no accumulated state to snapshot)
     # - aggregation is active (first full comes when the aggregation timer fires)
     state =
       if not state.always_publish and state.aggregation == :off do
@@ -295,13 +295,13 @@ defmodule RSMP.Stream do
     # Schedule delta interval timer if needed
     state = schedule_delta_timer(state)
 
-    publish_stream_state(state)
+    publish_channel_state(state)
 
     state
   end
 
   defp do_stop(state) do
-    Logger.info("RSMP Stream: Stopping #{stream_label(state)}")
+    Logger.info("RSMP Channel: Stopping #{channel_label(state)}")
 
     # Cancel timers
     state = cancel_timers(state)
@@ -310,7 +310,7 @@ defmodule RSMP.Stream do
     publish_clear(state)
 
     state = %{state | running: false, last_full: nil, pending_changes: %{}, pending_ts: nil}
-    publish_stream_state(state)
+    publish_channel_state(state)
     state
   end
 
@@ -327,13 +327,13 @@ defmodule RSMP.Stream do
         publish_full(state)
 
       [] ->
-        Logger.warning("RSMP Stream: No service found for #{stream_label(state)}")
+        Logger.warning("RSMP Channel: No service found for #{channel_label(state)}")
         state
     end
   end
 
   # Buffer values with a seq number but don't publish to MQTT.
-  # Called when the stream is stopped to ensure seq gaps exist for the supervisor
+  # Called when the channel is stopped to ensure seq gaps exist for the supervisor
   # to detect and fetch via history.
   defp buffer_without_publishing(values, ts, state) do
     values = Map.take(values, Map.keys(state.attributes))
@@ -444,7 +444,7 @@ defmodule RSMP.Stream do
   end
 
   defp handle_aggregated_report(values, state) do
-    # For aggregated streams, accumulate values into lists per attribute
+    # For aggregated channels, accumulate values into lists per attribute
     acc = state.aggregation_acc || %{}
 
     acc =
@@ -532,8 +532,8 @@ defmodule RSMP.Stream do
   end
 
   defp publish_full(state) do
-    # For aggregated streams, compute the result from the accumulator.
-    # For regular streams, use the current full state.
+    # For aggregated channels, compute the result from the accumulator.
+    # For regular channels, use the current full state.
     {data, state} =
       if state.aggregation != :off do
         aggregated = compute_aggregation(state.aggregation, state.aggregation_acc, state.attributes)
@@ -561,9 +561,9 @@ defmodule RSMP.Stream do
       %{}
     )
 
-    broadcast_stream_data(state, seq, "full")
+    broadcast_channel_data(state, seq, "full")
 
-    # For counter/event streams (always_publish), the full is a state snapshot,
+    # For counter/event channels (always_publish), the full is a state snapshot,
     # not a discrete event. Don't add it to the buffer so it won't appear in
     # replay/history responses as a phantom data point.
     buffer =
@@ -597,7 +597,7 @@ defmodule RSMP.Stream do
       %{}
     )
 
-    broadcast_stream_data(state, seq, "delta")
+    broadcast_channel_data(state, seq, "delta")
 
     now = System.monotonic_time(:millisecond)
 
@@ -627,8 +627,8 @@ defmodule RSMP.Stream do
     )
   end
 
-  defp publish_stream_state(state) do
-    topic = make_stream_state_topic(state)
+  defp publish_channel_state(state) do
+    topic = make_channel_state_topic(state)
 
     payload = %{
       "state" => if(state.running, do: "running", else: "stopped")
@@ -644,22 +644,22 @@ defmodule RSMP.Stream do
   end
 
   defp make_topic(state) do
-    RSMP.Topic.new(state.id, "status", state.module, state.code, state.stream_name, state.component)
+    RSMP.Topic.new(state.id, "status", state.module, state.code, state.channel_name, state.component)
   end
 
-  defp make_stream_state_topic(state) do
-    stream_name =
-      case state.stream_name do
+  defp make_channel_state_topic(state) do
+    channel_name =
+      case state.channel_name do
         nil -> "default"
         "" -> "default"
         name -> to_string(name)
       end
 
-    RSMP.Topic.new(state.id, "channel", state.module, state.code, stream_name, [])
+    RSMP.Topic.new(state.id, "channel", state.module, state.code, channel_name, [])
   end
 
   defp make_replay_topic(state) do
-    RSMP.Topic.new(state.id, "replay", state.module, state.code, state.stream_name, state.component)
+    RSMP.Topic.new(state.id, "replay", state.module, state.code, state.channel_name, state.component)
   end
 
   defp do_replay(%{buffer: []} = _state, _since), do: :ok
@@ -785,19 +785,19 @@ defmodule RSMP.Stream do
     %{state | full_timer: nil, delta_timer: nil, min_interval_timer: nil}
   end
 
-  defp stream_label(state) do
-    name = state.stream_name || "default"
+  defp channel_label(state) do
+    name = state.channel_name || "default"
     component = if state.component == [], do: "", else: "/" <> Enum.join(state.component, "/")
     "#{state.id}/status/#{state.module}.#{state.code}/#{name}#{component}"
   end
 
-  defp broadcast_stream_data(state, seq, kind) do
-    stream_key = "#{state.module}.#{state.code}/#{normalize_stream_name(state.stream_name)}"
+  defp broadcast_channel_data(state, seq, kind) do
+    channel_key = "#{state.module}.#{state.code}/#{normalize_channel_name(state.channel_name)}"
 
     pub = %{
-      topic: "stream_data",
+      topic: "channel_data",
       site: state.id,
-      stream: stream_key,
+      channel: channel_key,
       kind: kind,
       seq: seq
     }
@@ -805,7 +805,7 @@ defmodule RSMP.Stream do
     Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{state.id}", pub)
   end
 
-  defp normalize_stream_name(nil), do: "default"
-  defp normalize_stream_name(""), do: "default"
-  defp normalize_stream_name(name), do: to_string(name)
+  defp normalize_channel_name(nil), do: "default"
+  defp normalize_channel_name(""), do: "default"
+  defp normalize_channel_name(name), do: to_string(name)
 end

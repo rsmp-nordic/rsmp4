@@ -39,7 +39,7 @@ defmodule RSMP.Service.Traffic do
 				detection_volume = random_detection_volume()
 				ts = DateTime.utc_now()
 
-				RSMP.Service.report_to_streams(service.id, "traffic", "volume", detection_volume, ts)
+				RSMP.Service.report_to_channels(service.id, "traffic", "volume", detection_volume, ts)
 				Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status", changes: ["traffic.volume"]})
 
 				point = %{ts: ts, values: to_atom_keys(detection_volume)}

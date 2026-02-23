@@ -49,7 +49,7 @@ defmodule RSMP.Service do
       @impl GenServer
       def handle_cast(:publish_all, service) do
         for code <- status_codes() do
-          RSMP.Service.report_to_streams(service, code)
+          RSMP.Service.report_to_channels(service, code)
         end
         for code <- alarm_codes() do
           RSMP.Service.publish_alarm(service, code)
@@ -134,23 +134,23 @@ defmodule RSMP.Service do
   end
 
   @doc """
-  Report attribute values to all streams for the given status code.
-  Streams will decide whether to publish based on their configuration.
+  Report attribute values to all channels for the given status code.
+  Channels will decide whether to publish based on their configuration.
   """
-  def report_to_streams(service, code) do
+  def report_to_channels(service, code) do
     id = RSMP.Service.Protocol.id(service)
     module = RSMP.Service.Protocol.name(service)
     values = RSMP.Service.Protocol.format_status(service, code)
-    report_to_streams(id, module, code, values)
+    report_to_channels(id, module, code, values)
   end
 
-  def report_to_streams(id, module, code, values, ts \\ nil) do
-    # Find all streams for this code (any stream_name, any component)
-    match_pattern = {{{id, :stream, module, code, :_, :_}, :"$1", :_}, [], [:"$1"]}
+  def report_to_channels(id, module, code, values, ts \\ nil) do
+    # Find all channels for this code (any channel_name, any component)
+    match_pattern = {{{id, :channel, module, code, :_, :_}, :"$1", :_}, [], [:"$1"]}
     pids = Registry.select(RSMP.Registry, [match_pattern])
 
     Enum.each(pids, fn pid ->
-      RSMP.Stream.report(pid, values, ts)
+      RSMP.Channel.report(pid, values, ts)
     end)
   end
 

@@ -75,7 +75,7 @@ end}></span></h1>
       <tr class="text-base bg-stone-100">
         <th class="px-1 py-1 align-top">Code</th>
         <th class="px-1 py-1 align-top">Value</th>
-        <th class="px-1 py-1 align-top">Streams</th>
+        <th class="px-1 py-1 align-top">Channels</th>
       </tr>
     </thead>
 
@@ -89,17 +89,17 @@ end}></span></h1>
         </td>
         <td class="px-1 py-1 align-top">
           <div class="flex flex-wrap gap-1">
-            <%= for stream <- row.streams do %>
+            <%= for channel <- row.channels do %>
               <button
                 type="button"
-                class={stream_button_class(stream, row.path, @stream_pulses)}
+                class={channel_button_class(channel, row.path, @channel_pulses)}
                 phx-click="throttle"
                 phx-value-path={row.path}
-                phx-value-stream={stream.key}
-                phx-value-state={stream.state}
-                title={stream.title}
+                phx-value-channel={channel.key}
+                phx-value-state={channel.state}
+                title={channel.title}
               >
-                <%= stream.label %>
+                <%= channel.label %>
               </button>
             <% end %>
           </div>

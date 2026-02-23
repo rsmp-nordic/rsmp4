@@ -124,7 +124,7 @@ defmodule RSMP.SupervisorTest do
 
     send(pid, {:publish, %{topic: "#{site_id}/replay/traffic.volume/live", payload: payload, properties: %{}}})
 
-    assert_receive %{topic: "data_point", source: :replay, path: "traffic.volume", stream: "live"}
+    assert_receive %{topic: "data_point", source: :replay, path: "traffic.volume", channel: "live"}
   end
 
   test "receive_replay includes values converted via traffic converter", %{supervisor_id: supervisor_id, pid: pid} do
@@ -216,7 +216,7 @@ defmodule RSMP.SupervisorTest do
     assert msg.source == :live
   end
 
-  test "traffic.volume seq is latest stream seq", %{supervisor_id: supervisor_id, pid: pid} do
+  test "traffic.volume seq is latest channel seq", %{supervisor_id: supervisor_id, pid: pid} do
     assert pid != nil
 
     site_id = "supervisor_traffic_seq_map_#{System.unique_integer([:positive])}"
@@ -467,7 +467,7 @@ defmodule RSMP.SupervisorTest do
     # First, set up a pending fetch so receive_history accepts the message
     correlation_id = "test-corr-#{System.unique_integer([:positive])}"
     :sys.replace_state(pid, fn state ->
-      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", stream_name: "live"}
+      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", channel_name: "live"}
       %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
     end)
 
@@ -482,7 +482,7 @@ defmodule RSMP.SupervisorTest do
     properties = %{"Correlation-Data": correlation_id}
     send(pid, {:publish, %{topic: "#{supervisor_id}/history/traffic.volume/live", payload: payload, properties: properties}})
 
-    assert_receive %{topic: "data_point", source: :history, path: "traffic.volume", stream: "live", seq: 42}
+    assert_receive %{topic: "data_point", source: :history, path: "traffic.volume", channel: "live", seq: 42}
   end
 
   test "receive_history stores data points by seq", %{supervisor_id: supervisor_id, pid: pid} do
@@ -490,7 +490,7 @@ defmodule RSMP.SupervisorTest do
 
     correlation_id = "test-corr-#{System.unique_integer([:positive])}"
     :sys.replace_state(pid, fn state ->
-      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", stream_name: "live"}
+      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", channel_name: "live"}
       %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
     end)
 
@@ -536,7 +536,7 @@ defmodule RSMP.SupervisorTest do
 
     correlation_id = "test-corr-#{System.unique_integer([:positive])}"
     :sys.replace_state(pid, fn state ->
-      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", stream_name: "live"}
+      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", channel_name: "live"}
       %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
     end)
 
@@ -581,7 +581,7 @@ defmodule RSMP.SupervisorTest do
 
     correlation_id = "test-corr-#{System.unique_integer([:positive])}"
     :sys.replace_state(pid, fn state ->
-      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", stream_name: "live"}
+      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", channel_name: "live"}
       %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
     end)
 
@@ -603,7 +603,7 @@ defmodule RSMP.SupervisorTest do
 
     correlation_id = "test-corr-#{System.unique_integer([:positive])}"
     :sys.replace_state(pid, fn state ->
-      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", stream_name: "live"}
+      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", channel_name: "live"}
       %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
     end)
 
