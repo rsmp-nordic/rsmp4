@@ -527,9 +527,12 @@ defmodule RSMP.Supervisor do
     channel_pub = %{topic: "channel_data", site: id, channel: channel_key}
     Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", channel_pub)
 
-    # Only create data points for delta messages (events), not retained full messages.
-    # Full messages are state snapshots (e.g. on channel start) — not discrete events.
-    # Replay/history have their own paths that create data points correctly.
+    # Only create data points for non-retained (live/delta) messages.
+    # Retained messages are state snapshots delivered on subscribe — they update
+    # the status display but should not appear as historical graph entries,
+    # because they may carry timestamps from before the supervisor started.
+    # The fetch/history path provides the graph baseline (including the initial
+    # full published by channel start).
     supervisor =
       if retain do
         supervisor
@@ -547,10 +550,14 @@ defmodule RSMP.Supervisor do
         }
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", point_pub)
 
-        # Persist this data point so the LiveView can build history on mount/reconnect
+        # Persist this data point so the LiveView can build history on mount/reconnect.
+        # clear_next_ts_before removes the next_ts marker on the previous point when
+        # its successor arrives, so trailing gaps close when live data resumes.
         channel_key = "#{status_key}/#{topic.channel_name}"
         update_in(supervisor.sites[id], fn site ->
-          RSMP.Remote.Node.Site.store_data_point(site, channel_key, seq, point_ts, new_status)
+          site
+          |> RSMP.Remote.Node.Site.clear_next_ts_before(channel_key, point_ts)
+          |> RSMP.Remote.Node.Site.store_data_point(channel_key, seq, point_ts, new_status)
         end)
       end
 
@@ -622,13 +629,16 @@ defmodule RSMP.Supervisor do
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}", pub)
         Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{id}", pub)
 
-        # When a channel restarts after being stopped, fetch missed data
+        # When a channel starts (from stopped or first seen), fetch missed data.
+        # Use graph-window fallback (now - 60s) so the fetch covers the visible
+        # time range without pulling in entries from before the app started.
         supervisor =
-          if state == "running" && previous_state == "stopped" do
-            stopped_at = get_in(supervisor.sites[id].channel_stopped_at, [channel_key])
+          if state == "running" && previous_state in ["stopped", nil] do
+            fallback_ts = DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
+
             case channel_key do
-              "traffic.volume/live" -> fetch_channel_gaps(supervisor, id, "traffic", "volume", "live", stopped_at)
-              "tlc.groups/live" -> fetch_channel_gaps(supervisor, id, "tlc", "groups", "live", stopped_at)
+              "traffic.volume/live" -> fetch_channel_gaps(supervisor, id, "traffic", "volume", "live", fallback_ts)
+              "tlc.groups/live" -> fetch_channel_gaps(supervisor, id, "tlc", "groups", "live", fallback_ts)
               _ -> supervisor
             end
           else
@@ -943,16 +953,33 @@ defmodule RSMP.Supervisor do
   # has arrived past the gap).
   defp fetch_channel_gaps(supervisor, site_id, module, code, channel_name, fallback_from_ts) do
     channel_key = "#{module}.#{code}/#{channel_name}"
+    now = DateTime.utc_now()
 
     time_ranges =
       case supervisor.sites[site_id] do
-        nil -> []
-        site -> RSMP.Remote.Node.Site.gap_time_ranges(site, channel_key)
+        nil ->
+          []
+
+        site ->
+          seq_ranges = RSMP.Remote.Node.Site.gap_time_ranges(site, channel_key)
+
+          sorted_points =
+            site.data_points
+            |> Map.get(channel_key, %{})
+            |> Map.values()
+            |> Enum.sort_by(& &1.ts, DateTime)
+
+          next_ts_ranges = RSMP.Remote.Node.Site.next_ts_gap_ranges(sorted_points)
+
+          (seq_ranges ++ next_ts_ranges)
+          |> Enum.map(fn {from, to} -> {from, to || now} end)
+          |> Enum.reject(fn {from, _to} -> is_nil(from) end)
+          |> Enum.filter(fn {from, to} -> DateTime.compare(from, to) == :lt end)
       end
 
     time_ranges =
-      if time_ranges == [] && fallback_from_ts != nil do
-        [{fallback_from_ts, DateTime.utc_now()}]
+      if time_ranges == [] do
+        [{fallback_from_ts, now}]
       else
         time_ranges
       end
@@ -972,8 +999,4 @@ defmodule RSMP.Supervisor do
   end
 
   defp parse_iso8601(_), do: nil
-
-  def to_rsmp_status(supervisor, path, data) do
-    converter(supervisor, path.module).to_rsmp_status(path.code, data)
-  end
 end

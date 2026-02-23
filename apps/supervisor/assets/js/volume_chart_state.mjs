@@ -5,7 +5,7 @@ export const MAX_POINTS = 60
 
 export function createState(maxPoints = MAX_POINTS) {
   return {
-    buf: { cars: [], bicycles: [], busses: [] },
+    buf: { cars: [], bicycles: [], busses: [], gaps: [] },
     maxPoints,
   }
 }
@@ -17,6 +17,7 @@ export function receiveHistory(state, bins) {
   state.buf.cars     = slice.map(b => b.cars     ?? 0)
   state.buf.bicycles = slice.map(b => b.bicycles ?? 0)
   state.buf.busses   = slice.map(b => b.busses   ?? 0)
+  state.buf.gaps     = slice.map(b => b.gap === true)
 }
 
 // Compute the arrays uPlot needs.

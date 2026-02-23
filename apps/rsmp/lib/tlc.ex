@@ -193,7 +193,7 @@ defmodule RSMP.Node.TLC do
     end
   end
 
-  def set_traffic_level(site_id, level) when level in [:none, :low, :high] do
+  def set_traffic_level(site_id, level) when level in [:none, :sparse, :low, :high] do
     case RSMP.Registry.lookup_service(site_id, "traffic", []) do
       [{service_pid, _}] ->
         GenServer.cast(service_pid, {:set_traffic_level, level})

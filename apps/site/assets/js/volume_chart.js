@@ -50,6 +50,7 @@ function buildChart(el, width) {
           stroke: "rgba(251,146,60,0.85)",
           width: 0,
           paths: barPaths,
+          points: { show: false },
         },
         {
           label: "Bicycles",
@@ -57,6 +58,7 @@ function buildChart(el, width) {
           stroke: "rgba(37,99,235,0.85)",
           width: 0,
           paths: barPaths,
+          points: { show: false },
         },
         {
           label: "Cars",
@@ -64,6 +66,7 @@ function buildChart(el, width) {
           stroke: "rgba(88,28,135,0.85)",
           width: 0,
           paths: barPaths,
+          points: { show: false },
         },
       ],
     },

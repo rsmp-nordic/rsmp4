@@ -59,6 +59,13 @@ end}></span></h1>
               None
             </button>
             <button
+              class={RSMP.ButtonClasses.selectable(@traffic_level == :sparse)}
+              phx-click="set_traffic_level"
+              phx-value-level="sparse"
+            >
+              Sparse
+            </button>
+            <button
               class={RSMP.ButtonClasses.selectable(@traffic_level == :low)}
               phx-click="set_traffic_level"
               phx-value-level="low"
@@ -94,8 +101,8 @@ end}></span></h1>
         <th class="px-1 py-1"></th>
       </tr>
     </thead>
-    <%= for {status,value} <- @statuses do %>
-      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+    <%= for {{status,value}, index} <- Enum.with_index(@statuses) do %>
+      <tr class={"text-base " <> if rem(index, 2) == 0, do: "bg-stone-200", else: "bg-stone-100"}>
         <td class="px-1 py-1 align-top"><%= status %></td>
         <td class="px-1 py-1">
           <%= for {name, formatted_value} <- format_status_lines(value) do %>
@@ -142,7 +149,7 @@ end}></span></h1>
         </td>
       </tr>
       <%= if status == "traffic.volume" do %>
-        <tr class="even:bg-stone-100">
+        <tr class={if rem(index, 2) == 0, do: "bg-stone-200", else: "bg-stone-100"}>
           <td colspan="4" class="p-0">
             <div id="volume-chart" phx-hook="VolumeChart" phx-update="ignore" class="w-full rounded bg-stone-900"></div>
             <div class="flex gap-4 text-xs mt-1">
@@ -154,7 +161,7 @@ end}></span></h1>
         </tr>
       <% end %>
       <%= if status == "tlc.groups" do %>
-        <tr class="even:bg-stone-100">
+        <tr class={if rem(index, 2) == 0, do: "bg-stone-200", else: "bg-stone-100"}>
           <td colspan="4" class="p-0">
             <div id="groups-chart" phx-hook="GroupsChart" phx-update="ignore" class="w-full rounded"></div>
           </td>

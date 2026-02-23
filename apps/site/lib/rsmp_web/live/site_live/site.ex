@@ -130,6 +130,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     traffic_level =
       case level do
         "none" -> :none
+        "sparse" -> :sparse
         "high" -> :high
         _ -> :low
       end

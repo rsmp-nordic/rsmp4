@@ -392,6 +392,65 @@ defmodule RSMP.Remote.Node.SiteTest do
   end
 
   # ---------------------------------------------------------------------------
+  # aggregate_into_bins_with_gaps
+  # ---------------------------------------------------------------------------
+
+  describe "aggregate_into_bins_with_gaps" do
+    test "marks gap bins as gap: true" do
+      now = ~U[2025-01-01 00:00:10Z]
+      base = ~U[2025-01-01 00:00:00Z]
+
+      # Data at seconds 1-3 and 7-10, gap at 4-6
+      points =
+        (for i <- 1..3 do
+          %{ts: DateTime.add(base, i, :second), values: %{cars: 1, bicycles: 0, busses: 0}}
+        end) ++
+        (for i <- 7..10 do
+          %{ts: DateTime.add(base, i, :second), values: %{cars: 2, bicycles: 0, busses: 0}}
+        end)
+
+      # Gap range: seconds 4 through 6 (from_ts=second 3, to_ts=second 7)
+      gap_ranges = [{DateTime.add(base, 3, :second), DateTime.add(base, 7, :second)}]
+
+      bins = Site.aggregate_into_bins_with_gaps(points, 10, gap_ranges, now)
+      assert length(bins) == 10
+
+      # Seconds 1-3 have data, not gaps
+      for i <- 0..2 do
+        refute Enum.at(bins, i).gap, "Expected bin #{i} to not be a gap"
+      end
+
+      # Seconds 4-6 are in the gap range
+      for i <- 3..5 do
+        assert Enum.at(bins, i).gap, "Expected bin #{i} to be a gap"
+      end
+
+      # Seconds 7-10 have data, not gaps
+      for i <- 6..9 do
+        refute Enum.at(bins, i).gap, "Expected bin #{i} to not be a gap"
+      end
+    end
+
+    test "no gap ranges means all bins have gap: false" do
+      bins = Site.aggregate_into_bins_with_gaps([], 5, [], ~U[2025-01-01 00:00:05Z])
+      assert Enum.all?(bins, fn b -> b.gap == false end)
+    end
+
+    test "preserves normal bin values alongside gap flag" do
+      now = ~U[2025-01-01 00:00:05Z]
+      base = ~U[2025-01-01 00:00:00Z]
+
+      points = [%{ts: DateTime.add(base, 2, :second), values: %{cars: 3, bicycles: 1, busses: 0}}]
+      bins = Site.aggregate_into_bins_with_gaps(points, 5, [], now)
+
+      # Second 2 is bin index 1
+      assert Enum.at(bins, 1).cars == 3
+      assert Enum.at(bins, 1).bicycles == 1
+      assert Enum.at(bins, 1).gap == false
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # seq_gaps / has_seq_gaps?
   # ---------------------------------------------------------------------------
 
@@ -505,6 +564,84 @@ defmodule RSMP.Remote.Node.SiteTest do
         {~U[2025-01-01 00:00:02Z], ~U[2025-01-01 00:00:04Z]},
         {~U[2025-01-01 00:00:05Z], ~U[2025-01-01 00:00:08Z]}
       ]
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # next_ts_gap_ranges
+  # ---------------------------------------------------------------------------
+
+  describe "next_ts_gap_ranges" do
+    test "returns empty for empty list" do
+      assert Site.next_ts_gap_ranges([]) == []
+    end
+
+    test "returns empty when no next_ts set" do
+      points = [
+        %{ts: ~U[2025-01-01 00:00:01Z], values: %{cars: 1}},
+        %{ts: ~U[2025-01-01 00:00:02Z], values: %{cars: 2}},
+        %{ts: ~U[2025-01-01 00:00:03Z], values: %{cars: 3}}
+      ]
+      assert Site.next_ts_gap_ranges(points) == []
+    end
+
+    test "returns trailing gap when last point has next_ts" do
+      points = [
+        %{ts: ~U[2025-01-01 00:00:01Z], values: %{cars: 1}},
+        %{ts: ~U[2025-01-01 00:00:02Z], values: %{cars: 2}},
+        %{ts: ~U[2025-01-01 00:00:03Z], values: %{cars: 3}, next_ts: ~U[2025-01-01 00:00:03.500Z]}
+      ]
+      assert Site.next_ts_gap_ranges(points) == [{~U[2025-01-01 00:00:03.500Z], nil}]
+    end
+
+    test "returns mid-sequence gap when next_ts creates time gap" do
+      points = [
+        %{ts: ~U[2025-01-01 00:00:01Z], values: %{cars: 1}, next_ts: ~U[2025-01-01 00:00:02Z]},
+        %{ts: ~U[2025-01-01 00:00:05Z], values: %{cars: 2}}
+      ]
+      # Gap from next_ts (second 2) to next point's ts (second 5)
+      assert Site.next_ts_gap_ranges(points) == [{~U[2025-01-01 00:00:02Z], ~U[2025-01-01 00:00:05Z]}]
+    end
+
+    test "no mid-sequence gap when next_ts equals next point ts" do
+      points = [
+        %{ts: ~U[2025-01-01 00:00:01Z], values: %{cars: 1}, next_ts: ~U[2025-01-01 00:00:02Z]},
+        %{ts: ~U[2025-01-01 00:00:02Z], values: %{cars: 2}}
+      ]
+      assert Site.next_ts_gap_ranges(points) == []
+    end
+
+    test "trailing gap disappears when next_ts is cleared" do
+      points = [
+        %{ts: ~U[2025-01-01 00:00:01Z], values: %{cars: 1}},
+        %{ts: ~U[2025-01-01 00:00:02Z], values: %{cars: 2}},
+        %{ts: ~U[2025-01-01 00:00:03Z], values: %{cars: 3}}
+      ]
+      # No next_ts on last point → no trailing gap
+      assert Site.next_ts_gap_ranges(points) == []
+    end
+
+    test "gap shrinks as replay data fills in" do
+      # Initially: data at 1-3, then channel stopped at 3.5, resumed at 8
+      points = [
+        %{ts: ~U[2025-01-01 00:00:01Z], values: %{cars: 1}},
+        %{ts: ~U[2025-01-01 00:00:02Z], values: %{cars: 2}},
+        %{ts: ~U[2025-01-01 00:00:03Z], values: %{cars: 3}, next_ts: ~U[2025-01-01 00:00:03.500Z]},
+        %{ts: ~U[2025-01-01 00:00:08Z], values: %{cars: 8}}
+      ]
+      assert Site.next_ts_gap_ranges(points) == [{~U[2025-01-01 00:00:03.500Z], ~U[2025-01-01 00:00:08Z]}]
+
+      # Replay fills in seconds 4-5, next_ts moved to point before gap
+      points_after_replay = [
+        %{ts: ~U[2025-01-01 00:00:01Z], values: %{cars: 1}},
+        %{ts: ~U[2025-01-01 00:00:02Z], values: %{cars: 2}},
+        %{ts: ~U[2025-01-01 00:00:03Z], values: %{cars: 3}},
+        %{ts: ~U[2025-01-01 00:00:04Z], values: %{cars: 4}},
+        %{ts: ~U[2025-01-01 00:00:05Z], values: %{cars: 5}, next_ts: ~U[2025-01-01 00:00:05.500Z]},
+        %{ts: ~U[2025-01-01 00:00:08Z], values: %{cars: 8}}
+      ]
+      # Gap is now smaller: from 5.5 to 8
+      assert Site.next_ts_gap_ranges(points_after_replay) == [{~U[2025-01-01 00:00:05.500Z], ~U[2025-01-01 00:00:08Z]}]
     end
   end
 end

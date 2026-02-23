@@ -48,7 +48,8 @@ defmodule RSMP.Channel do
     full_timer: nil,
     delta_timer: nil,
     min_interval_timer: nil,
-    aggregation_acc: nil   # accumulator for aggregation
+    aggregation_acc: nil,  # accumulator for aggregation
+    active_send: nil       # current in-progress fetch send: %{entries, response_topic, milestones}
   ]
 
   # ---- Config struct for defining channels without runtime state ----
@@ -195,6 +196,13 @@ defmodule RSMP.Channel do
   end
 
   @impl GenServer
+  def handle_cast(:force_full, %{running: false} = state), do: {:noreply, state}
+
+  def handle_cast(:force_full, state) do
+    state = publish_full(state)
+    {:noreply, state}
+  end
+
   def handle_cast({:report, values, ts}, %{running: false} = state) do
     # Buffer the report with an incremented seq even though we're not publishing.
     # This lets the supervisor detect gaps in the seq numbers and request the
@@ -218,14 +226,53 @@ defmodule RSMP.Channel do
   end
 
   def handle_cast({:handle_fetch, from_ts, to_ts, response_topic, correlation_data}, state) do
-    entries = filter_buffer_by_range(state.buffer, from_ts, to_ts)
+    new_milestone = %{to_ts: to_ts, correlation_data: correlation_data}
 
-    if entries == [] do
-      payload = %{"complete" => true}
-      RSMP.Connection.publish_message(state.id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
-    else
-      do_send_history(state, entries, response_topic, correlation_data)
-    end
+    state =
+      case state.active_send do
+        nil ->
+          entries = filter_buffer_by_range(state.buffer, from_ts, to_ts) |> Enum.reverse()
+
+          if entries == [] do
+            send_history_complete(state.id, response_topic, correlation_data)
+            state
+          else
+            active_send = %{
+              entries: entries,
+              response_topic: response_topic,
+              milestones: [new_milestone]
+            }
+
+            send(self(), :send_next_history_entry)
+            %{state | active_send: active_send}
+          end
+
+        %{entries: [first | _] = remaining} = active_send ->
+          # If the new fetch range is entirely before our current sending position, complete it immediately.
+          already_done = to_ts != nil and DateTime.compare(first.ts, to_ts) != :lt
+
+          if already_done do
+            send_history_complete(state.id, response_topic, correlation_data)
+            state
+          else
+            # Extend range: append buffer entries beyond the current queue's last entry.
+            last_ts = List.last(remaining).ts
+
+            extra_entries =
+              filter_buffer_by_range(state.buffer, nil, to_ts)
+              |> Enum.filter(fn e -> DateTime.compare(e.ts, last_ts) == :gt end)
+              |> Enum.reverse()
+
+            updated_milestones = insert_milestone_sorted(active_send.milestones, new_milestone)
+
+            active_send = %{active_send |
+              entries: remaining ++ extra_entries,
+              milestones: updated_milestones
+            }
+
+            %{state | active_send: active_send}
+          end
+      end
 
     {:noreply, state}
   end
@@ -271,6 +318,79 @@ defmodule RSMP.Channel do
       end
 
     {:noreply, state}
+  end
+
+  def handle_info(:send_next_history_entry, state) do
+    case state.active_send do
+      nil ->
+        {:noreply, state}
+
+      %{entries: [entry | rest], milestones: milestones, response_topic: response_topic} = active_send ->
+        # Complete milestones whose to_ts <= this entry's ts: all their entries have already been sent.
+        {done, remaining_milestones} =
+          Enum.split_with(milestones, fn ms ->
+            ms.to_ts != nil and DateTime.compare(entry.ts, ms.to_ts) != :lt
+          end)
+
+        Enum.each(done, fn ms ->
+          send_history_complete(state.id, response_topic, ms.correlation_data)
+        end)
+
+        # Use the first remaining milestone's correlation for this entry.
+        correlation =
+          case remaining_milestones do
+            [ms | _] -> ms.correlation_data
+            [] -> nil
+          end
+
+        if correlation do
+          next_entry_ts =
+            case rest do
+              [next | _] -> DateTime.to_iso8601(next.ts)
+              [] -> nil
+            end
+
+          # Set complete: true on the last entry for this correlation.
+          # If additional milestones also finish here (rest is empty), send bare complete for each.
+          {entry_complete, extra_completes} =
+            if rest == [] do
+              {true, Enum.drop(remaining_milestones, 1)}
+            else
+              {false, []}
+            end
+
+          payload = %{
+            "values" => entry.values,
+            "seq" => entry.seq,
+            "ts" => DateTime.to_iso8601(entry.ts),
+            "next_ts" => next_entry_ts,
+            "complete" => entry_complete
+          }
+
+          RSMP.Connection.publish_message(state.id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation})
+
+          Enum.each(extra_completes, fn ms ->
+            send_history_complete(state.id, response_topic, ms.correlation_data)
+          end)
+        end
+
+        state =
+          if rest == [] do
+            %{state | active_send: nil}
+          else
+            sleep_ms = history_interval_ms(state.history_rate)
+
+            if sleep_ms > 0 do
+              Process.send_after(self(), :send_next_history_entry, sleep_ms)
+            else
+              send(self(), :send_next_history_entry)
+            end
+
+            %{state | active_send: %{active_send | entries: rest, milestones: remaining_milestones}}
+          end
+
+        {:noreply, state}
+    end
   end
 
   # ---- Internal ----
@@ -704,33 +824,20 @@ defmodule RSMP.Channel do
   defp replay_interval_ms(nil), do: 0
   defp replay_interval_ms(rate) when rate > 0, do: div(1000, rate)
 
-  defp do_send_history(state, entries, response_topic, correlation_data) do
-    sorted = Enum.reverse(entries)
-    id = state.id
-    sleep_ms = history_interval_ms(state.history_rate)
-    last_idx = length(sorted) - 1
-    indexed = Enum.with_index(sorted)
+  defp send_history_complete(id, response_topic, correlation_data) do
+    payload = %{"complete" => true}
+    RSMP.Connection.publish_message(id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
+  end
 
-    spawn(fn ->
-      Enum.each(indexed, fn {entry, idx} ->
-        next_ts =
-          if idx < last_idx do
-            {next_entry, _} = Enum.at(indexed, idx + 1)
-            DateTime.to_iso8601(next_entry.ts)
-          else
-            nil
-          end
-
-        payload = %{
-          "values" => entry.values,
-          "seq" => entry.seq,
-          "ts" => DateTime.to_iso8601(entry.ts),
-          "next_ts" => next_ts,
-          "complete" => (idx == last_idx)
-        }
-        RSMP.Connection.publish_message(id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
-        if idx < last_idx, do: Process.sleep(sleep_ms)
-      end)
+  # Insert a milestone into a sorted list (earliest to_ts first, nil at the end).
+  defp insert_milestone_sorted(milestones, new_milestone) do
+    (milestones ++ [new_milestone])
+    |> Enum.sort(fn a, b ->
+      case {a.to_ts, b.to_ts} do
+        {nil, _} -> false
+        {_, nil} -> true
+        {a_ts, b_ts} -> DateTime.compare(a_ts, b_ts) != :gt
+      end
     end)
   end
 

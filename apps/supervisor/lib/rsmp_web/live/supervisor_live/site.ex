@@ -531,8 +531,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
       supervisor_id = socket.assigns.supervisor_id
       site_id = socket.assigns.site_id
       points = RSMP.Supervisor.data_points(supervisor_id, site_id, "traffic.volume/live")
-      bins = RSMP.Remote.Node.Site.aggregate_into_bins(points, 60)
-      has_gaps = RSMP.Supervisor.has_seq_gaps?(supervisor_id, site_id, "traffic.volume/live")
+      seq_gaps = RSMP.Supervisor.gap_time_ranges(supervisor_id, site_id, "traffic.volume/live")
+      next_ts_gaps = RSMP.Remote.Node.Site.next_ts_gap_ranges(points)
+      all_gaps = seq_gaps ++ next_ts_gaps
+      bins = RSMP.Remote.Node.Site.aggregate_into_bins_with_gaps(points, 60, all_gaps)
+      has_gaps = all_gaps != []
 
       socket
       |> push_event("volume_history", %{bins: bins})

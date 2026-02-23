@@ -23,6 +23,7 @@ defmodule RSMP.Service.TLC do
   defstruct(
     id: nil,
     cycle: 0,
+    cycle_length: 60,
     groups: %{},
     plans: %{
       1 => %{},
@@ -57,8 +58,8 @@ defmodule RSMP.Service.TLC do
 
   @impl GenServer
   def handle_info(:tick_groups, service) do
-    # Advance cycle counters every second
-    cycle = service.cycle + 1
+    # Advance cycle counter every second, wrapping at cycle_length
+    cycle = rem(service.cycle + 1, service.cycle_length)
 
     # Transition signal groups less frequently than cycle counter updates
     groups_changed = rem(cycle, @group_transition_every_ticks) == 0

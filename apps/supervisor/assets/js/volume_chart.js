@@ -5,7 +5,7 @@ function makeBars(size) {
   return uPlot.paths.bars({ size: [size, 100], gap: 0 })
 }
 
-function buildChart(el, width) {
+function buildChart(el, width, state) {
   const barPaths = makeBars(0.9)
 
   return new uPlot(
@@ -40,6 +40,41 @@ function buildChart(el, width) {
             u.ctx.restore()
           },
         ],
+        draw: [
+          (u) => {
+            const gaps = state.buf.gaps
+            if (!gaps || gaps.length === 0) return
+
+            const ctx = u.ctx
+            const plotLeft = u.bbox.left
+            const plotTop = u.bbox.top
+            const plotWidth = u.bbox.width
+            const plotHeight = u.bbox.height
+            const barWidth = plotWidth / MAX_POINTS
+
+            ctx.save()
+            ctx.fillStyle = "#d1d5db"
+
+            // Find contiguous gap runs and draw a single rect per run.
+            // Bars are centered at each x tick, so subtract half a barWidth to
+            // align the rect with the left edge of the first gap slot.
+            let i = 0
+            while (i < gaps.length) {
+              if (gaps[i]) {
+                const start = i
+                while (i < gaps.length && gaps[i]) i++
+                const offset = MAX_POINTS - gaps.length
+                const x = plotLeft + (start + offset - 0.5) * barWidth
+                const w = (i - start) * barWidth
+                ctx.fillRect(x, plotTop, w, plotHeight)
+              } else {
+                i++
+              }
+            }
+
+            ctx.restore()
+          },
+        ],
       },
       series: [
         {},
@@ -50,6 +85,7 @@ function buildChart(el, width) {
           stroke: "rgba(251,146,60,0.85)",
           width: 0,
           paths: barPaths,
+          points: { show: false },
         },
         {
           label: "Bicycles",
@@ -57,6 +93,7 @@ function buildChart(el, width) {
           stroke: "rgba(37,99,235,0.85)",
           width: 0,
           paths: barPaths,
+          points: { show: false },
         },
         {
           label: "Cars",
@@ -64,6 +101,7 @@ function buildChart(el, width) {
           stroke: "rgba(88,28,135,0.85)",
           width: 0,
           paths: barPaths,
+          points: { show: false },
         },
       ],
     },
@@ -77,7 +115,7 @@ const VolumeChart = {
     this.state = createState()
 
     const width = this.el.offsetWidth || 600
-    this.chart = buildChart(this.el, width)
+    this.chart = buildChart(this.el, width, this.state)
 
     // Server pushes a complete bin array every second — just render it.
     this.handleEvent("volume_history", ({ bins }) => {

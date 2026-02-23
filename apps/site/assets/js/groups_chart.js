@@ -16,9 +16,6 @@ function draw(canvas, state) {
   canvas.style.height = h + "px"
   ctx.scale(dpr, dpr)
 
-  ctx.fillStyle = "#f3f4f6"
-  ctx.fillRect(0, 0, w, h)
-
   const barLeft = LABEL_WIDTH
   const barWidth = w - LABEL_WIDTH
   const nowMs = Date.now()

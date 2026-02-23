@@ -261,6 +261,7 @@ defmodule RSMP.Connection do
 
     if connection.type == :site do
       trigger_channel_states(connection.id)
+      trigger_channel_full(connection.id)
       since = replay_since(connection)
       trigger_channel_replay(connection.id, since)
     end
@@ -282,6 +283,13 @@ defmodule RSMP.Connection do
     RSMP.Channels.list_channels(id)
     |> Enum.each(fn pid ->
       RSMP.Channel.publish_state(pid)
+    end)
+  end
+
+  defp trigger_channel_full(id) do
+    RSMP.Channels.list_channels(id)
+    |> Enum.each(fn pid ->
+      GenServer.cast(pid, :force_full)
     end)
   end
 

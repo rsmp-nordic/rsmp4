@@ -37,7 +37,8 @@ end}></span></h1>
                 phx-click="command"
                 phx-value-path="tlc.plan.set"
                 phx-value-plan={plan}
-                class={RSMP.ButtonClasses.selectable(@commands["tlc.plan.set"] == plan)}
+                disabled={!@connected || @site.presence != "online"}
+                class={RSMP.ButtonClasses.selectable(@commands["tlc.plan.set"] == plan) <> " disabled:opacity-50 disabled:cursor-not-allowed"}
               >
                 <%= plan %>
               </button>
@@ -47,7 +48,8 @@ end}></span></h1>
               phx-click="command"
               phx-value-path="tlc.plan.set"
               phx-value-plan={(List.last(@plans) || 0) + 1}
-              class="bg-red-600 hover:bg-red-800 text-white rounded-lg px-2"
+              disabled={!@connected || @site.presence != "online"}
+              class="bg-red-600 hover:bg-red-800 text-white rounded-lg px-2 disabled:opacity-50 disabled:cursor-not-allowed"
               title="Send invalid plan"
             >
               <%= (List.last(@plans) || 0) + 1 %>
@@ -79,8 +81,8 @@ end}></span></h1>
       </tr>
     </thead>
 
-    <%= for row <- status_rows(@site) do %>
-      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+    <%= for {row, index} <- Enum.with_index(status_rows(@site)) do %>
+      <tr class={"text-base " <> if rem(index, 2) == 0, do: "bg-stone-200", else: "bg-stone-100"}>
         <td class="px-1 py-1 align-top"><%= row.path %></td>
         <td class="px-1 py-1 align-top">
           <%= for {name, formatted_value} <- format_status_lines(row.value) do %>
@@ -92,7 +94,8 @@ end}></span></h1>
             <%= for channel <- row.channels do %>
               <button
                 type="button"
-                class={channel_button_class(channel, row.path, @channel_pulses)}
+                class={channel_button_class(channel, row.path, @channel_pulses) <> " disabled:opacity-50 disabled:cursor-not-allowed"}
+                disabled={!@connected || @site.presence != "online"}
                 phx-click="throttle"
                 phx-value-path={row.path}
                 phx-value-channel={channel.key}
@@ -106,14 +109,14 @@ end}></span></h1>
         </td>
       </tr>
       <%= if row.path == "tlc.groups" do %>
-        <tr class="even:bg-stone-100">
+        <tr class={if rem(index, 2) == 0, do: "bg-stone-200", else: "bg-stone-100"}>
           <td colspan="3" class="p-0">
             <div id="groups-chart" phx-hook="GroupsChart" phx-update="ignore" class="w-full rounded"></div>
           </td>
         </tr>
       <% end %>
       <%= if row.path == "traffic.volume" do %>
-        <tr class="even:bg-stone-100">
+        <tr class={if rem(index, 2) == 0, do: "bg-stone-200", else: "bg-stone-100"}>
           <td colspan="3" class="p-0">
             <div id="volume-chart" phx-hook="VolumeChart" phx-update="ignore" class="w-full rounded bg-stone-900"></div>
             <div class="flex gap-4 text-xs mt-1">
@@ -121,19 +124,7 @@ end}></span></h1>
               <span class="text-blue-600">&#9644; Bicycles</span>
               <span class="text-orange-400">&#9644; Busses</span>
             </div>
-            <div class="mt-2">
-              <button
-                type="button"
-                phx-click="fetch_missing"
-                disabled={!@has_volume_gaps}
-                class={"px-3 py-1 rounded text-sm " <>
-                  if(@has_volume_gaps,
-                    do: "bg-blue-600 text-white hover:bg-blue-700",
-                    else: "bg-stone-300 text-stone-500 cursor-not-allowed")}
-              >
-                Fetch
-              </button>
-            </div>
+
           </td>
         </tr>
       <% end %>

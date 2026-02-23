@@ -151,6 +151,37 @@ defmodule RSMP.Remote.Node.Site do
     end)
   end
 
+  # Detect gaps from next_ts annotations on data points.
+  # When a channel stops or site goes offline, next_ts is stamped on the last point.
+  # Returns gap ranges as {from_ts, to_ts} tuples:
+  # - Mid-sequence: {point_a.next_ts, point_b.ts} when there's a time gap between segments
+  # - Trailing: {last_point.next_ts, nil} when the last point has next_ts (channel currently stopped)
+  # Takes a sorted (oldest first) list of data points.
+  def next_ts_gap_ranges(sorted_points) do
+    pair_gaps =
+      sorted_points
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.flat_map(fn [a, b] ->
+        case a[:next_ts] do
+          %DateTime{} = next_ts ->
+            if DateTime.compare(b.ts, next_ts) == :gt do
+              [{next_ts, b.ts}]
+            else
+              []
+            end
+          _ -> []
+        end
+      end)
+
+    trailing =
+      case List.last(sorted_points) do
+        %{next_ts: %DateTime{} = next_ts} -> [{next_ts, nil}]
+        _ -> []
+      end
+
+    pair_gaps ++ trailing
+  end
+
   defp find_gaps([]), do: []
   defp find_gaps([_single]), do: []
 
@@ -189,6 +220,35 @@ defmodule RSMP.Remote.Node.Site do
     for i <- (max_bins - 1)..0//-1 do
       second = DateTime.add(now_truncated, -i, :second)
       Map.get(bin_map, second, zero)
+    end
+  end
+
+  # Like aggregate_into_bins, but marks each bin with gap: true when it falls
+  # inside a seq gap (data missing due to offline/disconnect). Uses gap_time_ranges
+  # to determine which seconds are gaps vs legitimate zero-traffic seconds.
+  def aggregate_into_bins_with_gaps(data_points, max_bins, gap_ranges, now \\ DateTime.utc_now()) do
+    bins = aggregate_into_bins(data_points, max_bins, now)
+    now_truncated = DateTime.truncate(now, :second)
+
+    bins
+    |> Enum.with_index()
+    |> Enum.map(fn {bin, idx} ->
+      second = DateTime.add(now_truncated, -(max_bins - 1 - idx), :second)
+      gap = in_gap?(second, gap_ranges)
+      Map.put(bin, :gap, gap)
+    end)
+  end
+
+  defp in_gap?(_second, []), do: false
+  defp in_gap?(second, [{from_ts, to_ts} | rest]) do
+    second_us = DateTime.to_unix(second, :microsecond)
+    from_us = if from_ts, do: DateTime.to_unix(from_ts, :microsecond), else: 0
+    to_us = if to_ts, do: DateTime.to_unix(to_ts, :microsecond), else: :infinity
+    # A bin is in a gap if its second falls strictly between the gap boundaries
+    if second_us > from_us and (to_us == :infinity or second_us < to_us) do
+      true
+    else
+      in_gap?(second, rest)
     end
   end
 
