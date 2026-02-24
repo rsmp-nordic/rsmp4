@@ -197,7 +197,7 @@ defmodule RSMP.Remote.Node.Site do
   # Each bin sums the values of all data points falling within that second.
   # Seconds with no data are filled with zeros.
   def aggregate_into_bins(data_points, max_bins, now \\ DateTime.utc_now()) do
-    zero = %{cars: 0, bicycles: 0, busses: 0}
+    zero = RSMP.Converter.Traffic.aggregation_zero()
     now_truncated = DateTime.truncate(now, :second)
 
     bin_map =

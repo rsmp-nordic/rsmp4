@@ -20,7 +20,7 @@ defmodule RSMP.Channel do
   require Logger
 
   # Max entries per MQTT message for replay/history batched responses
-  @replay_batch_size 4
+  @replay_batch_size 8
 
   defstruct [
     :id,              # node id
@@ -82,7 +82,8 @@ defmodule RSMP.Channel do
       replay_rate: nil,
       history_rate: nil,
       always_publish: false,
-      batch_interval: nil
+      batch_interval: nil,
+      gap_fetch: false
     ]
   end
 

@@ -1,8 +1,12 @@
 defmodule RSMP.Converter.Traffic do
   @behaviour RSMP.Converter
 
+  @impl RSMP.Converter
+  def aggregation_zero(), do: %{cars: 0, bicycles: 0, busses: 0}
+
   # convert from internal format to sxl format
 
+  @impl RSMP.Converter
   def to_rsmp_status("volume", data) when is_map(data) do
     data
     |> normalize_string_keys()
@@ -14,6 +18,7 @@ defmodule RSMP.Converter.Traffic do
 
   # convert from sxl format to internal format
 
+  @impl RSMP.Converter
   def from_rsmp_status("volume", data) when is_map(data) do
     data
     |> normalize_string_keys()
@@ -25,6 +30,7 @@ defmodule RSMP.Converter.Traffic do
 
   # setup default command values from statuses
 
+  @impl RSMP.Converter
   def command_default(_code, _statuses), do: %{}
 
   defp normalize_string_keys(data) do

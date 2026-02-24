@@ -32,7 +32,8 @@ defmodule RSMP.Node.TLC do
         default_on: false,
         qos: 0,
         replay_rate: 2,
-        history_rate: 2
+        history_rate: 2,
+        gap_fetch: true
       }},
       {"tlc", %Config{
         code: "plan",
@@ -74,7 +75,8 @@ defmodule RSMP.Node.TLC do
         qos: 0,
         replay_rate: 4,
         history_rate: 4,
-        always_publish: true
+        always_publish: true,
+        gap_fetch: true
       }},
       {"traffic", %Config{
         code: "volume",

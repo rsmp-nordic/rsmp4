@@ -45,7 +45,7 @@ defmodule RSMP.Service.Traffic do
 				Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status", changes: ["traffic.volume"]})
 
 				point = %{ts: ts, values: to_atom_keys(detection_volume)}
-				data_points = Enum.take(service.data_points ++ [point], -@max_data_points)
+				data_points = RSMP.DataHistory.push(service.data_points, point, @max_data_points)
 
 				timer = schedule_next_detection(mode, level)
 				detection_timers = Map.put(service.detection_timers, mode, timer)

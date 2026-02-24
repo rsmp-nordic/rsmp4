@@ -86,7 +86,7 @@ defmodule RSMP.Service.TLC do
     # Record groups state to history for the timeline chart
     ts = System.system_time(:millisecond)
     history_point = %{ts: ts, groups: groups}
-    groups_history = Enum.take(service.groups_history ++ [history_point], -@max_groups_history)
+    groups_history = RSMP.DataHistory.push(service.groups_history, history_point, @max_groups_history)
     service = %{service | groups_history: groups_history}
 
     if groups_changed do

@@ -6,6 +6,12 @@ defmodule RSMP.Supervisor do
   # Must match MAX_POINTS in volume_chart_state.mjs
   @graph_window_seconds 60
 
+  # Channels that support gap-fetch, derived at compile time from channel configs.
+  # Tuple format: {module, code, channel_name}
+  @gap_fetch_channels RSMP.Node.TLC.channel_configs()
+    |> Enum.filter(fn {_mod, config} -> config.gap_fetch end)
+    |> Enum.map(fn {mod, config} -> {mod, config.code, config.channel_name} end)
+
   defstruct(
     pid: nil,
     id: nil,
@@ -250,9 +256,9 @@ defmodule RSMP.Supervisor do
     supervisor =
       Enum.reduce(supervisor.sites, supervisor, fn {id, _site}, sup ->
         update_in(sup.sites[id], fn site ->
-          site
-          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("traffic.volume/live", now)
-          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("tlc.groups/live", now)
+          Enum.reduce(@gap_fetch_channels, site, fn {mod, code, channel_name}, acc ->
+            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{mod}.#{code}/#{channel_name}", now)
+          end)
         end)
       end)
 
@@ -362,9 +368,9 @@ defmodule RSMP.Supervisor do
     supervisor =
       Enum.reduce(supervisor.sites, supervisor, fn {id, _site}, sup ->
         update_in(sup.sites[id], fn site ->
-          site
-          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("traffic.volume/live", now)
-          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("tlc.groups/live", now)
+          Enum.reduce(@gap_fetch_channels, site, fn {mod, code, channel_name}, acc ->
+            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{mod}.#{code}/#{channel_name}", now)
+          end)
         end)
       end)
 
@@ -447,9 +453,9 @@ defmodule RSMP.Supervisor do
       if data in ["offline", "shutdown"] && previous_presence == "online" do
         now = DateTime.utc_now()
         update_in(supervisor.sites[id], fn site ->
-          site
-          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("traffic.volume/live", now)
-          |> RSMP.Remote.Node.Site.stamp_next_ts_on_last("tlc.groups/live", now)
+          Enum.reduce(@gap_fetch_channels, site, fn {mod, code, channel_name}, acc ->
+            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{mod}.#{code}/#{channel_name}", now)
+          end)
         end)
       else
         supervisor
@@ -462,9 +468,9 @@ defmodule RSMP.Supervisor do
           supervisor.last_disconnected_at ||
             DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
 
-        supervisor
-        |> fetch_channel_gaps(id, "traffic", "volume", "live", from_ts)
-        |> fetch_channel_gaps(id, "tlc", "groups", "live", from_ts)
+        Enum.reduce(@gap_fetch_channels, supervisor, fn {mod, code, channel_name}, acc ->
+          fetch_channel_gaps(acc, id, mod, code, channel_name, from_ts)
+        end)
       else
         supervisor
       end
@@ -651,10 +657,11 @@ defmodule RSMP.Supervisor do
           if state == "running" && previous_state in ["stopped", nil] do
             fallback_ts = DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
 
-            case channel_key do
-              "traffic.volume/live" -> fetch_channel_gaps(supervisor, id, "traffic", "volume", "live", fallback_ts)
-              "tlc.groups/live" -> fetch_channel_gaps(supervisor, id, "tlc", "groups", "live", fallback_ts)
-              _ -> supervisor
+            case Enum.find(@gap_fetch_channels, fn {mod, code, channel_name} ->
+              "#{mod}.#{code}/#{channel_name}" == channel_key
+            end) do
+              {mod, code, channel_name} -> fetch_channel_gaps(supervisor, id, mod, code, channel_name, fallback_ts)
+              nil -> supervisor
             end
           else
             supervisor
@@ -1008,9 +1015,9 @@ defmodule RSMP.Supervisor do
         DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
 
     Enum.reduce(supervisor.sites, supervisor, fn {id, _site}, sup ->
-      sup
-      |> fetch_channel_gaps(id, "traffic", "volume", "live", from_ts)
-      |> fetch_channel_gaps(id, "tlc", "groups", "live", from_ts)
+      Enum.reduce(@gap_fetch_channels, sup, fn {mod, code, channel_name}, acc ->
+        fetch_channel_gaps(acc, id, mod, code, channel_name, from_ts)
+      end)
     end)
   end
 
