@@ -31,8 +31,8 @@ defmodule RSMP.Node.TLC do
         min_interval: 100,
         default_on: false,
         qos: 0,
-        replay_rate: 4,
-        history_rate: 4
+        replay_rate: 2,
+        history_rate: 2
       }},
       {"tlc", %Config{
         code: "plan",

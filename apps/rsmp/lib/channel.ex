@@ -19,6 +19,9 @@ defmodule RSMP.Channel do
   use GenServer
   require Logger
 
+  # Max entries per MQTT message for replay/history batched responses
+  @replay_batch_size 4
+
   defstruct [
     :id,              # node id
     :module,          # e.g. "tlc"
@@ -37,6 +40,7 @@ defmodule RSMP.Channel do
     :replay_rate,     # messages/second for replay, nil = unlimited
     :history_rate,     # messages/second for history response, nil = unlimited
     :always_publish,  # boolean — always publish all values on every report (for counter data)
+    :batch_interval,  # ms | nil — when set, accumulate events and publish as entries array
     buffer: [],           # list of %{ts, values, seq}, newest first
     buffer_size: 300,     # max buffer entries
     running: false,
@@ -49,7 +53,11 @@ defmodule RSMP.Channel do
     delta_timer: nil,
     min_interval_timer: nil,
     aggregation_acc: nil,  # accumulator for aggregation
-    active_send: nil       # current in-progress fetch send: %{entries, response_topic, milestones}
+    active_send: nil,      # current in-progress fetch send: %{entries, response_topic, milestones}
+    active_replay: nil,    # current in-progress replay: %{entries, topic, beginning}
+    last_replayed_seq: nil, # last successfully replayed seq for interrupted replay resumption
+    current_batch: [],     # accumulator for batched events
+    batch_timer: nil       # timer ref for batch publishing
   ]
 
   # ---- Config struct for defining channels without runtime state ----
@@ -73,7 +81,8 @@ defmodule RSMP.Channel do
       prune_timeout: nil,
       replay_rate: nil,
       history_rate: nil,
-      always_publish: false
+      always_publish: false,
+      batch_interval: nil
     ]
   end
 
@@ -98,6 +107,7 @@ defmodule RSMP.Channel do
       replay_rate: config.replay_rate,
       history_rate: config.history_rate,
       always_publish: config.always_publish,
+      batch_interval: config.batch_interval,
       running: false
     }
 
@@ -221,12 +231,14 @@ defmodule RSMP.Channel do
   end
 
   def handle_cast({:replay, since}, state) do
-    do_replay(state, since)
+    state = start_replay(state, since)
     {:noreply, state}
   end
 
   def handle_cast({:handle_fetch, from_ts, to_ts, response_topic, correlation_data}, state) do
-    new_milestone = %{to_ts: to_ts, correlation_data: correlation_data}
+    beginning = buffer_beginning_for_range?(state.buffer, from_ts)
+    history_end = buffer_end_for_range?(state.buffer, to_ts)
+    new_milestone = %{to_ts: to_ts, correlation_data: correlation_data, beginning: beginning, end: history_end, sent_first: false}
 
     state =
       case state.active_send do
@@ -234,7 +246,7 @@ defmodule RSMP.Channel do
           entries = filter_buffer_by_range(state.buffer, from_ts, to_ts) |> Enum.reverse()
 
           if entries == [] do
-            send_history_complete(state.id, response_topic, correlation_data)
+            send_history_complete(state.id, response_topic, correlation_data, beginning: beginning, end: history_end)
             state
           else
             active_send = %{
@@ -252,7 +264,7 @@ defmodule RSMP.Channel do
           already_done = to_ts != nil and DateTime.compare(first.ts, to_ts) != :lt
 
           if already_done do
-            send_history_complete(state.id, response_topic, correlation_data)
+            send_history_complete(state.id, response_topic, correlation_data, beginning: beginning, end: history_end)
             state
           else
             # Extend range: append buffer entries beyond the current queue's last entry.
@@ -333,14 +345,15 @@ defmodule RSMP.Channel do
           end)
 
         Enum.each(done, fn ms ->
-          send_history_complete(state.id, response_topic, ms.correlation_data)
+          send_history_complete(state.id, response_topic, ms.correlation_data, beginning: ms[:beginning], end: ms[:end])
         end)
 
         # Use the first remaining milestone's correlation for this entry.
+        first_milestone = List.first(remaining_milestones)
         correlation =
-          case remaining_milestones do
-            [ms | _] -> ms.correlation_data
-            [] -> nil
+          case first_milestone do
+            %{correlation_data: c} -> c
+            nil -> nil
           end
 
         if correlation do
@@ -359,6 +372,8 @@ defmodule RSMP.Channel do
               {false, []}
             end
 
+          is_first_for_correlation = not first_milestone.sent_first
+
           payload = %{
             "values" => entry.values,
             "seq" => entry.seq,
@@ -367,12 +382,35 @@ defmodule RSMP.Channel do
             "complete" => entry_complete
           }
 
+          # beginning: true on the first message if the first entry is the oldest in the buffer
+          payload =
+            if is_first_for_correlation and first_milestone[:beginning] do
+              Map.put(payload, "beginning", true)
+            else
+              payload
+            end
+
+          # end: true on the final message if the last entry is the newest in the buffer
+          payload =
+            if entry_complete and first_milestone[:end] do
+              Map.put(payload, "end", true)
+            else
+              payload
+            end
+
           RSMP.Connection.publish_message(state.id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation})
 
           Enum.each(extra_completes, fn ms ->
-            send_history_complete(state.id, response_topic, ms.correlation_data)
+            send_history_complete(state.id, response_topic, ms.correlation_data, beginning: ms[:beginning], end: ms[:end])
           end)
         end
+
+        # Mark first entry as sent for the active milestone
+        updated_milestones =
+          case remaining_milestones do
+            [ms | tail] -> [%{ms | sent_first: true} | tail]
+            [] -> []
+          end
 
         state =
           if rest == [] do
@@ -386,11 +424,94 @@ defmodule RSMP.Channel do
               send(self(), :send_next_history_entry)
             end
 
-            %{state | active_send: %{active_send | entries: rest, milestones: remaining_milestones}}
+            %{state | active_send: %{active_send | entries: rest, milestones: updated_milestones}}
           end
 
         {:noreply, state}
     end
+  end
+
+  def handle_info(:send_next_replay_entry, state) do
+    case state.active_replay do
+      nil ->
+        {:noreply, state}
+
+      %{entries: entries, topic: topic, beginning: beginning, sent_first: sent_first} ->
+        # Send entries in a chunk (up to @replay_batch_size at a time)
+        {chunk, rest} = Enum.split(entries, replay_batch_size())
+
+        is_last = rest == []
+        is_first = not sent_first
+
+        # Build batched payload with entries array
+        formatted_entries =
+          chunk
+          |> Enum.with_index()
+          |> Enum.map(fn {entry, idx} ->
+            next_ts =
+              cond do
+                idx < length(chunk) - 1 ->
+                  DateTime.to_iso8601(Enum.at(chunk, idx + 1).ts)
+                not is_last ->
+                  DateTime.to_iso8601(hd(rest).ts)
+                true ->
+                  nil
+              end
+
+            %{
+              "values" => entry.values,
+              "seq" => entry.seq,
+              "ts" => DateTime.to_iso8601(entry.ts),
+              "next_ts" => next_ts
+            }
+          end)
+
+        payload =
+          if length(chunk) == 1 do
+            # Single entry: use flat format for backward compatibility
+            entry = hd(formatted_entries)
+            Map.put(entry, "complete", is_last)
+          else
+            %{"entries" => formatted_entries, "complete" => is_last}
+          end
+
+        # beginning: true on the first message if the first entry is the oldest in the buffer
+        payload =
+          if is_first and beginning do
+            Map.put(payload, "beginning", true)
+          else
+            payload
+          end
+
+        RSMP.Connection.publish_message(state.id, topic, payload, %{retain: false, qos: 1}, %{})
+
+        last_in_chunk = List.last(chunk)
+        state = %{state | last_replayed_seq: last_in_chunk.seq}
+
+        state =
+          if is_last do
+            %{state | active_replay: nil}
+          else
+            # Scale delay by chunk size so replay_rate still limits entries/second
+            sleep_ms = replay_interval_ms(state.replay_rate) * length(chunk)
+
+            if sleep_ms > 0 do
+              Process.send_after(self(), :send_next_replay_entry, sleep_ms)
+            else
+              send(self(), :send_next_replay_entry)
+            end
+
+            %{state | active_replay: %{entries: rest, topic: topic, beginning: beginning, sent_first: true}}
+          end
+
+        {:noreply, state}
+    end
+  end
+
+  def handle_info(:batch_publish, state) do
+    state = %{state | batch_timer: nil}
+    state = flush_batch(state)
+    {:noreply, state}
   end
 
   # ---- Internal ----
@@ -664,24 +785,7 @@ defmodule RSMP.Channel do
 
     seq = state.seq + 1
     ts = DateTime.utc_now()
-
-    payload = %{
-      "values" => data,
-      "seq" => seq,
-      "ts" => DateTime.to_iso8601(ts)
-    }
-
-    topic = make_topic(state)
-
-    RSMP.Connection.publish_message(
-      state.id,
-      topic,
-      payload,
-      %{retain: true, qos: state.qos},
-      %{}
-    )
-
-    broadcast_channel_data(state, seq, "full")
+    entry = %{ts: ts, values: data, seq: seq}
 
     # For counter/event channels (always_publish), the full is a state snapshot,
     # not a discrete event. Don't add it to the buffer so it won't appear in
@@ -690,42 +794,49 @@ defmodule RSMP.Channel do
       if state.always_publish do
         state.buffer
       else
-        [%{ts: ts, values: data, seq: seq} | state.buffer] |> Enum.take(state.buffer_size)
+        [entry | state.buffer] |> Enum.take(state.buffer_size)
       end
 
-    %{state | seq: seq, buffer: buffer}
+    state = %{state | seq: seq, buffer: buffer}
+
+    if state.batch_interval do
+      # Accumulate into batch
+      state = %{state | current_batch: state.current_batch ++ [Map.put(entry, :kind, :full)]}
+      schedule_batch_timer(state)
+    else
+      payload = %{
+        "values" => data,
+        "seq" => seq,
+        "ts" => DateTime.to_iso8601(ts)
+      }
+
+      topic = make_topic(state)
+
+      RSMP.Connection.publish_message(
+        state.id,
+        topic,
+        payload,
+        %{retain: true, qos: state.qos},
+        %{}
+      )
+
+      broadcast_channel_data(state, seq, "full")
+      state
+    end
   end
 
   defp publish_delta(state) do
     data = state.pending_changes
     seq = state.seq + 1
     ts = state.pending_ts || DateTime.utc_now()
-
-    payload = %{
-      "values" => data,
-      "seq" => seq,
-      "ts" => DateTime.to_iso8601(ts)
-    }
-
-    topic = make_topic(state)
-
-    RSMP.Connection.publish_message(
-      state.id,
-      topic,
-      payload,
-      %{retain: false, qos: state.qos},
-      %{}
-    )
-
-    broadcast_channel_data(state, seq, "delta")
+    entry = %{ts: ts, values: data, seq: seq}
 
     now = System.monotonic_time(:millisecond)
 
     # Buffer the delta values (not the accumulated state) so replay sends per-event counts
-    entry = %{ts: ts, values: data, seq: seq}
     buffer = [entry | state.buffer] |> Enum.take(state.buffer_size)
 
-    %{state |
+    state = %{state |
       seq: seq,
       pending_changes: %{},
       pending_ts: nil,
@@ -733,6 +844,31 @@ defmodule RSMP.Channel do
       min_interval_timer: nil,
       buffer: buffer
     }
+
+    if state.batch_interval do
+      # Accumulate into batch
+      state = %{state | current_batch: state.current_batch ++ [Map.put(entry, :kind, :delta)]}
+      schedule_batch_timer(state)
+    else
+      payload = %{
+        "values" => data,
+        "seq" => seq,
+        "ts" => DateTime.to_iso8601(ts)
+      }
+
+      topic = make_topic(state)
+
+      RSMP.Connection.publish_message(
+        state.id,
+        topic,
+        payload,
+        %{retain: false, qos: state.qos},
+        %{}
+      )
+
+      broadcast_channel_data(state, seq, "delta")
+      state
+    end
   end
 
   defp publish_clear(state) do
@@ -782,50 +918,47 @@ defmodule RSMP.Channel do
     RSMP.Topic.new(state.id, "replay", state.module, state.code, state.channel_name, state.component)
   end
 
-  defp do_replay(%{buffer: []} = _state, _since), do: :ok
+  defp start_replay(%{buffer: []} = state, _since), do: state
 
-  defp do_replay(state, since) do
+  defp start_replay(state, since) do
     topic = make_replay_topic(state)
+
     entries =
       state.buffer
       |> Enum.reverse()
       |> Enum.filter(fn entry -> DateTime.compare(entry.ts, since) == :gt end)
 
-    if entries != [] do
-      id = state.id
-      sleep_ms = replay_interval_ms(state.replay_rate)
-      last_idx = length(entries) - 1
-      indexed = Enum.with_index(entries)
+    # Filter out already-replayed entries to resume interrupted replays
+    entries =
+      if state.last_replayed_seq do
+        Enum.filter(entries, fn entry -> entry.seq > state.last_replayed_seq end)
+      else
+        entries
+      end
 
-      spawn(fn ->
-        Enum.each(indexed, fn {entry, idx} ->
-          next_ts =
-            if idx < last_idx do
-              {next_entry, _} = Enum.at(indexed, idx + 1)
-              DateTime.to_iso8601(next_entry.ts)
-            else
-              nil
-            end
+    if entries == [] do
+      state
+    else
+      # beginning: true if the oldest buffered entry is newer than `since`,
+      # i.e. the first entry sent is the oldest in the buffer — there is no earlier data.
+      oldest_buffered = List.last(state.buffer)
+      beginning = DateTime.compare(oldest_buffered.ts, since) == :gt
 
-          payload = %{
-            "values" => entry.values,
-            "seq" => entry.seq,
-            "ts" => DateTime.to_iso8601(entry.ts),
-            "next_ts" => next_ts,
-            "complete" => (idx == last_idx)
-          }
-          RSMP.Connection.publish_message(id, topic, payload, %{retain: false, qos: 1}, %{})
-          if idx < last_idx, do: Process.sleep(sleep_ms)
-        end)
-      end)
+      active_replay = %{entries: entries, topic: topic, beginning: beginning, sent_first: false}
+      send(self(), :send_next_replay_entry)
+      %{state | active_replay: active_replay}
     end
   end
 
   defp replay_interval_ms(nil), do: 0
   defp replay_interval_ms(rate) when rate > 0, do: div(1000, rate)
 
-  defp send_history_complete(id, response_topic, correlation_data) do
+  defp replay_batch_size, do: @replay_batch_size
+
+  defp send_history_complete(id, response_topic, correlation_data, opts) do
     payload = %{"complete" => true}
+    payload = if opts[:beginning], do: Map.put(payload, "beginning", true), else: payload
+    payload = if opts[:end], do: Map.put(payload, "end", true), else: payload
     RSMP.Connection.publish_message(id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
   end
 
@@ -843,6 +976,22 @@ defmodule RSMP.Channel do
 
   defp history_interval_ms(nil), do: 0
   defp history_interval_ms(rate) when rate > 0, do: div(1000, rate)
+
+  # beginning: true if the first entry sent is the oldest in the buffer (nothing earlier exists).
+  defp buffer_beginning_for_range?([], _from_ts), do: false
+  defp buffer_beginning_for_range?(_buffer, nil), do: false
+  defp buffer_beginning_for_range?(buffer, from_ts) do
+    oldest = List.last(buffer)
+    DateTime.compare(oldest.ts, from_ts) == :gt
+  end
+
+  # end: true if the last entry sent is the newest in the buffer (nothing later exists).
+  defp buffer_end_for_range?([], _to_ts), do: false
+  defp buffer_end_for_range?(_buffer, nil), do: false
+  defp buffer_end_for_range?(buffer, to_ts) do
+    newest = hd(buffer)
+    DateTime.compare(newest.ts, to_ts) == :lt
+  end
 
   defp filter_buffer_by_range(buffer, nil, nil), do: buffer
 
@@ -889,7 +1038,52 @@ defmodule RSMP.Channel do
     if state.full_timer, do: Process.cancel_timer(state.full_timer)
     if state.delta_timer, do: Process.cancel_timer(state.delta_timer)
     if state.min_interval_timer, do: Process.cancel_timer(state.min_interval_timer)
-    %{state | full_timer: nil, delta_timer: nil, min_interval_timer: nil}
+    if state.batch_timer, do: Process.cancel_timer(state.batch_timer)
+    state = flush_batch(state)
+    %{state | full_timer: nil, delta_timer: nil, min_interval_timer: nil, batch_timer: nil}
+  end
+
+  defp schedule_batch_timer(%{batch_timer: nil, batch_interval: interval} = state)
+       when is_integer(interval) do
+    timer = Process.send_after(self(), :batch_publish, interval)
+    %{state | batch_timer: timer}
+  end
+
+  defp schedule_batch_timer(state), do: state
+
+  defp flush_batch(%{current_batch: []} = state), do: state
+
+  defp flush_batch(state) do
+    entries =
+      Enum.map(state.current_batch, fn entry ->
+        %{
+          "values" => entry.values,
+          "seq" => entry.seq,
+          "ts" => DateTime.to_iso8601(entry.ts)
+        }
+      end)
+
+    payload = %{"entries" => entries}
+    topic = make_topic(state)
+
+    # Retain only if the final entry is a complete data set (full update)
+    last_entry = List.last(state.current_batch)
+    retain = last_entry[:kind] == :full
+
+    RSMP.Connection.publish_message(
+      state.id,
+      topic,
+      payload,
+      %{retain: retain, qos: state.qos},
+      %{}
+    )
+
+    Enum.each(state.current_batch, fn entry ->
+      kind = if entry[:kind] == :full, do: "full", else: "delta"
+      broadcast_channel_data(state, entry.seq, kind)
+    end)
+
+    %{state | current_batch: []}
   end
 
   defp channel_label(state) do

@@ -26,25 +26,27 @@ defmodule RSMP.Remote.Node.Site do
   end
 
   # Store a data point for a given channel key. Deduplicates by seq when non-nil.
-  # Trims to @max_data_points oldest-first by ts.
+  # Trims to @max_data_points using insertion-order queue for O(1) eviction.
   # Optionally stores next_ts to indicate when the next event occurs.
   def store_data_point(site, channel_key, seq, ts, values, next_ts \\ nil) do
-    existing = Map.get(site.data_points, channel_key, %{})
-    # Use seq as map key when available; fall back to a monotonic integer
+    %{map: map, order: order} = get_channel_data(site, channel_key)
     key = if seq != nil, do: seq, else: System.unique_integer([:monotonic])
     point = %{ts: ts, values: values, next_ts: next_ts}
 
-    updated =
-      if map_size(existing) >= @max_data_points do
-        # Evict the entry with the oldest ts before inserting the new one
-        oldest_key =
-          Enum.min_by(existing, fn {_k, v} -> DateTime.to_unix(v.ts, :microsecond) end)
-          |> elem(0)
-        existing |> Map.delete(oldest_key) |> Map.put(key, point)
+    already_exists = Map.has_key?(map, key)
+
+    # Evict oldest if at capacity and this is a new key
+    {map, order} =
+      if not already_exists and map_size(map) >= @max_data_points do
+        evict_oldest(map, order)
       else
-        Map.put(existing, key, point)
+        {map, order}
       end
 
+    map = Map.put(map, key, point)
+    order = if already_exists, do: order, else: :queue.in(key, order)
+
+    updated = %{map: map, order: order}
     %{site | data_points: Map.put(site.data_points, channel_key, updated)}
   end
 
@@ -52,7 +54,7 @@ defmodule RSMP.Remote.Node.Site do
   # Called when a channel stops or site goes offline, to mark the
   # end of the last known state.
   def stamp_next_ts_on_last(site, channel_key, next_ts) do
-    points_map = Map.get(site.data_points, channel_key, %{})
+    points_map = get_channel_map(site, channel_key)
 
     if map_size(points_map) == 0 do
       site
@@ -65,8 +67,8 @@ defmodule RSMP.Remote.Node.Site do
         site
       else
         updated_point = Map.put(latest_point, :next_ts, next_ts)
-        updated = Map.put(points_map, latest_key, updated_point)
-        %{site | data_points: Map.put(site.data_points, channel_key, updated)}
+        updated_map = Map.put(points_map, latest_key, updated_point)
+        update_channel_map(site, channel_key, updated_map)
       end
     end
   end
@@ -76,7 +78,7 @@ defmodule RSMP.Remote.Node.Site do
   # since the replay fills the gap. Only clears the point whose ts is
   # earlier than `before_ts`, so replay-provided next_ts values are preserved.
   def clear_next_ts_before(site, channel_key, before_ts) do
-    points_map = Map.get(site.data_points, channel_key, %{})
+    points_map = get_channel_map(site, channel_key)
     before_us = DateTime.to_unix(before_ts, :microsecond)
 
     earlier =
@@ -90,8 +92,8 @@ defmodule RSMP.Remote.Node.Site do
 
       if latest_point[:next_ts] do
         updated_point = Map.delete(latest_point, :next_ts)
-        updated = Map.put(points_map, latest_key, updated_point)
-        %{site | data_points: Map.put(site.data_points, channel_key, updated)}
+        updated_map = Map.put(points_map, latest_key, updated_point)
+        update_channel_map(site, channel_key, updated_map)
       else
         site
       end
@@ -100,16 +102,14 @@ defmodule RSMP.Remote.Node.Site do
 
   # Return data points for a channel key as a list sorted by ts (oldest first).
   def get_data_points(site, channel_key) do
-    site.data_points
-    |> Map.get(channel_key, %{})
+    get_channel_map(site, channel_key)
     |> Map.values()
     |> Enum.sort_by(fn %{ts: ts} -> DateTime.to_unix(ts, :microsecond) end)
   end
 
   # Return data points with their keys as {key, point} tuples sorted by ts.
   def get_data_points_with_keys(site, channel_key) do
-    site.data_points
-    |> Map.get(channel_key, %{})
+    get_channel_map(site, channel_key)
     |> Enum.sort_by(fn {_k, v} -> DateTime.to_unix(v.ts, :microsecond) end)
   end
 
@@ -117,8 +117,7 @@ defmodule RSMP.Remote.Node.Site do
   # Returns a list of {from_seq, to_seq} ranges representing missing seq numbers.
   def seq_gaps(site, channel_key) do
     seqs =
-      site.data_points
-      |> Map.get(channel_key, %{})
+      get_channel_map(site, channel_key)
       |> Map.keys()
       |> Enum.filter(&is_integer/1)
       |> Enum.sort()
@@ -135,7 +134,7 @@ defmodule RSMP.Remote.Node.Site do
   # Returns a list of {from_ts, to_ts} where from_ts is the ts of the seq before
   # the gap and to_ts is the ts of the seq after the gap.
   def gap_time_ranges(site, channel_key) do
-    points = Map.get(site.data_points, channel_key, %{})
+    points = get_channel_map(site, channel_key)
     gaps = seq_gaps(site, channel_key)
 
     Enum.flat_map(gaps, fn {gap_start, gap_end} ->
@@ -266,5 +265,40 @@ defmodule RSMP.Remote.Node.Site do
 
   def module_mapping(module_list) do
     for module <- module_list, into: %{}, do: {module.name(), module}
+  end
+
+  # ---- Private helpers for channel data structure ----
+
+  # Channel data is stored as %{map: %{key => point}, order: :queue.queue()}
+  # The queue tracks insertion order for O(1) eviction.
+  defp get_channel_data(site, channel_key) do
+    case Map.get(site.data_points, channel_key) do
+      %{map: _, order: _} = data -> data
+      nil -> %{map: %{}, order: :queue.new()}
+    end
+  end
+
+  defp get_channel_map(site, channel_key) do
+    case Map.get(site.data_points, channel_key) do
+      %{map: map} -> map
+      nil -> %{}
+    end
+  end
+
+  defp update_channel_map(site, channel_key, new_map) do
+    data = get_channel_data(site, channel_key)
+    %{site | data_points: Map.put(site.data_points, channel_key, %{data | map: new_map})}
+  end
+
+  defp evict_oldest(map, order) do
+    case :queue.out(order) do
+      {:empty, _} -> {map, order}
+      {{:value, key}, new_order} ->
+        if Map.has_key?(map, key) do
+          {Map.delete(map, key), new_order}
+        else
+          evict_oldest(map, new_order)
+        end
+    end
   end
 end

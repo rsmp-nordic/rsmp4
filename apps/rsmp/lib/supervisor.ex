@@ -389,7 +389,22 @@ defmodule RSMP.Supervisor do
             supervisor
           else
             retain = publish[:retain] == true or publish[:retain] == 1
-            receive_status(supervisor, topic, data, retain)
+
+            if is_map(data) and Map.has_key?(data, "entries") do
+              # Batched status message: process each entry individually.
+              # Retain applies only to the final entry (per spec).
+              entries = data["entries"] || []
+              last_idx = length(entries) - 1
+
+              entries
+              |> Enum.with_index()
+              |> Enum.reduce(supervisor, fn {entry, idx}, acc ->
+                entry_retain = retain and idx == last_idx
+                receive_status(acc, topic, entry, entry_retain)
+              end)
+            else
+              receive_status(supervisor, topic, data, retain)
+            end
           end
 
         "result" ->
@@ -655,6 +670,42 @@ defmodule RSMP.Supervisor do
   end
 
   defp receive_replay(supervisor, topic, data) when is_map(data) do
+    # Handle batched replay messages with entries array
+    if Map.has_key?(data, "entries") do
+      entries = data["entries"] || []
+      complete = data["complete"]
+      truncated = data["truncated"]
+
+      supervisor =
+        Enum.reduce(entries, supervisor, fn entry, acc ->
+          entry_data = Map.merge(entry, %{"complete" => false})
+          receive_replay_entry(acc, topic, entry_data)
+        end)
+
+      # Broadcast complete/truncated status from the wrapper
+      if complete do
+        site_id = topic.id
+        complete_pub = %{
+          topic: "data_point",
+          site: site_id,
+          path: to_string(topic.path),
+          channel: topic.channel_name,
+          source: :replay,
+          complete: true,
+          truncated: truncated
+        }
+        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", complete_pub)
+      end
+
+      supervisor
+    else
+      receive_replay_entry(supervisor, topic, data)
+    end
+  end
+
+  defp receive_replay(supervisor, _topic, _data), do: supervisor
+
+  defp receive_replay_entry(supervisor, topic, data) when is_map(data) do
     site_id = topic.id
     path = topic.path
 
@@ -708,55 +759,26 @@ defmodule RSMP.Supervisor do
     end
   end
 
-  defp receive_replay(supervisor, _topic, _data), do: supervisor
+  defp receive_replay_entry(supervisor, _topic, _data), do: supervisor
 
   defp receive_history(supervisor, topic, data, properties) when is_map(data) do
     correlation_data = properties[:"Correlation-Data"]
     fetch_info = Map.get(supervisor.pending_fetches, correlation_data)
 
     supervisor =
-      if fetch_info && data["values"] do
-        site_id = fetch_info.site_id
-        path = topic.path
-        {supervisor, site} = get_site(supervisor, site_id)
-        ts = parse_iso8601(data["ts"]) || DateTime.utc_now()
-        seq = data["seq"]
-        values = from_rsmp_status(site, path, data["values"])
-
-        Logger.info("RSMP: #{supervisor.id}: Received history #{path}/#{topic.channel_name} seq=#{seq} values=#{inspect(values)}")
-
-        point_pub = %{
-          topic: "data_point",
-          site: site_id,
-          path: to_string(path),
-          channel: topic.channel_name,
-          values: values,
-          ts: ts,
-          seq: seq,
-          source: :history,
-          complete: data["complete"]
-        }
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", point_pub)
-
-        # Persist data point so the LiveView can build history on mount/reconnect
-        channel_key = "#{path}/#{topic.channel_name}"
-        next_ts = parse_iso8601(data["next_ts"])
-        supervisor =
-          update_in(supervisor.sites[site_id], fn site ->
-            site
-            |> RSMP.Remote.Node.Site.clear_next_ts_before(channel_key, ts)
-            |> RSMP.Remote.Node.Site.store_data_point(channel_key, seq, ts, values, next_ts)
-          end)
-
-        # If the channel is currently stopped, re-stamp next_ts on the last data point
-        # so the chart shows grey instead of extending the last color to now
-        if get_in(supervisor.sites[site_id].channels, [channel_key]) == "stopped" do
-          stopped_at = get_in(supervisor.sites[site_id].channel_stopped_at, [channel_key]) || DateTime.utc_now()
-          update_in(supervisor.sites[site_id], fn site ->
-            RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, channel_key, stopped_at)
+      if fetch_info do
+        # Handle batched history messages with entries array
+        if Map.has_key?(data, "entries") do
+          entries = data["entries"] || []
+          Enum.reduce(entries, supervisor, fn entry, acc ->
+            receive_history_entry(acc, topic, entry, fetch_info)
           end)
         else
-          supervisor
+          if data["values"] do
+            receive_history_entry(supervisor, topic, data, fetch_info)
+          else
+            supervisor
+          end
         end
       else
         supervisor
@@ -772,6 +794,51 @@ defmodule RSMP.Supervisor do
   end
 
   defp receive_history(supervisor, _topic, _data, _properties), do: supervisor
+
+  defp receive_history_entry(supervisor, topic, entry, fetch_info) do
+    site_id = fetch_info.site_id
+    path = topic.path
+    {supervisor, site} = get_site(supervisor, site_id)
+    ts = parse_iso8601(entry["ts"]) || DateTime.utc_now()
+    seq = entry["seq"]
+    values = from_rsmp_status(site, path, entry["values"])
+
+    Logger.info("RSMP: #{supervisor.id}: Received history #{path}/#{topic.channel_name} seq=#{seq} values=#{inspect(values)}")
+
+    point_pub = %{
+      topic: "data_point",
+      site: site_id,
+      path: to_string(path),
+      channel: topic.channel_name,
+      values: values,
+      ts: ts,
+      seq: seq,
+      source: :history,
+      complete: false
+    }
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", point_pub)
+
+    # Persist data point so the LiveView can build history on mount/reconnect
+    channel_key = "#{path}/#{topic.channel_name}"
+    next_ts = parse_iso8601(entry["next_ts"])
+    supervisor =
+      update_in(supervisor.sites[site_id], fn site ->
+        site
+        |> RSMP.Remote.Node.Site.clear_next_ts_before(channel_key, ts)
+        |> RSMP.Remote.Node.Site.store_data_point(channel_key, seq, ts, values, next_ts)
+      end)
+
+    # If the channel is currently stopped, re-stamp next_ts on the last data point
+    # so the chart shows grey instead of extending the last color to now
+    if get_in(supervisor.sites[site_id].channels, [channel_key]) == "stopped" do
+      stopped_at = get_in(supervisor.sites[site_id].channel_stopped_at, [channel_key]) || DateTime.utc_now()
+      update_in(supervisor.sites[site_id], fn site ->
+        RSMP.Remote.Node.Site.stamp_next_ts_on_last(site, channel_key, stopped_at)
+      end)
+    else
+      supervisor
+    end
+  end
 
   # catch-all in case old retained messages are received from the broker
   defp receive_unknown(supervisor, topic, publish) do
@@ -964,10 +1031,7 @@ defmodule RSMP.Supervisor do
           seq_ranges = RSMP.Remote.Node.Site.gap_time_ranges(site, channel_key)
 
           sorted_points =
-            site.data_points
-            |> Map.get(channel_key, %{})
-            |> Map.values()
-            |> Enum.sort_by(& &1.ts, DateTime)
+            RSMP.Remote.Node.Site.get_data_points(site, channel_key)
 
           next_ts_ranges = RSMP.Remote.Node.Site.next_ts_gap_ranges(sorted_points)
 
