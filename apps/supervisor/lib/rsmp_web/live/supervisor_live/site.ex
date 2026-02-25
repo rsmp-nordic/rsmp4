@@ -432,6 +432,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
+  def handle_info(%{topic: "replay"}, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(%{topic: "channel"}, socket) do
     {:noreply, socket |> assign_site()}
   end

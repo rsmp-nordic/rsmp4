@@ -155,9 +155,11 @@ defmodule RSMP.SupervisorTest do
 
     payload =
       RSMP.Utility.to_payload(%{
-        "values" => %{"cars" => 3, "bicycles" => 1},
-        "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
-        "seq" => 1
+        "entries" => [%{
+          "values" => %{"cars" => 3, "bicycles" => 1},
+          "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
+          "seq" => 1
+        }]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/replay/traffic.volume/live", payload: payload, properties: %{}}})
@@ -171,9 +173,11 @@ defmodule RSMP.SupervisorTest do
 
     payload =
       RSMP.Utility.to_payload(%{
-        "values" => %{"cars" => 7, "bicycles" => 2, "busses" => 0},
-        "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
-        "seq" => 5
+        "entries" => [%{
+          "values" => %{"cars" => 7, "bicycles" => 2, "busses" => 0},
+          "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
+          "seq" => 5
+        }]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/replay/traffic.volume/live", payload: payload, properties: %{}}})
@@ -190,9 +194,11 @@ defmodule RSMP.SupervisorTest do
 
     payload =
       RSMP.Utility.to_payload(%{
-        "values" => %{"cars" => 1},
-        "ts" => ts |> DateTime.to_iso8601(),
-        "seq" => 42
+        "entries" => [%{
+          "values" => %{"cars" => 1},
+          "ts" => ts |> DateTime.to_iso8601(),
+          "seq" => 42
+        }]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/replay/traffic.volume/live", payload: payload, properties: %{}}})
@@ -207,9 +213,11 @@ defmodule RSMP.SupervisorTest do
     for seq <- 1..5 do
       payload =
         RSMP.Utility.to_payload(%{
-          "values" => %{"cars" => seq},
-          "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
-          "seq" => seq
+          "entries" => [%{
+            "values" => %{"cars" => seq},
+            "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
+            "seq" => seq
+          }]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/replay/traffic.volume/live", payload: payload, properties: %{}}})
@@ -324,9 +332,11 @@ defmodule RSMP.SupervisorTest do
     for seq <- 1..3 do
       payload =
         RSMP.Utility.to_payload(%{
-          "values" => %{"cars" => seq},
-          "ts" => DateTime.utc_now() |> DateTime.add(-10 + seq) |> DateTime.to_iso8601(),
-          "seq" => seq
+          "entries" => [%{
+            "values" => %{"cars" => seq},
+            "ts" => DateTime.utc_now() |> DateTime.add(-10 + seq) |> DateTime.to_iso8601(),
+            "seq" => seq
+          }]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/replay/traffic.volume/live", payload: payload, properties: %{}}})
@@ -340,9 +350,11 @@ defmodule RSMP.SupervisorTest do
     # Resend seq 2 with different value — should overwrite, not add
     payload =
       RSMP.Utility.to_payload(%{
-        "values" => %{"cars" => 99},
-        "ts" => DateTime.utc_now() |> DateTime.add(-8) |> DateTime.to_iso8601(),
-        "seq" => 2
+        "entries" => [%{
+          "values" => %{"cars" => 99},
+          "ts" => DateTime.utc_now() |> DateTime.add(-8) |> DateTime.to_iso8601(),
+          "seq" => 2
+        }]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/replay/traffic.volume/live", payload: payload, properties: %{}}})
@@ -377,9 +389,11 @@ defmodule RSMP.SupervisorTest do
 
       payload =
         RSMP.Utility.to_payload(%{
-          "values" => %{"cars" => seq},
-          "ts" => ts,
-          "seq" => seq
+          "entries" => [%{
+            "values" => %{"cars" => seq},
+            "ts" => ts,
+            "seq" => seq
+          }]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/replay/traffic.volume/live", payload: payload, properties: %{}}})
@@ -511,9 +525,11 @@ defmodule RSMP.SupervisorTest do
 
     payload =
       RSMP.Utility.to_payload(%{
-        "values" => %{"cars" => 3, "bicycles" => 1},
-        "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
-        "seq" => 42,
+        "entries" => [%{
+          "values" => %{"cars" => 3, "bicycles" => 1},
+          "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
+          "seq" => 42
+        }],
         "complete" => false
       })
 
@@ -551,9 +567,11 @@ defmodule RSMP.SupervisorTest do
     for seq <- [3, 4] do
       payload =
         RSMP.Utility.to_payload(%{
-          "values" => %{"cars" => seq},
-          "ts" => DateTime.utc_now() |> DateTime.add(-10 + seq) |> DateTime.to_iso8601(),
-          "seq" => seq,
+          "entries" => [%{
+            "values" => %{"cars" => seq},
+            "ts" => DateTime.utc_now() |> DateTime.add(-10 + seq) |> DateTime.to_iso8601(),
+            "seq" => seq
+          }],
           "complete" => (seq == 4)
         })
 
@@ -580,9 +598,11 @@ defmodule RSMP.SupervisorTest do
 
     payload =
       RSMP.Utility.to_payload(%{
-        "values" => %{"cars" => 1},
-        "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
-        "seq" => 1,
+        "entries" => [%{
+          "values" => %{"cars" => 1},
+          "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
+          "seq" => 1
+        }],
         "complete" => true
       })
 
@@ -665,9 +685,11 @@ defmodule RSMP.SupervisorTest do
     # Send history to fill seq 3
     payload =
       RSMP.Utility.to_payload(%{
-        "values" => %{"cars" => 3},
-        "ts" => DateTime.add(now, -3) |> DateTime.to_iso8601(),
-        "seq" => 3,
+        "entries" => [%{
+          "values" => %{"cars" => 3},
+          "ts" => DateTime.add(now, -3) |> DateTime.to_iso8601(),
+          "seq" => 3
+        }],
         "complete" => true
       })
 

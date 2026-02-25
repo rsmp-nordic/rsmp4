@@ -136,7 +136,7 @@ defmodule RSMP.InitialStateTest do
 
           # First message should contain the full initial groups
           {_topic, first_data, _opts, _props} = List.first(history_msgs)
-          groups = first_data["values"]["signalgroupstatus"]
+          groups = hd(first_data["entries"])["values"]["signalgroupstatus"]
           assert is_map(groups)
           assert Map.has_key?(groups, "1")
           assert Map.has_key?(groups, "2")
@@ -179,13 +179,15 @@ defmodule RSMP.InitialStateTest do
       ts = DateTime.utc_now() |> DateTime.to_iso8601()
       payload =
         RSMP.Utility.to_payload(%{
-          "values" => %{
-            "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
-            "cyclecounter" => 0,
-            "stage" => 0
-          },
-          "ts" => ts,
-          "seq" => 1,
+          "entries" => [%{
+            "values" => %{
+              "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
+              "cyclecounter" => 0,
+              "stage" => 0
+            },
+            "ts" => ts,
+            "seq" => 1
+          }],
           "complete" => true
         })
 
@@ -234,13 +236,15 @@ defmodule RSMP.InitialStateTest do
       ts = DateTime.utc_now() |> DateTime.to_iso8601()
       payload =
         RSMP.Utility.to_payload(%{
-          "values" => %{
-            "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
-            "cyclecounter" => 0,
-            "stage" => 0
-          },
-          "ts" => ts,
-          "seq" => 1,
+          "entries" => [%{
+            "values" => %{
+              "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
+              "cyclecounter" => 0,
+              "stage" => 0
+            },
+            "ts" => ts,
+            "seq" => 1
+          }],
           "complete" => false
         })
 
@@ -255,12 +259,14 @@ defmodule RSMP.InitialStateTest do
       ts2 = DateTime.add(DateTime.utc_now(), 1) |> DateTime.to_iso8601()
       payload2 =
         RSMP.Utility.to_payload(%{
-          "values" => %{
-            "signalgroupstatus" => %{"1" => "Y"},
-            "cyclecounter" => 1
-          },
-          "ts" => ts2,
-          "seq" => 2,
+          "entries" => [%{
+            "values" => %{
+              "signalgroupstatus" => %{"1" => "Y"},
+              "cyclecounter" => 1
+            },
+            "ts" => ts2,
+            "seq" => 2
+          }],
           "complete" => true
         })
 

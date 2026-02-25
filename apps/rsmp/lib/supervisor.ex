@@ -461,20 +461,6 @@ defmodule RSMP.Supervisor do
         supervisor
       end
 
-    # When a site comes online, fetch any missing data
-    supervisor =
-      if data == "online" && previous_presence != "online" do
-        from_ts =
-          supervisor.last_disconnected_at ||
-            DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
-
-        Enum.reduce(@gap_fetch_channels, supervisor, fn {code, channel_name}, acc ->
-          fetch_channel_gaps(acc, id, code, channel_name, from_ts)
-        end)
-      else
-        supervisor
-      end
-
     supervisor
   end
 
@@ -684,40 +670,39 @@ defmodule RSMP.Supervisor do
   end
 
   defp receive_replay(supervisor, topic, data) when is_map(data) do
-    # Handle batched replay messages with entries array
-    if Map.has_key?(data, "entries") do
-      entries = data["entries"] || []
-      complete = data["complete"]
-      truncated = data["truncated"]
+    entries = data["entries"] || []
 
-      supervisor =
-        Enum.reduce(entries, supervisor, fn entry, acc ->
-          entry_data = Map.merge(entry, %{"complete" => false})
-          receive_replay_entry(acc, topic, entry_data)
-        end)
+    supervisor =
+      Enum.reduce(entries, supervisor, fn entry, acc ->
+        receive_replay_entry(acc, topic, entry)
+      end)
 
-      # Broadcast complete/truncated status from the wrapper
-      if complete do
-        site_id = topic.id
-        complete_pub = %{
-          topic: "data_point",
-          site: site_id,
-          path: to_string(topic.path),
-          channel: topic.channel_name,
-          source: :replay,
-          complete: true,
-          truncated: truncated
-        }
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", complete_pub)
-      end
-
-      supervisor
+    if data["done"] do
+      handle_replay_done(supervisor, topic)
     else
-      receive_replay_entry(supervisor, topic, data)
+      supervisor
     end
   end
 
   defp receive_replay(supervisor, _topic, _data), do: supervisor
+
+  defp handle_replay_done(supervisor, topic) do
+    site_id = topic.id
+    code = topic.path.code
+    channel_name = topic.channel_name
+
+    done_pub = %{topic: "replay", done: true, site: site_id, path: to_string(topic.path), channel: channel_name}
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", done_pub)
+
+    if Enum.member?(@gap_fetch_channels, {code, channel_name}) do
+      fallback_from_ts =
+        supervisor.last_disconnected_at ||
+          DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
+      fetch_channel_gaps(supervisor, site_id, code, channel_name, fallback_from_ts)
+    else
+      supervisor
+    end
+  end
 
   defp receive_replay_entry(supervisor, topic, data) when is_map(data) do
     site_id = topic.id
@@ -739,8 +724,7 @@ defmodule RSMP.Supervisor do
         values: values,
         ts: ts,
         seq: seq,
-        source: :replay,
-        complete: data["complete"]
+        source: :replay
       }
       Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{supervisor.id}:#{site_id}", point_pub)
 
@@ -781,19 +765,10 @@ defmodule RSMP.Supervisor do
 
     supervisor =
       if fetch_info do
-        # Handle batched history messages with entries array
-        if Map.has_key?(data, "entries") do
-          entries = data["entries"] || []
-          Enum.reduce(entries, supervisor, fn entry, acc ->
-            receive_history_entry(acc, topic, entry, fetch_info)
-          end)
-        else
-          if data["values"] do
-            receive_history_entry(supervisor, topic, data, fetch_info)
-          else
-            supervisor
-          end
-        end
+        entries = data["entries"] || []
+        Enum.reduce(entries, supervisor, fn entry, acc ->
+          receive_history_entry(acc, topic, entry, fetch_info)
+        end)
       else
         supervisor
       end

@@ -438,10 +438,10 @@ defmodule RSMP.ChannelTest do
 
       GenServer.cast(channel_pid, {:handle_fetch, from_ts, to_ts, response_topic, correlation_id})
 
-      # Should get a single complete: true response
+      # Should get a single complete: true response with empty entries
       assert_receive {:published, topic, data, _opts}, 500
       assert to_string(topic) == response_topic
-      assert data == %{"complete" => true}
+      assert data == %{"entries" => [], "complete" => true}
     end
 
     test "reports while stopped are buffered with seq but not published" do
@@ -500,7 +500,7 @@ defmodule RSMP.ChannelTest do
       assert length(history_msgs) == 3
 
       # Check seq numbers are sequential (1, 2, 3)
-      seqs = Enum.map(history_msgs, fn {_topic, data, _opts} -> data["seq"] end)
+      seqs = Enum.map(history_msgs, fn {_topic, data, _opts} -> hd(data["entries"] || [])["seq"] end)
       assert seqs == [1, 2, 3]
 
       # Last message has complete: true

@@ -379,13 +379,14 @@ defmodule RSMP.Channel do
 
           is_first_for_correlation = not first_milestone.sent_first
 
-          payload = %{
+          entry_data = %{
             "values" => entry.values,
             "seq" => entry.seq,
             "ts" => DateTime.to_iso8601(entry.ts),
-            "next_ts" => next_entry_ts,
-            "complete" => entry_complete
+            "next_ts" => next_entry_ts
           }
+
+          payload = %{"entries" => [entry_data], "complete" => entry_complete}
 
           # beginning: true on the first message if the first entry is the oldest in the buffer
           payload =
@@ -472,13 +473,7 @@ defmodule RSMP.Channel do
           end)
 
         payload =
-          if length(chunk) == 1 do
-            # Single entry: use flat format for backward compatibility
-            entry = hd(formatted_entries)
-            Map.put(entry, "complete", is_last)
-          else
-            %{"entries" => formatted_entries, "complete" => is_last}
-          end
+          if is_last, do: %{"entries" => formatted_entries, "done" => true}, else: %{"entries" => formatted_entries}
 
         # beginning: true on the first message if the first entry is the oldest in the buffer
         payload =
@@ -923,7 +918,11 @@ defmodule RSMP.Channel do
     RSMP.Topic.new(state.id, "replay", state.code, state.channel_name, state.component)
   end
 
-  defp start_replay(%{buffer: []} = state, _since), do: state
+  defp start_replay(%{buffer: []} = state, _since) do
+    topic = make_replay_topic(state)
+    RSMP.Connection.publish_message(state.id, topic, %{"entries" => [], "done" => true}, %{retain: false, qos: 1}, %{})
+    state
+  end
 
   defp start_replay(state, since) do
     topic = make_replay_topic(state)
@@ -942,6 +941,8 @@ defmodule RSMP.Channel do
       end
 
     if entries == [] do
+      topic = make_replay_topic(state)
+      RSMP.Connection.publish_message(state.id, topic, %{"entries" => [], "done" => true}, %{retain: false, qos: 1}, %{})
       state
     else
       # beginning: true if the oldest buffered entry is newer than `since`,
@@ -961,7 +962,7 @@ defmodule RSMP.Channel do
   defp replay_batch_size, do: @replay_batch_size
 
   defp send_history_complete(id, response_topic, correlation_data, opts) do
-    payload = %{"complete" => true}
+    payload = %{"entries" => [], "complete" => true}
     payload = if opts[:beginning], do: Map.put(payload, "beginning", true), else: payload
     payload = if opts[:end], do: Map.put(payload, "end", true), else: payload
     RSMP.Connection.publish_message(id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
