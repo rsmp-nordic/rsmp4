@@ -467,7 +467,7 @@ defmodule RSMP.SupervisorTest do
     # First, set up a pending fetch so receive_history accepts the message
     correlation_id = "test-corr-#{System.unique_integer([:positive])}"
     :sys.replace_state(pid, fn state ->
-      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", channel_name: "live"}
+      pending_fetch = %{site_id: site_id, code: "traffic.volume", channel_name: "live"}
       %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
     end)
 
@@ -490,7 +490,7 @@ defmodule RSMP.SupervisorTest do
 
     correlation_id = "test-corr-#{System.unique_integer([:positive])}"
     :sys.replace_state(pid, fn state ->
-      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", channel_name: "live"}
+      pending_fetch = %{site_id: site_id, code: "traffic.volume", channel_name: "live"}
       %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
     end)
 
@@ -536,7 +536,7 @@ defmodule RSMP.SupervisorTest do
 
     correlation_id = "test-corr-#{System.unique_integer([:positive])}"
     :sys.replace_state(pid, fn state ->
-      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", channel_name: "live"}
+      pending_fetch = %{site_id: site_id, code: "traffic.volume", channel_name: "live"}
       %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
     end)
 
@@ -581,7 +581,7 @@ defmodule RSMP.SupervisorTest do
 
     correlation_id = "test-corr-#{System.unique_integer([:positive])}"
     :sys.replace_state(pid, fn state ->
-      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", channel_name: "live"}
+      pending_fetch = %{site_id: site_id, code: "traffic.volume", channel_name: "live"}
       %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
     end)
 
@@ -603,7 +603,7 @@ defmodule RSMP.SupervisorTest do
 
     correlation_id = "test-corr-#{System.unique_integer([:positive])}"
     :sys.replace_state(pid, fn state ->
-      pending_fetch = %{site_id: site_id, module: "traffic", code: "volume", channel_name: "live"}
+      pending_fetch = %{site_id: site_id, code: "traffic.volume", channel_name: "live"}
       %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
     end)
 

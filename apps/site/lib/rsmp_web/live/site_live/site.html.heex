@@ -116,7 +116,6 @@ end}></span></h1>
                 <button
                   class={channel_button_class(channel, @channel_pulses)}
                   phx-click={if channel.running, do: "stop_channel", else: "start_channel"}
-                  phx-value-module={channel.module}
                   phx-value-code={channel.code}
                   phx-value-channel={channel.channel_name || ""}
                   title={

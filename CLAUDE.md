@@ -12,7 +12,7 @@ Elixir **umbrella project** implementing RSMP 4 (Road-Side Message Protocol) ove
 
 | App | Port | Role |
 |-----|------|------|
-| `apps/rsmp/` | — | Core library: MQTT connection, protocol logic, streams |
+| `apps/rsmp/` | — | Core library: MQTT connection, protocol logic, channels |
 | `apps/site/` | 3000 | Phoenix LiveView — acts as a TLC (site/device) |
 | `apps/supervisor/` | 4000 | Phoenix LiveView — acts as a supervisor/TMC |
 
@@ -24,8 +24,9 @@ Key architecture doc: [apps/rsmp/docs/architecture.md](../apps/rsmp/docs/archite
 
 - **Broker:** MQTT v5 on `127.0.0.1:1883` (run locally, e.g. `docker start emqx`)
 - **Payload encoding:** CBOR (via `cbor` library) — not JSON
-- **Topic structure:** `{node_id}/{type}/{module}.{code}[/{stream}][/{component_type}/{n}]`
+- **Topic structure:** `{node}/{type}/{code}[/{channel}][/{component_type}/{n}]`
   - e.g. `tlc_af34/status/tlc.groups/live/tc/1`
+  - Codes are opaque dotted strings (e.g. `tlc.groups`, `traffic.volume`); the dot is for human readability, not parsed as a separator
 - **Presence:** retained `"online"` / `"offline"` at `{id}/presence`
 - **Commands** use MQTT 5 `Correlation-Data` as command ID; results echo it back
 - Supervisor subscribes to `+/presence/#`, `+/status/#`, `+/alarm/#`, `+/result/#`
@@ -34,12 +35,12 @@ Key architecture doc: [apps/rsmp/docs/architecture.md](../apps/rsmp/docs/archite
 ## Key Modules (rsmp lib)
 
 - `RSMP.Connection` — GenServer managing one `emqtt` process; dispatches incoming messages
-- `RSMP.Node` — per-node supervisor tree (Connection + Services + Streams + Remote.Nodes)
+- `RSMP.Node` — per-node supervisor tree (Connection + Services + Channels + Remote.Nodes)
 - `RSMP.Service` — `use RSMP.Service, name: "..."` macro for local service GenServers
-- `RSMP.Stream` — controls publish behaviour per status (delta, periodic, throttle, aggregation)
+- `RSMP.Channel` — controls publish behaviour per status (delta, periodic, throttle, aggregation)
 - `RSMP.Remote.Nodes` — DynamicSupervisor; spawns `RSMP.Remote.Node` trees as sites come online
 - `RSMP.Registry` — wraps `Registry` with structured via-tuples: `{id, :service, module, component}`
-- `RSMP.Topic` / `RSMP.Path` — parse/build MQTT topic strings and `module.code/component` paths
+- `RSMP.Topic` / `RSMP.Path` — parse/build MQTT topic strings and `code/component` paths. `Path` has `code` and `component` fields (no `module`)
 - `RSMP.Converter` — behaviour for converting between internal structs and RSMP SXL wire format
 
 ## Project Conventions
@@ -77,5 +78,5 @@ mix test apps/rsmp/test/         # rsmp lib only
 - `config :rsmp, :emqtt_connect, false` in `config/test.exs` disables real MQTT in tests
 - Tests use `MockConnection` (local GenServer) to intercept `publish_message` casts and assert on topics/CBOR payloads
 - `RSMP.Registry` must be started in test `setup` blocks if not already running
-- Test files: `messaging_test.exs`, `stream_test.exs`, `topic_test.exs`, `path_test.exs`, `supervisor_test.exs`
+- Test files: `messaging_test.exs`, `channel_test.exs`, `topic_test.exs`, `path_test.exs`, `supervisor_test.exs`
 

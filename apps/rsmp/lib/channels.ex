@@ -14,14 +14,14 @@ defmodule RSMP.Channels do
   end
 
   @doc "Start a channel under this supervisor."
-  def start_channel(id, module, %RSMP.Channel.Config{} = config) do
+  def start_channel(id, %RSMP.Channel.Config{} = config) do
     via = RSMP.Registry.via_channels(id)
-    DynamicSupervisor.start_child(via, {RSMP.Channel, {id, module, config}})
+    DynamicSupervisor.start_child(via, {RSMP.Channel, {id, config}})
   end
 
   @doc "List all channel pids for a node."
   def list_channels(id) do
-    match_pattern = {{{id, :channel, :_, :_, :_, :_}, :"$1", :_}, [], [:"$1"]}
+    match_pattern = {{{id, :channel, :_, :_, :_}, :"$1", :_}, [], [:"$1"]}
     Registry.select(RSMP.Registry, [match_pattern])
   end
 

@@ -7,10 +7,13 @@ defmodule RSMP.Service.Traffic do
 	@max_data_points 3600
 
 	@impl true
-	def status_codes(), do: ["volume"]
+	def status_codes(), do: ["traffic.volume"]
 
 	@impl true
 	def alarm_codes(), do: []
+
+	@impl true
+	def command_codes(), do: []
 
 	defstruct(
 		id: nil,
@@ -41,7 +44,7 @@ defmodule RSMP.Service.Traffic do
 				detection_event = %{mode => count}
 				last_detection = Map.put(@zero_volume, mode, count)
 
-				RSMP.Service.report_to_channels(service.id, "traffic", "volume", detection_event, ts)
+				RSMP.Service.report_to_channels(service.id, "traffic.volume", detection_event, ts)
 				Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status", changes: ["traffic.volume"]})
 
 				point = %{ts: ts, values: to_atom_keys(detection_event)}
@@ -124,7 +127,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.Traffic do
 
 	def receive_command(service, _topic, _data, _properties), do: {service, nil}
 
-	def format_status(service, "volume") do
+	def format_status(service, "traffic.volume") do
 		service.last_detection
 	end
 end

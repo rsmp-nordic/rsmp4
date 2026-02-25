@@ -3,10 +3,13 @@ defmodule RSMP.Service.TLC do
   require Logger
 
   @impl true
-  def status_codes(), do: ["groups", "plan", "plans"]
+  def status_codes(), do: ["tlc.groups", "tlc.plan", "tlc.plans"]
 
   @impl true
-  def alarm_codes(), do: ["hardware.error", "hardware.warning"]
+  def alarm_codes(), do: ["tlc.hardware.error", "tlc.hardware.warning"]
+
+  @impl true
+  def command_codes(), do: ["tlc.plan.set", "tlc.alarm.set"]
 
   # Signal group state transitions: green -> yellow -> red -> red+yellow -> green
   @sg_transitions %{
@@ -98,7 +101,7 @@ defmodule RSMP.Service.TLC do
         }
         |> maybe_put_stage(service.stage, stage)
 
-      RSMP.Service.report_to_channels(service.id, "tlc", "groups", values)
+      RSMP.Service.report_to_channels(service.id, "tlc.groups", values)
     end
 
     # Notify local Site LiveView without signaling supervisor status updates
@@ -153,7 +156,7 @@ defmodule RSMP.Service.TLC do
         })
 
         service = %{service | plan: plan, source: "forced"}
-        RSMP.Service.report_to_channels(service, "plan")
+        RSMP.Service.report_to_channels(service, "tlc.plan")
         Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status"})
 
         message =
@@ -249,7 +252,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
 
   def receive_command(
         service,
-        %RSMP.Topic{path: %RSMP.Path{code: "alarm.set", module: "tlc"} = path},
+        %RSMP.Topic{path: %RSMP.Path{code: "tlc.alarm.set"} = path},
         %{"code" => code, "active" => active},
         _properties
       )
@@ -279,7 +282,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
 
   def receive_command(
         service,
-        %RSMP.Topic{path: %RSMP.Path{code: "alarm.set", module: "tlc"} = path},
+        %RSMP.Topic{path: %RSMP.Path{code: "tlc.alarm.set"} = path},
         payload,
         _properties
       ) do
@@ -291,7 +294,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
 
   def receive_command(
         service,
-      %RSMP.Topic{path: %RSMP.Path{code: "plan.set"}},
+      %RSMP.Topic{path: %RSMP.Path{code: "tlc.plan.set"}},
         %{"plan" => plan},
         _properties
       ) do
@@ -300,7 +303,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
 
   def receive_command(
         service,
-        %RSMP.Topic{path: %RSMP.Path{code: "plan.set"}=path},
+        %RSMP.Topic{path: %RSMP.Path{code: "tlc.plan.set"}=path},
         %{}=params,
         _properties
       ) do
@@ -325,7 +328,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
   end
 
   # convert from internal format to sxl format
-  def format_status(service, "groups") do
+  def format_status(service, "tlc.groups") do
     %{
       "cyclecounter" => service.cycle,
       "signalgroupstatus" => service.groups,
@@ -333,14 +336,14 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
     }
   end
 
-  def format_status(service, "plan") do
+  def format_status(service, "tlc.plan") do
     %{
       "status" => service.plan,
       "source" => service.source
     }
   end
 
-  def format_status(service, "plans") do
+  def format_status(service, "tlc.plans") do
     items =
       service.plans
       |> Map.keys()
@@ -350,7 +353,7 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
     %{"status" => items}
   end
 
-  def format_status(service, "24") do
+  def format_status(service, "tlc.24") do
     items =
       service
       |> Enum.map(fn {plan, value} -> "#{plan}-#{value}" end)
@@ -359,5 +362,5 @@ defimpl RSMP.Service.Protocol, for: RSMP.Service.TLC do
     %{"status" => items}
   end
 
-  def format_status(service, "28"), do: format_status(service, "24")
+  def format_status(service, "tlc.28"), do: format_status(service, "tlc.24")
 end

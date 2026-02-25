@@ -140,13 +140,13 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
-  def handle_event("start_channel", %{"module" => module, "code" => code, "channel" => channel_name}, socket) do
+  def handle_event("start_channel", %{"code" => code, "channel" => channel_name}, socket) do
     site_id = socket.assigns[:id]
     channel_name = if channel_name == "", do: nil, else: channel_name
-    TLC.start_channel(site_id, module, code, channel_name)
+    TLC.start_channel(site_id, code, channel_name)
     channel_list = TLC.get_channels(site_id)
 
-    channel_key = channel_identity(module, code, channel_name)
+    channel_key = channel_identity(code, channel_name)
 
     socket =
       assign(socket, channel_list: channel_list, channels_by_status: channels_by_status(channel_list))
@@ -162,10 +162,10 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
-  def handle_event("stop_channel", %{"module" => module, "code" => code, "channel" => channel_name}, socket) do
+  def handle_event("stop_channel", %{"code" => code, "channel" => channel_name}, socket) do
     site_id = socket.assigns[:id]
     channel_name = if channel_name == "", do: nil, else: channel_name
-    TLC.stop_channel(site_id, module, code, channel_name)
+    TLC.stop_channel(site_id, code, channel_name)
     channel_list = TLC.get_channels(site_id)
     {:noreply, assign(socket, channel_list: channel_list, channels_by_status: channels_by_status(channel_list))}
   end
@@ -321,7 +321,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   def channels_by_status(channel_list) do
-    Enum.group_by(channel_list, fn channel -> "#{channel.module}.#{channel.code}" end)
+    Enum.group_by(channel_list, fn channel -> channel.code end)
   end
 
   def format_status_lines(value) when is_map(value) do
@@ -360,14 +360,14 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     update(socket, :channel_pulses, &Map.put(&1, channel_key, true))
   end
 
-  defp channel_identity(%{module: module, code: code} = channel) do
+  defp channel_identity(%{code: code} = channel) do
     channel_name = Map.get(channel, :channel_name) || Map.get(channel, "channel_name")
-    channel_identity(module, code, channel_name)
+    channel_identity(code, channel_name)
   end
 
-  defp channel_identity(module, code, channel_name) do
+  defp channel_identity(code, channel_name) do
     normalized_channel = if channel_name in [nil, ""], do: "default", else: channel_name
-    "#{module}.#{code}/#{normalized_channel}"
+    "#{code}/#{normalized_channel}"
   end
 
   # Schedule tick aligned to the next wall-clock second boundary so that

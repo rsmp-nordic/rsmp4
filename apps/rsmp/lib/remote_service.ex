@@ -33,8 +33,8 @@ defmodule RSMP.Remote.Service do
 
       def name(), do: unquote(name)
 
-      def start_link({id, remote_id, service, component, data}) do
-        via = RSMP.Registry.via_remote_service(id, remote_id, service, component)
+      def start_link({id, remote_id, service, data}) do
+        via = RSMP.Registry.via_remote_service(id, remote_id, service)
         GenServer.start_link(__MODULE__, {remote_id, data}, name: via)
       end
 
@@ -73,8 +73,7 @@ defmodule RSMP.Remote.Service do
 
   defp make_topic(service, type, code, component) do
     id = RSMP.Remote.Service.Protocol.id(service)
-    module = RSMP.Remote.Service.Protocol.name(service)
-    RSMP.Topic.new(id, type, module, code, component)
+    RSMP.Topic.new(id, type, code, component)
   end
 
 end

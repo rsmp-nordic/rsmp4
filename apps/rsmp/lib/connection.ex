@@ -272,7 +272,7 @@ defmodule RSMP.Connection do
   end
 
   defp trigger_services(id) do
-    match_pattern = {{ {id, :service, :_, :_}, :"$1", :_}, [], [:"$1"]}
+    match_pattern = {{ {id, :service, :_}, :"$1", :_}, [], [:"$1"]}
     Registry.select(RSMP.Registry, [match_pattern])
     |> Enum.each(fn pid ->
        GenServer.cast(pid, :publish_all)
@@ -314,7 +314,7 @@ defmodule RSMP.Connection do
     response_topic = properties[:"Response-Topic"]
     correlation_data = properties[:"Correlation-Data"]
 
-    case RSMP.Registry.lookup_channel(connection.id, topic.path.module, topic.path.code, topic.channel_name, topic.path.component) do
+    case RSMP.Registry.lookup_channel(connection.id, topic.path.code, topic.channel_name, topic.path.component) do
       [{pid, _}] ->
         GenServer.cast(pid, {:handle_fetch, from_ts, to_ts, response_topic, correlation_data})
 
@@ -386,12 +386,12 @@ defmodule RSMP.Connection do
       command_id: properties[:"Correlation-Data"]
     }
 
-    case {topic.type, topic.path.module, topic.path.code} do
-      {"throttle", module, code} when is_binary(module) and is_binary(code) ->
-        handle_channel_throttle(connection, module, code, topic.path.component, data, properties)
+    case topic.type do
+      "throttle" when is_binary(topic.path.code) ->
+        handle_channel_throttle(connection, topic.path.code, topic.path.component, data, properties)
 
       _ ->
-        case RSMP.Registry.lookup_service(topic.id, topic.path.module, topic.path.component) do
+        case RSMP.Registry.lookup_service_by_code(topic.id, topic.path.code) do
           [{pid, _value}] ->
             case topic.type do
               "command" -> GenServer.call(pid, {:receive_command, topic, data, properties})
@@ -404,7 +404,7 @@ defmodule RSMP.Connection do
     end
   end
 
-  defp handle_channel_throttle(connection, module, code, channel_parts, data, _properties) do
+  defp handle_channel_throttle(connection, code, channel_parts, data, _properties) do
     action = if is_map(data), do: data["action"], else: nil
 
     channel_name =
@@ -420,16 +420,16 @@ defmodule RSMP.Connection do
         Logger.warning("#{connection.id}: Invalid throttle action: #{inspect(data)}")
 
       channel_name == :invalid ->
-        Logger.warning("#{connection.id}: Invalid throttle topic path for #{module}.#{code}: #{inspect(channel_parts)}")
+        Logger.warning("#{connection.id}: Invalid throttle topic path for #{code}: #{inspect(channel_parts)}")
 
       true ->
         channel_action = if action == "start", do: :start, else: :stop
-        execute_channel_action(connection, module, code, channel_name, channel_action)
+        execute_channel_action(connection, code, channel_name, channel_action)
     end
   end
 
-  defp execute_channel_action(connection, module, code, channel_name, action) do
-    case RSMP.Registry.lookup_channel(connection.id, module, code, channel_name, []) do
+  defp execute_channel_action(connection, code, channel_name, action) do
+    case RSMP.Registry.lookup_channel(connection.id, code, channel_name, []) do
       [{pid, _}] ->
         case action do
           :start -> RSMP.Channel.start_channel(pid)
@@ -437,14 +437,14 @@ defmodule RSMP.Connection do
         end
 
         channel_segment = channel_name || "default"
-        channel_key = "#{module}.#{code}/#{channel_segment}"
+        channel_key = "#{code}/#{channel_segment}"
         state = if action == :start, do: "running", else: "stopped"
         pub = %{topic: "channel", channel: channel_key, state: state}
         Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", pub)
 
       [] ->
         channel_label = channel_name || "default"
-        Logger.warning("#{connection.id}: Channel not found: #{module}.#{code}/#{channel_label}")
+        Logger.warning("#{connection.id}: Channel not found: #{code}/#{channel_label}")
     end
   end
 
@@ -456,23 +456,42 @@ defmodule RSMP.Connection do
     if RSMP.Registry.lookup_remote(connection.id, topic.id) == [] do
       Logger.warning("#{connection.id}: Ignoring message for unknown remote: #{topic}")
     else
-      pid = case RSMP.Registry.lookup_remote_service(connection.id, topic.id, topic.path.module, topic.path.component) do
-        [{pid, _}] ->
-          pid
+      pid = case connection.managers[topic.path.code] do
+        %{service_name: service_name, manager: manager_module} ->
+          case RSMP.Registry.lookup_remote_service(connection.id, topic.id, service_name) do
+            [{pid, _}] ->
+              pid
 
-        [] ->
-          via = RSMP.Registry.via_remote_services(connection.id, topic.id)
-          data = %{}
-          component_type = List.first(topic.path.component)
-          manager_module = connection.managers[component_type] || RSMP.Remote.Service.Generic
+            [] ->
+              via = RSMP.Registry.via_remote_services(connection.id, topic.id)
 
-          {:ok, pid} = DynamicSupervisor.start_child(
-            via,
-            {manager_module, {connection.id, topic.id, topic.path.module, topic.path.component, data}}
-          )
+              {:ok, pid} = DynamicSupervisor.start_child(
+                via,
+                {manager_module, {connection.id, topic.id, service_name, %{}}}
+              )
 
-          Logger.info("#{connection.id}: Added remote service #{manager_module} for remote node #{topic.id}, component #{Enum.join(topic.path.component, "/")}")
-          pid
+              Logger.info("#{connection.id}: Added remote service #{manager_module} for remote node #{topic.id}, code #{topic.path.code}")
+              pid
+          end
+
+        nil ->
+          # Unknown code — use Generic remote service
+          service_name = "generic"
+          case RSMP.Registry.lookup_remote_service(connection.id, topic.id, service_name) do
+            [{pid, _}] ->
+              pid
+
+            [] ->
+              via = RSMP.Registry.via_remote_services(connection.id, topic.id)
+
+              {:ok, pid} = DynamicSupervisor.start_child(
+                via,
+                {RSMP.Remote.Service.Generic, {connection.id, topic.id, service_name, %{}}}
+              )
+
+              Logger.info("#{connection.id}: Added generic remote service for remote node #{topic.id}, code #{topic.path.code}")
+              pid
+          end
       end
 
       case topic.type do

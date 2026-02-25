@@ -7,7 +7,7 @@ defmodule RSMP.Converter.Traffic do
   # convert from internal format to sxl format
 
   @impl RSMP.Converter
-  def to_rsmp_status("volume", data) when is_map(data) do
+  def to_rsmp_status("traffic.volume", data) when is_map(data) do
     data
     |> normalize_string_keys()
     |> keep_allowed_keys()
@@ -19,7 +19,7 @@ defmodule RSMP.Converter.Traffic do
   # convert from sxl format to internal format
 
   @impl RSMP.Converter
-  def from_rsmp_status("volume", data) when is_map(data) do
+  def from_rsmp_status("traffic.volume", data) when is_map(data) do
     data
     |> normalize_string_keys()
     |> keep_allowed_keys()

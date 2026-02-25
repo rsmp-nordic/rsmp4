@@ -43,10 +43,10 @@ defmodule RSMP.Site.TLCTest do
 
     # Find the service PID
     # We use empty component list [] as configured in RSMP.Node.TLC
-    [{service_pid, _}] = RSMP.Registry.lookup_service(site_id, "tlc", [])
+    [{service_pid, _}] = RSMP.Registry.lookup_service(site_id, "tlc")
 
     # Construct a valid command topic and payload
-    topic = RSMP.Topic.new(site_id, "command", "tlc", "plan.set")
+    topic = RSMP.Topic.new(site_id, "command", "tlc.plan.set")
     payload = %{"plan" => 2}
 
     # Send the command via GenServer call
@@ -66,8 +66,8 @@ defmodule RSMP.Site.TLCTest do
          start_supervised!({MockConnection, {site_id, self()}})
 
          {:ok, _pid} = RSMP.Node.TLC.start_link(site_id, connection_module: nil)
-         [{service_pid, _}] = RSMP.Registry.lookup_service(site_id, "tlc", [])
-         topic = RSMP.Topic.new(site_id, "command", "tlc", "plan.set")
+         [{service_pid, _}] = RSMP.Registry.lookup_service(site_id, "tlc")
+         topic = RSMP.Topic.new(site_id, "command", "tlc.plan.set")
          payload = 2 # Invalid payload (integer instead of map)
 
          # The service logs a warning and returns {service, nil} -> response is nil

@@ -7,10 +7,10 @@ defmodule RSMP.Supervisor do
   @graph_window_seconds 60
 
   # Channels that support gap-fetch, derived at compile time from channel configs.
-  # Tuple format: {module, code, channel_name}
+  # Tuple format: {code, channel_name}
   @gap_fetch_channels RSMP.Node.TLC.channel_configs()
-    |> Enum.filter(fn {_mod, config} -> config.gap_fetch end)
-    |> Enum.map(fn {mod, config} -> {mod, config.code, config.channel_name} end)
+    |> Enum.filter(fn config -> config.gap_fetch end)
+    |> Enum.map(fn config -> {config.code, config.channel_name} end)
 
   defstruct(
     pid: nil,
@@ -45,12 +45,12 @@ defmodule RSMP.Supervisor do
     GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:set_plan, site_id, plan})
   end
 
-  def start_channel(supervisor_id, site_id, module, code, channel_name) do
-    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_channel, site_id, module, code, channel_name, "start"})
+  def start_channel(supervisor_id, site_id, code, channel_name) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_channel, site_id, code, channel_name, "start"})
   end
 
-  def stop_channel(supervisor_id, site_id, module, code, channel_name) do
-    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_channel, site_id, module, code, channel_name, "stop"})
+  def stop_channel(supervisor_id, site_id, code, channel_name) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:throttle_channel, site_id, code, channel_name, "stop"})
   end
 
   def toggle_connection(supervisor_id) do
@@ -61,8 +61,8 @@ defmodule RSMP.Supervisor do
     GenServer.call(RSMP.Registry.via_supervisor(supervisor_id), :connected?)
   end
 
-  def send_fetch(supervisor_id, site_id, module, code, channel_name, from_ts, to_ts) do
-    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:send_fetch, site_id, module, code, channel_name, from_ts, to_ts})
+  def send_fetch(supervisor_id, site_id, code, channel_name, from_ts, to_ts) do
+    GenServer.cast(RSMP.Registry.via_supervisor(supervisor_id), {:send_fetch, site_id, code, channel_name, from_ts, to_ts})
   end
 
   def data_points(supervisor_id, site_id, channel_key) do
@@ -217,7 +217,7 @@ defmodule RSMP.Supervisor do
     # Send command to device
     # set current time plan
     path = "tlc.plan.set"
-    topic = RSMP.Topic.new(site_id, "command", "tlc", "plan.set")
+    topic = RSMP.Topic.new(site_id, "command", "tlc.plan.set")
     command_id = SecureRandom.hex(2)
 
     Logger.info(
@@ -256,8 +256,8 @@ defmodule RSMP.Supervisor do
     supervisor =
       Enum.reduce(supervisor.sites, supervisor, fn {id, _site}, sup ->
         update_in(sup.sites[id], fn site ->
-          Enum.reduce(@gap_fetch_channels, site, fn {mod, code, channel_name}, acc ->
-            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{mod}.#{code}/#{channel_name}", now)
+          Enum.reduce(@gap_fetch_channels, site, fn {code, channel_name}, acc ->
+            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{code}/#{channel_name}", now)
           end)
         end)
       end)
@@ -273,13 +273,13 @@ defmodule RSMP.Supervisor do
   end
 
   @impl true
-  def handle_cast({:send_fetch, site_id, module, code, channel_name, from_ts, to_ts}, supervisor) do
-    supervisor = do_send_fetch(supervisor, site_id, module, code, channel_name, from_ts, to_ts)
+  def handle_cast({:send_fetch, site_id, code, channel_name, from_ts, to_ts}, supervisor) do
+    supervisor = do_send_fetch(supervisor, site_id, code, channel_name, from_ts, to_ts)
     {:noreply, supervisor}
   end
 
   @impl true
-  def handle_cast({:throttle_channel, site_id, module, code, channel_name, action}, supervisor) do
+  def handle_cast({:throttle_channel, site_id, code, channel_name, action}, supervisor) do
     channel_segment =
       case channel_name do
         nil -> "default"
@@ -287,10 +287,10 @@ defmodule RSMP.Supervisor do
         value -> to_string(value)
       end
 
-    topic = Topic.new(site_id, "throttle", module, code, [channel_segment])
+    topic = Topic.new(site_id, "throttle", code, [channel_segment])
 
     Logger.info(
-      "RSMP: Sending throttle #{action} for #{module}.#{code}/#{channel_segment} to #{site_id}"
+      "RSMP: Sending throttle #{action} for #{code}/#{channel_segment} to #{site_id}"
     )
 
     :emqtt.publish_async(
@@ -368,8 +368,8 @@ defmodule RSMP.Supervisor do
     supervisor =
       Enum.reduce(supervisor.sites, supervisor, fn {id, _site}, sup ->
         update_in(sup.sites[id], fn site ->
-          Enum.reduce(@gap_fetch_channels, site, fn {mod, code, channel_name}, acc ->
-            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{mod}.#{code}/#{channel_name}", now)
+          Enum.reduce(@gap_fetch_channels, site, fn {code, channel_name}, acc ->
+            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{code}/#{channel_name}", now)
           end)
         end)
       end)
@@ -453,8 +453,8 @@ defmodule RSMP.Supervisor do
       if data in ["offline", "shutdown"] && previous_presence == "online" do
         now = DateTime.utc_now()
         update_in(supervisor.sites[id], fn site ->
-          Enum.reduce(@gap_fetch_channels, site, fn {mod, code, channel_name}, acc ->
-            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{mod}.#{code}/#{channel_name}", now)
+          Enum.reduce(@gap_fetch_channels, site, fn {code, channel_name}, acc ->
+            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{code}/#{channel_name}", now)
           end)
         end)
       else
@@ -468,8 +468,8 @@ defmodule RSMP.Supervisor do
           supervisor.last_disconnected_at ||
             DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
 
-        Enum.reduce(@gap_fetch_channels, supervisor, fn {mod, code, channel_name}, acc ->
-          fetch_channel_gaps(acc, id, mod, code, channel_name, from_ts)
+        Enum.reduce(@gap_fetch_channels, supervisor, fn {code, channel_name}, acc ->
+          fetch_channel_gaps(acc, id, code, channel_name, from_ts)
         end)
       else
         supervisor
@@ -490,7 +490,6 @@ defmodule RSMP.Supervisor do
       topic: "response",
       response: %{
         id: topic.id,
-        module: topic.path.module,
         command: topic.path.code,
         command_id: command_id,
         result: result
@@ -626,7 +625,7 @@ defmodule RSMP.Supervisor do
       true ->
         id = topic.id
         {supervisor, site} = get_site(supervisor, id)
-        path = Path.new(topic.path.module, topic.path.code, [])
+        path = Path.new(topic.path.code, [])
         channel_key = channel_state_key(path, channel_name)
         previous_state = get_in(site.channels, [channel_key])
 
@@ -657,10 +656,10 @@ defmodule RSMP.Supervisor do
           if state == "running" && previous_state in ["stopped", nil] do
             fallback_ts = DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
 
-            case Enum.find(@gap_fetch_channels, fn {mod, code, channel_name} ->
-              "#{mod}.#{code}/#{channel_name}" == channel_key
+            case Enum.find(@gap_fetch_channels, fn {code, channel_name} ->
+              "#{code}/#{channel_name}" == channel_key
             end) do
-              {mod, code, channel_name} -> fetch_channel_gaps(supervisor, id, mod, code, channel_name, fallback_ts)
+              {code, channel_name} -> fetch_channel_gaps(supervisor, id, code, channel_name, fallback_ts)
               nil -> supervisor
             end
           else
@@ -876,12 +875,12 @@ defmodule RSMP.Supervisor do
     {supervisor, supervisor.sites[id]}
   end
 
-  def module(supervisor, name), do: supervisor.modules |> Map.fetch!(name)
-  def commander(supervisor, name), do: module(supervisor, name).commander()
-  def converter(supervisor, name), do: module(supervisor, name).converter()
+  def module(supervisor, code), do: supervisor.modules |> Map.fetch!(code)
+  def commander(supervisor, code), do: module(supervisor, code).commander()
+  def converter(supervisor, code), do: module(supervisor, code).converter()
 
   def from_rsmp_status(supervisor, path, data) do
-    converter(supervisor, path.module).from_rsmp_status(path.code, data)
+    converter(supervisor, path.code).from_rsmp_status(path.code, data)
   end
 
   defp deep_merge_status(current_status, new_status)
@@ -971,20 +970,20 @@ defmodule RSMP.Supervisor do
     "#{to_string(path)}/#{normalized_channel}"
   end
 
-  defp do_send_fetch(supervisor, site_id, module, code, channel_name, from_ts, to_ts) do
+  defp do_send_fetch(supervisor, site_id, code, channel_name, from_ts, to_ts) do
     if supervisor.pid == nil do
       supervisor
     else
       correlation_id = SecureRandom.hex(8)
       channel_segment = if channel_name && channel_name != "", do: channel_name, else: "default"
-      response_topic = "#{supervisor.id}/history/#{module}.#{code}/#{channel_segment}"
-      fetch_topic = "#{site_id}/fetch/#{module}.#{code}/#{channel_segment}"
+      response_topic = "#{supervisor.id}/history/#{code}/#{channel_segment}"
+      fetch_topic = "#{site_id}/fetch/#{code}/#{channel_segment}"
 
       payload = %{}
       payload = if from_ts, do: Map.put(payload, "from", DateTime.to_iso8601(from_ts)), else: payload
       payload = if to_ts, do: Map.put(payload, "to", DateTime.to_iso8601(to_ts)), else: payload
 
-      Logger.info("RSMP: Sending fetch #{module}.#{code}/#{channel_segment} to #{site_id} from #{inspect(from_ts)} to #{inspect(to_ts)}")
+      Logger.info("RSMP: Sending fetch #{code}/#{channel_segment} to #{site_id} from #{inspect(from_ts)} to #{inspect(to_ts)}")
 
       properties = %{
         "Response-Topic": response_topic,
@@ -1001,7 +1000,7 @@ defmodule RSMP.Supervisor do
         {&publish_done/1, []}
       )
 
-      pending_fetch = %{site_id: site_id, module: module, code: code, channel_name: channel_name}
+      pending_fetch = %{site_id: site_id, code: code, channel_name: channel_name}
       pending_fetches = Map.put(supervisor.pending_fetches, correlation_id, pending_fetch)
       %{supervisor | pending_fetches: pending_fetches}
     end
@@ -1015,8 +1014,8 @@ defmodule RSMP.Supervisor do
         DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
 
     Enum.reduce(supervisor.sites, supervisor, fn {id, _site}, sup ->
-      Enum.reduce(@gap_fetch_channels, sup, fn {mod, code, channel_name}, acc ->
-        fetch_channel_gaps(acc, id, mod, code, channel_name, from_ts)
+      Enum.reduce(@gap_fetch_channels, sup, fn {code, channel_name}, acc ->
+        fetch_channel_gaps(acc, id, code, channel_name, from_ts)
       end)
     end)
   end
@@ -1025,8 +1024,8 @@ defmodule RSMP.Supervisor do
   # mechanism. Falls back to fallback_from_ts → now when no seq gaps have been
   # detected yet (e.g. right after reconnect or channel restart, before new data
   # has arrived past the gap).
-  defp fetch_channel_gaps(supervisor, site_id, module, code, channel_name, fallback_from_ts) do
-    channel_key = "#{module}.#{code}/#{channel_name}"
+  defp fetch_channel_gaps(supervisor, site_id, code, channel_name, fallback_from_ts) do
+    channel_key = "#{code}/#{channel_name}"
     now = DateTime.utc_now()
 
     time_ranges =
@@ -1056,7 +1055,7 @@ defmodule RSMP.Supervisor do
       end
 
     Enum.reduce(time_ranges, supervisor, fn {from_ts, to_ts}, sup ->
-      do_send_fetch(sup, site_id, module, code, channel_name, from_ts, to_ts)
+      do_send_fetch(sup, site_id, code, channel_name, from_ts, to_ts)
     end)
   end
 

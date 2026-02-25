@@ -2,7 +2,7 @@ defmodule RSMP.Converter.TLC do
   @behaviour RSMP.Converter
 
   # convert from internal format to sxl format
-  def to_rsmp_status("groups", data) do
+  def to_rsmp_status("tlc.groups", data) do
     %{
       "cyclecounter" => data.cycle,
       "signalgroupstatus" => data.groups,
@@ -10,14 +10,14 @@ defmodule RSMP.Converter.TLC do
     }
   end
 
-  def to_rsmp_status("plan", data) do
+  def to_rsmp_status("tlc.plan", data) do
     %{
       "status" => data.plan,
       "source" => data.source
     }
   end
 
-  def to_rsmp_status("plans", data) do
+  def to_rsmp_status("tlc.plans", data) do
     items =
       data
       |> Enum.join(",")
@@ -25,7 +25,7 @@ defmodule RSMP.Converter.TLC do
     %{"status" => items}
   end
 
-  def to_rsmp_status("24", data) do
+  def to_rsmp_status("tlc.24", data) do
     items =
       data
       |> Enum.map(fn {plan, value} -> "#{plan}-#{value}" end)
@@ -34,11 +34,11 @@ defmodule RSMP.Converter.TLC do
     %{"status" => items}
   end
 
-  def to_rsmp_status("28", data), do: to_rsmp_status("24", data)
+  def to_rsmp_status("tlc.28", data), do: to_rsmp_status("tlc.24", data)
 
   # convert from sxl format to internal format
 
-  def from_rsmp_status("groups", data) do
+  def from_rsmp_status("tlc.groups", data) do
     groups = normalize_groups(Map.get(data, "signalgroupstatus"))
 
     %{}
@@ -47,13 +47,13 @@ defmodule RSMP.Converter.TLC do
     |> maybe_put(:stage, data, "stage")
   end
 
-  def from_rsmp_status("plan", data) do
+  def from_rsmp_status("tlc.plan", data) do
     %{}
     |> maybe_put(:plan, data, "status")
     |> maybe_put(:source, data, "source")
   end
 
-  def from_rsmp_status("plans", data) do
+  def from_rsmp_status("tlc.plans", data) do
     items = String.split(data["status"], ",")
 
     for item <- items do
@@ -61,7 +61,7 @@ defmodule RSMP.Converter.TLC do
     end
   end
 
-  def from_rsmp_status("24", data) do
+  def from_rsmp_status("tlc.24", data) do
     items = String.split(data["status"], ",")
 
     for item <- items, into: %{} do
@@ -70,11 +70,11 @@ defmodule RSMP.Converter.TLC do
     end
   end
 
-  def from_rsmp_status("28", data), do: from_rsmp_status("24", data)
+  def from_rsmp_status("tlc.28", data), do: from_rsmp_status("tlc.24", data)
 
   # setup default command values from statuses
 
-  def command_default("plan.set", statuses) do
+  def command_default("tlc.plan.set", statuses) do
     %{
       plan: statuses["tlc.plan"][:plan]
     }

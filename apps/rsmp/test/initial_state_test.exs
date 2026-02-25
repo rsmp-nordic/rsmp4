@@ -58,7 +58,7 @@ defmodule RSMP.InitialStateTest do
       Process.sleep(300)
 
       # Find the tlc.groups/live channel
-      case RSMP.Registry.lookup_channel(id, "tlc", "groups", "live", []) do
+      case RSMP.Registry.lookup_channel(id, "tlc.groups", "live", []) do
         [{channel_pid, _}] ->
           state = :sys.get_state(channel_pid)
 
@@ -89,7 +89,7 @@ defmodule RSMP.InitialStateTest do
       {:ok, _} = RSMP.Node.TLC.start_link(id, connection_module: nil)
       Process.sleep(300)
 
-      case RSMP.Registry.lookup_channel(id, "tlc", "groups", "live", []) do
+      case RSMP.Registry.lookup_channel(id, "tlc.groups", "live", []) do
         [{channel_pid, _}] ->
           state = :sys.get_state(channel_pid)
           first_entry = List.last(state.buffer)
@@ -118,7 +118,7 @@ defmodule RSMP.InitialStateTest do
 
       drain_published_messages()
 
-      case RSMP.Registry.lookup_channel(id, "tlc", "groups", "live", []) do
+      case RSMP.Registry.lookup_channel(id, "tlc.groups", "live", []) do
         [{channel_pid, _}] ->
           # Issue a fetch for the full time range
           response_topic = "supervisor1/history/tlc.groups/live"
@@ -171,7 +171,7 @@ defmodule RSMP.InitialStateTest do
       # Set up a pending fetch so receive_history accepts the message
       correlation_id = "test-corr-initial-#{System.unique_integer([:positive])}"
       :sys.replace_state(pid, fn state ->
-        pending_fetch = %{site_id: site_id, module: "tlc", code: "groups", channel_name: "live"}
+        pending_fetch = %{site_id: site_id, code: "tlc.groups", channel_name: "live"}
         %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
       end)
 
@@ -226,7 +226,7 @@ defmodule RSMP.InitialStateTest do
       # Set up a pending fetch
       correlation_id = "test-corr-graph-#{System.unique_integer([:positive])}"
       :sys.replace_state(pid, fn state ->
-        pending_fetch = %{site_id: site_id, module: "tlc", code: "groups", channel_name: "live"}
+        pending_fetch = %{site_id: site_id, code: "tlc.groups", channel_name: "live"}
         %{state | pending_fetches: Map.put(state.pending_fetches, correlation_id, pending_fetch)}
       end)
 
@@ -354,7 +354,7 @@ defmodule RSMP.InitialStateTest do
       state = :sys.get_state(pid)
       # Should have at least one pending fetch for tlc.groups
       has_groups_fetch = Enum.any?(state.pending_fetches, fn {_id, fetch} ->
-        fetch.module == "tlc" && fetch.code == "groups" && fetch.channel_name == "live"
+        fetch.code == "tlc.groups" && fetch.channel_name == "live"
       end)
       assert has_groups_fetch, "Expected a pending fetch for tlc.groups/live but found: #{inspect(state.pending_fetches)}"
     end

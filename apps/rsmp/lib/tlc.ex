@@ -18,8 +18,8 @@ defmodule RSMP.Node.TLC do
   """
   def channel_configs do
     [
-      {"tlc", %Config{
-        code: "groups",
+      %Config{
+        code: "tlc.groups",
         channel_name: "live",
         attributes: %{
           "signalgroupstatus" => :on_change,
@@ -34,9 +34,9 @@ defmodule RSMP.Node.TLC do
         replay_rate: 2,
         history_rate: 2,
         gap_fetch: true
-      }},
-      {"tlc", %Config{
-        code: "plan",
+      },
+      %Config{
+        code: "tlc.plan",
         channel_name: nil,
         attributes: %{
           "status" => :on_change,
@@ -47,9 +47,9 @@ defmodule RSMP.Node.TLC do
         min_interval: 0,
         default_on: true,
         qos: 1
-      }},
-      {"tlc", %Config{
-        code: "plans",
+      },
+      %Config{
+        code: "tlc.plans",
         channel_name: nil,
         attributes: %{
           "status" => :on_change
@@ -59,9 +59,9 @@ defmodule RSMP.Node.TLC do
         min_interval: 0,
         default_on: true,
         qos: 1
-      }},
-      {"traffic", %Config{
-        code: "volume",
+      },
+      %Config{
+        code: "traffic.volume",
         channel_name: "live",
         attributes: %{
           "cars" => :on_change,
@@ -77,9 +77,9 @@ defmodule RSMP.Node.TLC do
         history_rate: 4,
         always_publish: true,
         gap_fetch: true
-      }},
-      {"traffic", %Config{
-        code: "volume",
+      },
+      %Config{
+        code: "traffic.volume",
         channel_name: "5s",
         attributes: %{
           "cars" => :on_change,
@@ -93,7 +93,7 @@ defmodule RSMP.Node.TLC do
         min_interval: 0,
         default_on: true,
         qos: 1
-      }}
+      }
     ]
   end
 
@@ -107,8 +107,8 @@ defmodule RSMP.Node.TLC do
 
   def start_link(id, options \\ []) do
     services = [
-      {[], RSMP.Service.TLC, %{plan: 1, groups: initial_groups()}},
-      {[], RSMP.Service.Traffic, %{}}
+      {RSMP.Service.TLC, %{plan: 1, groups: initial_groups()}},
+      {RSMP.Service.Traffic, %{}}
     ]
     managers = %{
     }
@@ -130,13 +130,13 @@ defmodule RSMP.Node.TLC do
 
   def get_statuses(site_id) do
     tlc_statuses =
-      case RSMP.Registry.lookup_service(site_id, "tlc", []) do
+      case RSMP.Registry.lookup_service(site_id, "tlc") do
         [{service_pid, _}] ->
           statuses = RSMP.Service.get_statuses(service_pid)
 
           for {code, data} <- statuses, into: %{} do
             data = RSMP.Converter.TLC.from_rsmp_status(code, data)
-            {"tlc." <> code, data}
+            {code, data}
           end
 
         [] ->
@@ -144,12 +144,12 @@ defmodule RSMP.Node.TLC do
       end
 
     traffic_statuses =
-      case RSMP.Registry.lookup_service(site_id, "traffic", []) do
+      case RSMP.Registry.lookup_service(site_id, "traffic") do
         [{service_pid, _}] ->
           statuses = RSMP.Service.get_statuses(service_pid)
 
           for {code, data} <- statuses, into: %{} do
-            {"traffic." <> code, data}
+            {code, data}
           end
 
         [] ->
@@ -160,11 +160,11 @@ defmodule RSMP.Node.TLC do
   end
 
   def get_alarms(site_id) do
-    case RSMP.Registry.lookup_service(site_id, "tlc", []) do
+    case RSMP.Registry.lookup_service(site_id, "tlc") do
       [{service_pid, _}] ->
         alarms = RSMP.Service.get_alarms(service_pid)
         for {code, alarm} <- alarms, into: %{} do
-          {"tlc." <> code, alarm}
+          {code, alarm}
         end
       [] -> %{}
     end
@@ -174,29 +174,29 @@ defmodule RSMP.Node.TLC do
     RSMP.Channels.list_channel_info(site_id)
   end
 
-  def start_channel(site_id, module, code, channel_name) do
-    case RSMP.Registry.lookup_channel(site_id, module, code, channel_name, []) do
+  def start_channel(site_id, code, channel_name) do
+    case RSMP.Registry.lookup_channel(site_id, code, channel_name, []) do
       [{pid, _}] -> RSMP.Channel.start_channel(pid)
       [] -> {:error, :not_found}
     end
   end
 
-  def stop_channel(site_id, module, code, channel_name) do
-    case RSMP.Registry.lookup_channel(site_id, module, code, channel_name, []) do
+  def stop_channel(site_id, code, channel_name) do
+    case RSMP.Registry.lookup_channel(site_id, code, channel_name, []) do
       [{pid, _}] -> RSMP.Channel.stop_channel(pid)
       [] -> {:error, :not_found}
     end
   end
 
   def get_traffic_level(site_id) do
-    case RSMP.Registry.lookup_service(site_id, "traffic", []) do
+    case RSMP.Registry.lookup_service(site_id, "traffic") do
       [{service_pid, _}] -> GenServer.call(service_pid, :get_traffic_level)
       [] -> :low
     end
   end
 
   def set_traffic_level(site_id, level) when level in [:none, :sparse, :low, :high] do
-    case RSMP.Registry.lookup_service(site_id, "traffic", []) do
+    case RSMP.Registry.lookup_service(site_id, "traffic") do
       [{service_pid, _}] ->
         GenServer.cast(service_pid, {:set_traffic_level, level})
         :ok
@@ -208,9 +208,8 @@ defmodule RSMP.Node.TLC do
 
   def set_traffic_level(_site_id, _level), do: :error
 
-  def set_alarm(site_id, path, flags) do
-    code = String.replace_prefix(path, "tlc.", "")
-    case RSMP.Registry.lookup_service(site_id, "tlc", []) do
+  def set_alarm(site_id, code, flags) do
+    case RSMP.Registry.lookup_service(site_id, "tlc") do
       [{service_pid, _}] ->
         RSMP.Service.set_alarm(service_pid, code, flags)
       [] -> :ok
@@ -218,9 +217,9 @@ defmodule RSMP.Node.TLC do
   end
 
   def set_plan(site_id, plan) do
-    case RSMP.Registry.lookup_service(site_id, "tlc", []) do
+    case RSMP.Registry.lookup_service(site_id, "tlc") do
       [{service_pid, _}] ->
-        path = RSMP.Path.new("tlc", "plan.set")
+        path = RSMP.Path.new("tlc.plan.set")
         topic = %RSMP.Topic{path: path}
         data = %{"plan" => plan}
         GenServer.call(service_pid, {:receive_command, topic, data, %{}})
@@ -229,21 +228,21 @@ defmodule RSMP.Node.TLC do
   end
 
   def set_plan_local(site_id, plan) do
-    case RSMP.Registry.lookup_service(site_id, "tlc", []) do
+    case RSMP.Registry.lookup_service(site_id, "tlc") do
       [{service_pid, _}] -> GenServer.call(service_pid, {:set_plan_local, plan})
       [] -> :error
     end
   end
 
   def get_volume_data_points(site_id) do
-    case RSMP.Registry.lookup_service(site_id, "traffic", []) do
+    case RSMP.Registry.lookup_service(site_id, "traffic") do
       [{service_pid, _}] -> GenServer.call(service_pid, :get_data_points)
       [] -> []
     end
   end
 
   def get_groups_history(site_id) do
-    case RSMP.Registry.lookup_service(site_id, "tlc", []) do
+    case RSMP.Registry.lookup_service(site_id, "tlc") do
       [{service_pid, _}] -> GenServer.call(service_pid, :get_groups_history)
       [] -> []
     end

@@ -19,12 +19,12 @@ defmodule RSMP.Topic do
     %__MODULE__{id: id, type: type, path: path}
   end
 
-  def new(id, type, module, code, component \\ []) do
-    %__MODULE__{id: id, type: type, path: Path.new(module, code, component)}
+  def new(id, type, code, component \\ []) do
+    %__MODULE__{id: id, type: type, path: Path.new(code, component)}
   end
 
-  def new(id, type, module, code, channel_name, component) do
-    %__MODULE__{id: id, type: type, channel_name: channel_name, path: Path.new(module, code, component)}
+  def new(id, type, code, channel_name, component) do
+    %__MODULE__{id: id, type: type, channel_name: channel_name, path: Path.new(code, component)}
   end
 
   def component(topic), do: topic.path.component
@@ -39,47 +39,33 @@ defmodule RSMP.Topic do
 
       case rest do
         ["presence"] ->
-          new(id, "presence", nil, nil, [])
+          new(id, "presence", nil, [])
 
         # Status-like topics: status, replay, fetch, history, channel.
         # First segment after code is always channel_name.
         # If there's only id/type/code (no extra segments), channel_name is nil.
-        [type, full_code | tail] when type in ["status", "replay", "fetch", "history", "channel"] ->
-          {module, code} =
-            case String.split(full_code, ".", parts: 2) do
-              [m, c] -> {m, c}
-              [c] -> {nil, c}
-            end
-
+        [type, code | tail] when type in ["status", "replay", "fetch", "history", "channel"] ->
           case tail do
             [] ->
               # No channel name, no component (single-channel status)
-              %__MODULE__{id: id, type: type, channel_name: nil, path: Path.new(module, code, [])}
+              %__MODULE__{id: id, type: type, channel_name: nil, path: Path.new(code, [])}
 
             [channel_name | component] ->
               # First segment = channel name, rest = component
-              %__MODULE__{id: id, type: type, channel_name: channel_name, path: Path.new(module, code, component)}
+              %__MODULE__{id: id, type: type, channel_name: channel_name, path: Path.new(code, component)}
           end
 
-        # Non-status topics (command, result, alarm): no channel concept
-        [type, full_code | tail] ->
-          {module, code} =
-            case String.split(full_code, ".", parts: 2) do
-              [m, c] -> {m, c}
-              [c] -> {nil, c}
-            end
-
-          %__MODULE__{id: id, type: type, channel_name: nil, path: Path.new(module, code, tail)}
+        # Non-status topics (command, result, alarm, throttle): no channel concept
+        [type, code | tail] ->
+          %__MODULE__{id: id, type: type, channel_name: nil, path: Path.new(code, tail)}
 
         _ ->
-          new(nil, nil, nil, nil, [])
+          new(nil, nil, nil, [])
       end
     else
-      new(nil, nil, nil, nil, [])
+      new(nil, nil, nil, [])
     end
   end
-
-  def id_module(topic), do: [topic.id, topic.path.module] |> Enum.join("/")
 
   defimpl String.Chars do
     def to_string(topic) do
@@ -88,12 +74,9 @@ defmodule RSMP.Topic do
           "#{topic.id}/presence"
 
         _ ->
-          path = topic.path
-          code_str = if path.module, do: "#{path.module}.#{path.code}", else: path.code
-
-          parts = [topic.id, topic.type, code_str]
+          parts = [topic.id, topic.type, topic.path.code]
           parts = if topic.channel_name, do: parts ++ [topic.channel_name], else: parts
-          parts = parts ++ path.component
+          parts = parts ++ topic.path.component
 
           Enum.join(parts, "/")
       end

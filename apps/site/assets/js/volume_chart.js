@@ -1,4 +1,4 @@
-import uPlot from "uplot"
+import uPlot from "../vendor/uplot.esm.js"
 import { createState, receiveHistory, drawData, MAX_POINTS } from "./volume_chart_state.mjs"
 
 function makeBars(size) {

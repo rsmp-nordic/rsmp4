@@ -20,27 +20,27 @@ defmodule RSMP.TopicTest do
 
   describe "to_string/1" do
     test "formats status topic with channel name" do
-      topic = Topic.new(@id, "status", "tlc", "plan", "main", [])
+      topic = Topic.new(@id, "status", "tlc.plan", "main", [])
       assert to_string(topic) == "#{@id}/status/tlc.plan/main"
     end
 
     test "formats status topic without channel name" do
-      topic = Topic.new(@id, "status", "tlc", "plan", [])
+      topic = Topic.new(@id, "status", "tlc.plan")
       assert to_string(topic) == "#{@id}/status/tlc.plan"
     end
 
     test "formats presence topic correctly: id/presence" do
-      topic = Topic.new(@id, "presence", nil, nil, [])
+      topic = Topic.new(@id, "presence", nil, [])
       assert to_string(topic) == "#{@id}/presence"
     end
 
     test "formats status topic with channel name and component" do
-      topic = Topic.new(@id, "status", "tlc", "traffic", "hourly", ["dl", "1"])
+      topic = Topic.new(@id, "status", "tlc.traffic", "hourly", ["dl", "1"])
       assert to_string(topic) == "#{@id}/status/tlc.traffic/hourly/dl/1"
     end
 
     test "formats command topic with component (no channel name)" do
-      topic = Topic.new(@id, "command", "tlc", "plan.set", ["main"])
+      topic = Topic.new(@id, "command", "tlc.plan.set", ["main"])
       assert to_string(topic) == "#{@id}/command/tlc.plan.set/main"
     end
   end
@@ -51,8 +51,7 @@ defmodule RSMP.TopicTest do
       topic = Topic.from_string(string)
 
       assert topic.type == "status"
-      assert topic.path.module == "tlc"
-      assert topic.path.code == "plan"
+      assert topic.path.code == "tlc.plan"
       assert topic.id == @id
       assert topic.channel_name == "main"
       assert topic.path.component == []
@@ -63,8 +62,7 @@ defmodule RSMP.TopicTest do
       topic = Topic.from_string(string)
 
       assert topic.type == "status"
-      assert topic.path.module == "tlc"
-      assert topic.path.code == "plan"
+      assert topic.path.code == "tlc.plan"
       assert topic.id == @id
       assert topic.channel_name == nil
       assert topic.path.component == []
@@ -75,8 +73,7 @@ defmodule RSMP.TopicTest do
       topic = Topic.from_string(string)
 
       assert topic.type == "status"
-      assert topic.path.module == "tlc"
-      assert topic.path.code == "traffic"
+      assert topic.path.code == "tlc.traffic"
       assert topic.channel_name == "hourly"
       assert topic.path.component == ["dl", "1"]
     end
@@ -86,8 +83,7 @@ defmodule RSMP.TopicTest do
       topic = Topic.from_string(string)
 
       assert topic.type == "command"
-      assert topic.path.module == "tlc"
-      assert topic.path.code == "plan.set"
+      assert topic.path.code == "tlc.plan.set"
       assert topic.channel_name == nil
       assert topic.path.component == ["main"]
     end

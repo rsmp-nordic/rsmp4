@@ -38,11 +38,11 @@ defmodule RSMP.MessagingTest do
 
     # Start the remote service (TLC)
     # The arguments map to start_link({id, remote_id, service, component, data})
-    {:ok, pid} = RSMP.Remote.Service.TLC.start_link({id, remote_id, "tlc", [], %{}})
+    {:ok, pid} = RSMP.Remote.Service.TLC.start_link({id, remote_id, "tlc", %{}})
 
     # Create the status message
     # Expecting path 'plan' (Status) as defined in RSMP.Remote.Service.TLC.receive_status/4
-    topic = RSMP.Topic.new(remote_id, "status", "tlc", "plan")
+    topic = RSMP.Topic.new(remote_id, "status", "tlc.plan")
     data = %{"status" => 2, "source" => "local"}
 
     # Send receive_status cast
@@ -83,17 +83,17 @@ defmodule RSMP.MessagingTest do
     id = "site_alarm_test"
     remote_id = "tlc_remote_3"
 
-    {:ok, pid} = RSMP.Remote.Service.TLC.start_link({id, remote_id, "tlc", [], %{}})
+    {:ok, pid} = RSMP.Remote.Service.TLC.start_link({id, remote_id, "tlc", %{}})
 
-    topic = RSMP.Topic.new(remote_id, "alarm", "tlc", "A0001", ["C1"])
+    topic = RSMP.Topic.new(remote_id, "alarm", "tlc.A0001", ["C1"])
     data = %{"cId" => "C1", "active" => true}
 
     GenServer.cast(pid, {:receive_alarm, topic, data, %{}})
     :timer.sleep(10)
 
     state = :sys.get_state(pid)
-    assert state.alarms[{"C1", "A0001"}]
-    assert state.alarms[{"C1", "A0001"}].active == true
+    assert state.alarms[{"C1", "tlc.A0001"}]
+    assert state.alarms[{"C1", "tlc.A0001"}].active == true
   end
 
   test "receive command on local service executes command and updates state" do
@@ -105,9 +105,9 @@ defmodule RSMP.MessagingTest do
     # Start Local TLC Service
     # We pre-populate plans so switching to plan 2 works
     initial_data = %{plans: %{2 => %{desc: "Plan 2"}}}
-    {:ok, pid} = RSMP.Service.TLC.start_link({id, [], "tlc", initial_data})
+    {:ok, pid} = RSMP.Service.TLC.start_link({id, "tlc", initial_data})
 
-    topic = RSMP.Topic.new(id, "command", "tlc", "plan.set")
+    topic = RSMP.Topic.new(id, "command", "tlc.plan.set")
     data = %{"plan" => 2}
 
     # Helper to clean mailbox before call
@@ -129,7 +129,7 @@ defmodule RSMP.MessagingTest do
     # Verify Published Result (from generic handle_call)
     assert_receive {:published, topic_result, _data_result}
     assert topic_result.type == "result"
-    assert topic_result.path.code == "plan.set"
+    assert topic_result.path.code == "tlc.plan.set"
   end
 
   test "receive alarm.set command on local service updates alarm and publishes alarm" do
@@ -137,20 +137,20 @@ defmodule RSMP.MessagingTest do
 
     start_supervised!({MockConnection, {id, self()}})
 
-    {:ok, pid} = RSMP.Service.TLC.start_link({id, [], "tlc", %{}})
+    {:ok, pid} = RSMP.Service.TLC.start_link({id, "tlc", %{}})
 
-    topic = RSMP.Topic.new(id, "command", "tlc", "alarm.set")
-    data = %{"code" => "hardware.error", "active" => true}
+    topic = RSMP.Topic.new(id, "command", "tlc.alarm.set")
+    data = %{"code" => "tlc.hardware.error", "active" => true}
 
     result = GenServer.call(pid, {:receive_command, topic, data, %{}})
 
-    assert result == %{status: "ok", code: "hardware.error", active: true}
+    assert result == %{status: "ok", code: "tlc.hardware.error", active: true}
 
     state = :sys.get_state(pid)
-    assert state.alarms["hardware.error"].active == true
+    assert state.alarms["tlc.hardware.error"].active == true
 
     assert_receive {:published, topic_alarm, _data_alarm}
     assert topic_alarm.type == "alarm"
-    assert topic_alarm.path.code == "hardware.error"
+    assert topic_alarm.path.code == "tlc.hardware.error"
   end
 end

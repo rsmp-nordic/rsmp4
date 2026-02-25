@@ -8,9 +8,9 @@ defmodule RSMP.Services do
   @impl Supervisor
   def init({id, services}) do
     services =
-      for {component, service, args} <- services do
+      for {service, args} <- services do
         name = service.name()
-        Supervisor.child_spec({service, {id, component, name, args}}, id: {component, name})
+        Supervisor.child_spec({service, {id, name, args}}, id: name)
       end
 
     Supervisor.init(services, strategy: :one_for_one)

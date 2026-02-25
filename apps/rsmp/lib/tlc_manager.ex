@@ -26,7 +26,7 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
 
   def receive_status(
         service,
-      %RSMP.Topic{path: %RSMP.Path{code: "plan"}=path},
+      %RSMP.Topic{path: %RSMP.Path{code: "tlc.plan"}=path},
         %{plan: plan, source: source},
         _properties
       ) do
@@ -84,7 +84,7 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
   end
 
   # convert from sxl format to internal format
-  def parse_status(_service, "plan", data) do
+  def parse_status(_service, "tlc.plan", data) do
     %{
       plan: data["status"],
       source: data["source"]

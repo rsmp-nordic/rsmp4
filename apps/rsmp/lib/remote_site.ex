@@ -251,20 +251,20 @@ defmodule RSMP.Remote.Node.Site do
     end
   end
 
-  def module(site, name), do: site.modules |> Map.fetch!(name)
-  def responder(site, name), do: module(site, name).responder
-  def converter(site, name), do: module(site, name).converter
+  def module(site, code), do: site.modules |> Map.fetch!(code)
+  def responder(site, code), do: module(site, code).responder
+  def converter(site, code), do: module(site, code).converter
 
   def from_rsmp_status(site, path, data) do
-    converter(site, path.module).from_rsmp_status(path.code, data)
+    converter(site, path.code).from_rsmp_status(path.code, data)
   end
 
   def to_rsmp_status(site, path, data) do
-    converter(site, path.module).to_rsmp_status(path.code, data)
+    converter(site, path.code).to_rsmp_status(path.code, data)
   end
 
   def module_mapping(module_list) do
-    for module <- module_list, into: %{}, do: {module.name(), module}
+    for module <- module_list, code <- module.codes(), into: %{}, do: {code, module}
   end
 
   # ---- Private helpers for channel data structure ----

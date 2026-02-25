@@ -319,24 +319,18 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     channel_state_key = channel_state_key(path, channel_name)
 
     case String.split(path, "/", parts: 2) do
-      [full_code | _rest] ->
-        case String.split(full_code, ".", parts: 2) do
-          [module, code] ->
-            channel =
-              case channel_name do
-                "" -> nil
-                "default" -> nil
-                value -> value
-              end
+      [code | _rest] ->
+        channel =
+          case channel_name do
+            "" -> nil
+            "default" -> nil
+            value -> value
+          end
 
-            if state == "running" do
-              RSMP.Supervisor.stop_channel(supervisor_id, site_id, module, code, channel)
-            else
-              RSMP.Supervisor.start_channel(supervisor_id, site_id, module, code, channel)
-            end
-
-          _ ->
-            Logger.warning("Unable to parse channel path for throttle: #{path}")
+        if state == "running" do
+          RSMP.Supervisor.stop_channel(supervisor_id, site_id, code, channel)
+        else
+          RSMP.Supervisor.start_channel(supervisor_id, site_id, code, channel)
         end
 
       _ ->
@@ -362,7 +356,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     time_ranges = RSMP.Supervisor.gap_time_ranges(supervisor_id, site_id, "traffic.volume/live")
 
     for {from_ts, to_ts} <- time_ranges do
-      RSMP.Supervisor.send_fetch(supervisor_id, site_id, "traffic", "volume", "live", from_ts, to_ts)
+      RSMP.Supervisor.send_fetch(supervisor_id, site_id, "traffic.volume", "live", from_ts, to_ts)
     end
 
     {:noreply, socket}
@@ -467,7 +461,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_info(%{topic: "response", response: response}, socket) do
-    if response[:command] != "plan.set" do
+    if response[:command] != "tlc.plan.set" do
       {:noreply, socket}
     else
     symbol =

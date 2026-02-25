@@ -34,10 +34,10 @@ defmodule RSMP.ChannelTest do
 
       # Start a TLC service so the channel can fetch initial values
       initial_data = %{plan: 1, plans: %{1 => %{}, 2 => %{}}}
-      start_supervised!({RSMP.Service.TLC, {id, [], "tlc", initial_data}})
+      start_supervised!({RSMP.Service.TLC, {id, "tlc", initial_data}})
 
       config = %RSMP.Channel.Config{
-        code: "plan",
+        code: "tlc.plan",
         channel_name: nil,
         attributes: %{
           "status" => :on_change,
@@ -50,7 +50,7 @@ defmodule RSMP.ChannelTest do
         qos: 1
       }
 
-      {:ok, channel_pid} = RSMP.Channel.start_link({id, "tlc", config})
+      {:ok, channel_pid} = RSMP.Channel.start_link({id, config})
 
       assert_receive {:published, topic, state_data, state_options}
       assert to_string(topic) == "#{id}/channel/tlc.plan/default"
@@ -138,10 +138,10 @@ defmodule RSMP.ChannelTest do
       start_supervised!({MockConnection, {id, self()}})
 
       initial_data = %{plan: 2, plans: %{1 => %{}, 2 => %{}}}
-      start_supervised!({RSMP.Service.TLC, {id, [], "tlc", initial_data}})
+      start_supervised!({RSMP.Service.TLC, {id, "tlc", initial_data}})
 
       config = %RSMP.Channel.Config{
-        code: "plan",
+        code: "tlc.plan",
         channel_name: nil,
         attributes: %{
           "status" => :on_change,
@@ -154,7 +154,7 @@ defmodule RSMP.ChannelTest do
         qos: 1
       }
 
-      {:ok, _channel_pid} = RSMP.Channel.start_link({id, "tlc", config})
+      {:ok, _channel_pid} = RSMP.Channel.start_link({id, config})
 
       # Should auto-start and publish a full update
       assert_receive {:published, _topic, data, _options}, 500
@@ -174,10 +174,10 @@ defmodule RSMP.ChannelTest do
       start_supervised!({MockConnection, {id, self()}})
 
       initial_data = %{plan: 1, plans: %{1 => %{}, 2 => %{}}}
-      start_supervised!({RSMP.Service.TLC, {id, [], "tlc", initial_data}})
+      start_supervised!({RSMP.Service.TLC, {id, "tlc", initial_data}})
 
       config = %RSMP.Channel.Config{
-        code: "groups",
+        code: "tlc.groups",
         channel_name: "live",
         attributes: %{
           "signalgroupstatus" => :on_change,
@@ -191,7 +191,7 @@ defmodule RSMP.ChannelTest do
         qos: 0
       }
 
-      {:ok, channel_pid} = RSMP.Channel.start_link({id, "tlc", config})
+      {:ok, channel_pid} = RSMP.Channel.start_link({id, config})
 
       assert_receive {:published, topic, state_data, state_options}
       assert to_string(topic) == "#{id}/channel/tlc.groups/live"
@@ -249,17 +249,17 @@ defmodule RSMP.ChannelTest do
 
   describe "Channel topic formatting" do
     test "topic includes channel name when present" do
-      topic = RSMP.Topic.new("site1", "status", "tlc", "groups", "live", [])
+      topic = RSMP.Topic.new("site1", "status", "tlc.groups", "live", [])
       assert to_string(topic) == "site1/status/tlc.groups/live"
     end
 
     test "topic omits channel name when nil" do
-      topic = RSMP.Topic.new("site1", "status", "tlc", "plan", nil, [])
+      topic = RSMP.Topic.new("site1", "status", "tlc.plan")
       assert to_string(topic) == "site1/status/tlc.plan"
     end
 
     test "topic includes channel name and component" do
-      topic = RSMP.Topic.new("site1", "status", "tlc", "traffic", "hourly", ["dl", "1"])
+      topic = RSMP.Topic.new("site1", "status", "tlc.traffic", "hourly", ["dl", "1"])
       assert to_string(topic) == "site1/status/tlc.traffic/hourly/dl/1"
     end
   end
@@ -281,11 +281,11 @@ defmodule RSMP.ChannelTest do
       assert length(channels) == 5
 
       # Find specific channels
-      groups_live = Enum.find(channels, &(&1.code == "groups" and &1.channel_name == "live"))
-      plan_channel = Enum.find(channels, &(&1.code == "plan"))
-      plans_channel = Enum.find(channels, &(&1.code == "plans"))
-      traffic_live = Enum.find(channels, &(&1.module == "traffic" and &1.code == "volume" and &1.channel_name == "live"))
-      traffic_5s = Enum.find(channels, &(&1.module == "traffic" and &1.code == "volume" and &1.channel_name == "5s"))
+      groups_live = Enum.find(channels, &(&1.code == "tlc.groups" and &1.channel_name == "live"))
+      plan_channel = Enum.find(channels, &(&1.code == "tlc.plan"))
+      plans_channel = Enum.find(channels, &(&1.code == "tlc.plans"))
+      traffic_live = Enum.find(channels, &(&1.code == "traffic.volume" and &1.channel_name == "live"))
+      traffic_5s = Enum.find(channels, &(&1.code == "traffic.volume" and &1.channel_name == "5s"))
 
       assert groups_live != nil
       assert groups_live.running == false  # default_on: false
@@ -318,7 +318,7 @@ defmodule RSMP.ChannelTest do
       # Drain startup publications (full updates from default-on channels)
       drain_published_messages()
 
-      assert :ok = RSMP.Node.TLC.stop_channel(id, "tlc", "plan", nil)
+      assert :ok = RSMP.Node.TLC.stop_channel(id, "tlc.plan", nil)
 
       # Channel stop publishes retained nil to clear stale data
       assert_receive {:published, topic, nil, _options}, 500
@@ -327,7 +327,7 @@ defmodule RSMP.ChannelTest do
       # Changing plan should not publish status while channel is stopped
       assert %{status: "ok", plan: 2} = RSMP.Node.TLC.set_plan(id, 2)
 
-      refute_receive {:published, %RSMP.Topic{type: "status", path: %RSMP.Path{module: "tlc", code: "plan"}}, _data, _options}, 400
+      refute_receive {:published, %RSMP.Topic{type: "status", path: %RSMP.Path{code: "tlc.plan"}}, _data, _options}, 400
     end
   end
 
@@ -345,10 +345,10 @@ defmodule RSMP.ChannelTest do
       start_supervised!({MockConnection, {id, self()}})
 
       initial_data = %{plan: 1, plans: %{1 => %{}, 2 => %{}}}
-      start_supervised!({RSMP.Service.TLC, {id, [], "tlc", initial_data}})
+      start_supervised!({RSMP.Service.TLC, {id, "tlc", initial_data}})
 
       config = %RSMP.Channel.Config{
-        code: "plan",
+        code: "tlc.plan",
         channel_name: nil,
         attributes: %{
           "status" => :on_change,
@@ -363,7 +363,7 @@ defmodule RSMP.ChannelTest do
         history_rate: 4
       }
 
-      {:ok, channel_pid} = RSMP.Channel.start_link({id, "tlc", config})
+      {:ok, channel_pid} = RSMP.Channel.start_link({id, config})
 
       # Receive and discard channel state
       assert_receive {:published, _, _, _}
@@ -407,10 +407,10 @@ defmodule RSMP.ChannelTest do
       start_supervised!({MockConnection, {id, self()}})
 
       initial_data = %{plan: 1, plans: %{1 => %{}, 2 => %{}}}
-      start_supervised!({RSMP.Service.TLC, {id, [], "tlc", initial_data}})
+      start_supervised!({RSMP.Service.TLC, {id, "tlc", initial_data}})
 
       config = %RSMP.Channel.Config{
-        code: "plan",
+        code: "tlc.plan",
         channel_name: nil,
         attributes: %{
           "status" => :on_change
@@ -423,7 +423,7 @@ defmodule RSMP.ChannelTest do
         history_rate: 4
       }
 
-      {:ok, channel_pid} = RSMP.Channel.start_link({id, "tlc", config})
+      {:ok, channel_pid} = RSMP.Channel.start_link({id, config})
 
       # Just receive the initial channel state
       assert_receive {:published, _, _, _}
@@ -449,10 +449,10 @@ defmodule RSMP.ChannelTest do
       start_supervised!({MockConnection, {id, self()}})
 
       initial_data = %{plan: 1, plans: %{1 => %{}, 2 => %{}}}
-      start_supervised!({RSMP.Service.TLC, {id, [], "tlc", initial_data}})
+      start_supervised!({RSMP.Service.TLC, {id, "tlc", initial_data}})
 
       config = %RSMP.Channel.Config{
-        code: "groups",
+        code: "tlc.groups",
         channel_name: "live",
         attributes: %{
           "signalgroupstatus" => :on_change,
@@ -466,7 +466,7 @@ defmodule RSMP.ChannelTest do
         history_rate: nil
       }
 
-      {:ok, channel_pid} = RSMP.Channel.start_link({id, "tlc", config})
+      {:ok, channel_pid} = RSMP.Channel.start_link({id, config})
       assert_receive {:published, _, _, _}  # channel state
 
       # Channel is stopped — reports should buffer but not publish
@@ -513,10 +513,10 @@ defmodule RSMP.ChannelTest do
       start_supervised!({MockConnection, {id, self()}})
 
       initial_data = %{plan: 1, plans: %{1 => %{}, 2 => %{}}}
-      start_supervised!({RSMP.Service.TLC, {id, [], "tlc", initial_data}})
+      start_supervised!({RSMP.Service.TLC, {id, "tlc", initial_data}})
 
       config = %RSMP.Channel.Config{
-        code: "groups",
+        code: "tlc.groups",
         channel_name: "live",
         attributes: %{
           "signalgroupstatus" => :on_change,
@@ -531,7 +531,7 @@ defmodule RSMP.ChannelTest do
         history_rate: 2
       }
 
-      {:ok, channel_pid} = RSMP.Channel.start_link({id, "tlc", config})
+      {:ok, channel_pid} = RSMP.Channel.start_link({id, config})
 
       assert_receive {:published, _, _, _}  # channel state
 

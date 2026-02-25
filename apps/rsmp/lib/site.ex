@@ -145,7 +145,7 @@ defmodule RSMP.Site do
         site
 
       true ->
-        case RSMP.Registry.lookup_channel(site.id, path.module, path.code, channel_name, []) do
+        case RSMP.Registry.lookup_channel(site.id, path.code, channel_name, []) do
           [{pid, _}] ->
             case action do
               "start" -> RSMP.Channel.start_channel(pid)
@@ -178,16 +178,16 @@ defmodule RSMP.Site do
     {:noreply, site}
   end
 
-  def module(site, name), do: site.modules |> Map.fetch!(name)
-  def responder(site, name), do: module(site, name).responder
-  def converter(site, name), do: module(site, name).converter
+  def module(site, code), do: site.modules |> Map.fetch!(code)
+  def responder(site, code), do: module(site, code).responder
+  def converter(site, code), do: module(site, code).converter
 
   def from_rsmp_status(site, path, data) do
-    converter(site, path.module).from_rsmp_status(path.code, data)
+    converter(site, path.code).from_rsmp_status(path.code, data)
   end
 
   def to_rsmp_status(site, path, data) do
-    converter(site, path.module).to_rsmp_status(path.code, data)
+    converter(site, path.code).to_rsmp_status(path.code, data)
   end
 
   # Enable "use RSMP.Site" in your RSMP Site modules
@@ -372,7 +372,7 @@ defmodule RSMP.Site do
       @impl true
       def handle_info({:publish, publish}, site) do
         topic = Topic.from_string(publish.topic)
-        responder = Site.responder(site, topic.path.module)
+        responder = Site.responder(site, topic.path.code)
         data = Utility.from_payload(publish[:payload])
 
         properties = %{
@@ -405,7 +405,7 @@ defmodule RSMP.Site do
 
       # helpers
       def module_mapping() do
-        for module <- modules(), into: %{}, do: {module.name, module}
+        for module <- modules(), code <- module.codes(), into: %{}, do: {code, module}
       end
     end
   end

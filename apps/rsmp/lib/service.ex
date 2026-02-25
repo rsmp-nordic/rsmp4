@@ -17,6 +17,7 @@ defmodule RSMP.Service do
     @callback name() :: String.t()
     @callback status_codes() :: [String.t()]
     @callback alarm_codes() :: [String.t()]
+    @callback command_codes() :: [String.t()]
   end
 
   # macro
@@ -31,14 +32,19 @@ defmodule RSMP.Service do
 
       def name(), do: unquote(name)
 
-      def start_link({id, component, service, data}) do
-        via = RSMP.Registry.via_service(id, service, component)
+      def start_link({id, service, data}) do
+        via = RSMP.Registry.via_service(id, service)
         GenServer.start_link(__MODULE__, {id, data}, name: via)
       end
 
       @impl GenServer
       def init({id, data}) do
-        {:ok, new(id, data)}
+        service = new(id, data)
+        # Register all codes this service handles so it can be looked up by code
+        for code <- status_codes() ++ alarm_codes() ++ command_codes() do
+          Registry.register(RSMP.Registry, {id, :code, code}, nil)
+        end
+        {:ok, service}
       end
 
       @impl GenServer
@@ -139,14 +145,13 @@ defmodule RSMP.Service do
   """
   def report_to_channels(service, code) do
     id = RSMP.Service.Protocol.id(service)
-    module = RSMP.Service.Protocol.name(service)
     values = RSMP.Service.Protocol.format_status(service, code)
-    report_to_channels(id, module, code, values)
+    report_to_channels(id, code, values)
   end
 
-  def report_to_channels(id, module, code, values, ts \\ nil) do
+  def report_to_channels(id, code, values, ts \\ nil) do
     # Find all channels for this code (any channel_name, any component)
-    match_pattern = {{{id, :channel, module, code, :_, :_}, :"$1", :_}, [], [:"$1"]}
+    match_pattern = {{{id, :channel, code, :_, :_}, :"$1", :_}, [], [:"$1"]}
     pids = Registry.select(RSMP.Registry, [match_pattern])
 
     Enum.each(pids, fn pid ->
@@ -156,8 +161,7 @@ defmodule RSMP.Service do
 
   defp make_topic(service, type, code, component) do
     id = RSMP.Service.Protocol.id(service)
-    module = RSMP.Service.Protocol.name(service)
-    RSMP.Topic.new(id, type, module, code, component)
+    RSMP.Topic.new(id, type, code, component)
   end
 
   #  def alarm_flag_string(service, path) do
