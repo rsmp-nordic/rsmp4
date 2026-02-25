@@ -61,7 +61,7 @@ defmodule RSMP.SupervisorTest do
     assert status.stage == 2
   end
 
-  test "traffic.volume live delta replaces provided counters, not accumulates in supervisor", %{supervisor_id: supervisor_id, pid: pid} do
+  test "traffic.volume live delta: missing counters imply zero, stale values are cleared", %{supervisor_id: supervisor_id, pid: pid} do
     assert pid != nil
 
     site_id = "supervisor_traffic_delta_#{System.unique_integer([:positive])}"
@@ -91,6 +91,7 @@ defmodule RSMP.SupervisorTest do
     status = RSMP.Supervisor.site(supervisor_id, site_id).statuses["traffic.volume"]
     assert status.cars == 6
 
+    # A delta with only bicycles implies cars = 0 (missing key means zero for traffic.volume).
     delta_payload_2 =
       RSMP.Utility.to_payload(%{
         "type" => "delta",
@@ -103,8 +104,45 @@ defmodule RSMP.SupervisorTest do
     :timer.sleep(20)
 
     status = RSMP.Supervisor.site(supervisor_id, site_id).statuses["traffic.volume"]
-    assert status.cars == 6
     assert status.bicycles == 2
+    assert status.cars == 0
+    assert status.busses == 0
+  end
+
+  test "traffic.volume 5s channel does not overwrite live display values", %{supervisor_id: supervisor_id, pid: pid} do
+    site_id = "supervisor_traffic_5s_isolation_#{System.unique_integer([:positive])}"
+
+    live_payload =
+      RSMP.Utility.to_payload(%{
+        "type" => "delta",
+        "data" => %{"cars" => 3}
+      })
+
+    send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: live_payload, properties: %{}}})
+    :timer.sleep(20)
+
+    status = RSMP.Supervisor.site(supervisor_id, site_id).statuses["traffic.volume"]
+    assert status.cars == 3
+
+    # 5s aggregated full should not overwrite the display values
+    s5_payload =
+      RSMP.Utility.to_payload(%{
+        "values" => %{"cars" => 99, "bicycles" => 99, "busses" => 99},
+        "seq" => 1
+      })
+
+    send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/5s", retain: true, payload: s5_payload, properties: %{}}})
+    :timer.sleep(20)
+
+    status = RSMP.Supervisor.site(supervisor_id, site_id).statuses["traffic.volume"]
+    assert status.cars == 3
+    assert status.bicycles == 0
+    assert status.busses == 0
+
+    # seq for 5s channel should still be tracked
+    seq = get_in(status, [:seq]) || get_in(status, ["seq"])
+    assert is_map(seq)
+    assert Map.get(seq, "5s") == 1
   end
 
   # ---------------------------------------------------------------------------
@@ -643,5 +681,33 @@ defmodule RSMP.SupervisorTest do
     assert length(points) == 5
     cars = Enum.map(points, fn %{values: v} -> v.cars end)
     assert Enum.sort(cars) == [1, 2, 3, 4, 5]
+  end
+
+  # ---------------------------------------------------------------------------
+  # TrafficConverter unit tests
+  # ---------------------------------------------------------------------------
+
+  describe "TrafficConverter.from_rsmp_status" do
+    test "fills zeros for all missing counters when only one is present", _ctx do
+      result = RSMP.Converter.Traffic.from_rsmp_status("traffic.volume", %{"cars" => 5})
+      assert result == %{cars: 5, bicycles: 0, busses: 0}
+    end
+
+    test "preserves all provided counters and fills no implicit zeros", _ctx do
+      result = RSMP.Converter.Traffic.from_rsmp_status("traffic.volume", %{
+        "cars" => 3, "bicycles" => 2, "busses" => 1
+      })
+      assert result == %{cars: 3, bicycles: 2, busses: 1}
+    end
+
+    test "fills all zeros when payload is empty", _ctx do
+      result = RSMP.Converter.Traffic.from_rsmp_status("traffic.volume", %{})
+      assert result == %{cars: 0, bicycles: 0, busses: 0}
+    end
+
+    test "accepts atom keys and converts them", _ctx do
+      result = RSMP.Converter.Traffic.from_rsmp_status("traffic.volume", %{cars: 10})
+      assert result == %{cars: 10, bicycles: 0, busses: 0}
+    end
   end
 end

@@ -20,9 +20,12 @@ defmodule RSMP.Converter.Traffic do
 
   @impl RSMP.Converter
   def from_rsmp_status("traffic.volume", data) when is_map(data) do
+    # Missing keys imply zero: fill all counts so deep-merge replaces stale values.
+    zeros = %{"cars" => 0, "bicycles" => 0, "busses" => 0}
     data
     |> normalize_string_keys()
     |> keep_allowed_keys()
+    |> then(fn d -> Map.merge(zeros, d) end)
     |> Enum.into(%{}, fn {key, value} -> {String.to_atom(key), value} end)
   end
 

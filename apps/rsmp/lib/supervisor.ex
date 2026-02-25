@@ -518,11 +518,19 @@ defmodule RSMP.Supervisor do
 
     current_status = get_in(site.statuses, [status_key]) || %{}
 
+    # Only update display values from the primary (nil or "live") channel.
+    # Secondary channels (e.g. "5s" aggregation) only contribute seq tracking.
+    primary_channel = topic.channel_name == nil or topic.channel_name == "live"
+
     status =
-      if status_type == "delta" do
-        deep_merge_status(current_status, new_status)
+      if primary_channel do
+        if status_type == "delta" do
+          deep_merge_status(current_status, new_status)
+        else
+          new_status
+        end
       else
-        new_status
+        current_status
       end
 
     status = maybe_put_status_seq(status, current_status, topic.channel_name, seq)

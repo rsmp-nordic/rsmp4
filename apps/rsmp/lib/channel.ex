@@ -126,6 +126,9 @@ defmodule RSMP.Channel do
   @doc "Publish current channel running/stopped state."
   def publish_state(pid), do: GenServer.call(pid, :publish_state)
 
+  @doc "Return the last published full values for this channel, or nil if nothing has been published yet."
+  def get_last_full(pid), do: GenServer.call(pid, :get_last_full)
+
   @doc "Get current channel info."
   def info(pid), do: GenServer.call(pid, :info)
 
@@ -196,6 +199,10 @@ defmodule RSMP.Channel do
   def handle_call(:force_full, _from, state) do
     state = publish_full(state)
     {:reply, :ok, state}
+  end
+
+  def handle_call(:get_last_full, _from, state) do
+    {:reply, state.last_full, state}
   end
 
   def handle_call(:publish_state, _from, state) do
@@ -776,7 +783,7 @@ defmodule RSMP.Channel do
     {data, state} =
       if state.aggregation != :off do
         aggregated = compute_aggregation(state.aggregation, state.aggregation_acc, state.attributes)
-        {aggregated, %{state | aggregation_acc: nil}}
+        {aggregated, %{state | aggregation_acc: nil, last_full: aggregated}}
       else
         {state.last_full || %{}, state}
       end

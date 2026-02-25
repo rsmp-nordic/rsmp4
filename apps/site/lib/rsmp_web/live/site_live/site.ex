@@ -266,7 +266,16 @@ defmodule RSMP.Site.Web.SiteLive.Site do
 
   @impl true
   def handle_info(%{topic: "channel_data", channel: channel_key}, socket) when is_binary(channel_key) do
-    {:noreply, pulse_channel(socket, channel_key)}
+    socket = pulse_channel(socket, channel_key)
+    socket =
+      if String.starts_with?(channel_key, "traffic.volume/") do
+        site_id = socket.assigns.id
+        statuses = TLC.get_statuses(site_id)
+        assign_statuses_and_channels(socket, statuses, site_id)
+      else
+        socket
+      end
+    {:noreply, socket}
   end
 
   @impl true

@@ -597,4 +597,72 @@ defmodule RSMP.ChannelTest do
       0 -> acc
     end
   end
+
+  describe "Aggregation channel" do
+    test "get_last_full returns nil before publish, then aggregated sum after force_full" do
+      id = "channel_agg_last_full_#{System.unique_integer([:positive])}"
+      start_supervised!({MockConnection, {id, self()}})
+
+      config = %RSMP.Channel.Config{
+        code: "traffic.volume",
+        channel_name: "5s",
+        attributes: %{
+          "cars" => :on_change,
+          "bicycles" => :on_change,
+          "busses" => :on_change
+        },
+        update_rate: 60_000,
+        delta_rate: :off,
+        aggregation: :sum,
+        min_interval: 0,
+        default_on: false,
+        qos: 0
+      }
+
+      {:ok, channel_pid} = RSMP.Channel.start_link({id, config})
+
+      # Drain initial stopped state message
+      assert_receive {:published, _, %{"state" => "stopped"}, _}
+      assert RSMP.Channel.get_last_full(channel_pid) == nil
+
+      RSMP.Channel.start_channel(channel_pid)
+      assert_receive {:published, _, %{"state" => "running"}, _}
+
+      # No publish yet for aggregation channels on start
+      assert RSMP.Channel.get_last_full(channel_pid) == nil
+
+      # Report multiple detection events (each carrying only one vehicle type)
+      RSMP.Channel.report(channel_pid, %{"cars" => 5})
+      RSMP.Channel.report(channel_pid, %{"busses" => 3})
+      RSMP.Channel.report(channel_pid, %{"cars" => 2})
+
+      # Still nil — accumulator not flushed yet
+      assert RSMP.Channel.get_last_full(channel_pid) == nil
+
+      # Force publish the aggregated window
+      RSMP.Channel.force_full(channel_pid)
+
+      assert_receive {:published, topic, data, _opts}
+      assert to_string(topic) =~ "traffic.volume/5s"
+      assert data["values"]["cars"] == 7
+      assert data["values"]["busses"] == 3
+      assert data["values"]["bicycles"] == 0
+
+      # get_last_full now returns the published aggregated values
+      last_full = RSMP.Channel.get_last_full(channel_pid)
+      assert last_full["cars"] == 7
+      assert last_full["busses"] == 3
+      assert last_full["bicycles"] == 0
+
+      # Accumulator resets after publish; next window starts empty
+      RSMP.Channel.force_full(channel_pid)
+      assert_receive {:published, _topic, data2, _opts}
+      assert data2["values"] == %{"cars" => 0, "bicycles" => 0, "busses" => 0}
+
+      last_full2 = RSMP.Channel.get_last_full(channel_pid)
+      assert last_full2["cars"] == 0
+      assert last_full2["bicycles"] == 0
+      assert last_full2["busses"] == 0
+    end
+  end
 end
