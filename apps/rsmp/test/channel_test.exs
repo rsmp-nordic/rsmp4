@@ -69,9 +69,9 @@ defmodule RSMP.ChannelTest do
       # Should have published a full update
       assert_receive {:published, topic, data, options}
       assert to_string(topic) == "#{id}/status/tlc.plan"
-      assert data["values"]["status"] == 1
-      assert data["seq"] == 1
-      refute Map.has_key?(data, "type")
+      entry = hd(data["entries"])
+      assert entry["values"]["status"] == 1
+      assert entry["seq"] == 1
       assert options.retain == true
 
       assert_receive {:published, topic, state_data, state_options}
@@ -107,8 +107,9 @@ defmodule RSMP.ChannelTest do
       assert :ok = RSMP.Channel.start_channel(channel_pid)
 
       assert_receive {:published, _topic, data, _options}
-      assert data["values"]["status"] == 1
-      assert data["seq"] == 2
+      entry = hd(data["entries"])
+      assert entry["values"]["status"] == 1
+      assert entry["seq"] == 2
 
       assert_receive {:published, topic, state_data, state_options}
       assert to_string(topic) == "#{id}/channel/tlc.plan/default"
@@ -158,7 +159,7 @@ defmodule RSMP.ChannelTest do
 
       # Should auto-start and publish a full update
       assert_receive {:published, _topic, data, _options}, 500
-      assert data["values"]["status"] == 2
+      assert hd(data["entries"])["values"]["status"] == 2
 
       assert_receive {:published, topic, state_data, state_options}, 500
       assert to_string(topic) == "#{id}/channel/tlc.plan/default"
@@ -202,7 +203,7 @@ defmodule RSMP.ChannelTest do
       :ok = RSMP.Channel.start_channel(channel_pid)
 
       # Consume the initial full update
-      assert_receive {:published, _topic, %{"values" => _}, _options}
+      assert_receive {:published, _topic, %{"entries" => [_ | _]}, _options}
       assert_receive {:published, _topic, %{"state" => "running"}, _options}
 
       # Report values where an on_change attr changes
@@ -214,11 +215,11 @@ defmodule RSMP.ChannelTest do
 
       # Should get a delta with the changed on_change attrs + send_along attrs
       assert_receive {:published, topic, data, options}, 500
+      entry = hd(data["entries"])
       assert to_string(topic) =~ "tlc.groups/live"
-      assert data["values"]["signalgroupstatus"] == %{"1" => "G", "2" => "G", "3" => "G", "4" => "R", "5" => "R"}
-      assert data["values"]["stage"] == 1
-      assert data["values"]["cyclecounter"] == 42
-      refute Map.has_key?(data, "type")
+      assert entry["values"]["signalgroupstatus"] == %{"1" => "G", "2" => "G", "3" => "G", "4" => "R", "5" => "R"}
+      assert entry["values"]["stage"] == 1
+      assert entry["values"]["cyclecounter"] == 42
       assert options.retain == false
 
       # Report only cyclecounter change (send_along) - should NOT trigger delta
@@ -229,7 +230,7 @@ defmodule RSMP.ChannelTest do
       })
 
       # No delta should be published (cyclecounter is send_along, not a trigger)
-      refute_receive {:published, _, %{"values" => _}, %{retain: false}}, 200
+      refute_receive {:published, _, %{"entries" => _}, %{retain: false}}, 200
 
       # Report signalgroupstatus change - should trigger delta with updated cyclecounter
       RSMP.Channel.report(channel_pid, %{
@@ -239,11 +240,12 @@ defmodule RSMP.ChannelTest do
       })
 
       assert_receive {:published, _topic, data, _options}, 500
-      assert data["values"]["signalgroupstatus"] == %{"4" => "G"}
+      entry = hd(data["entries"])
+      assert entry["values"]["signalgroupstatus"] == %{"4" => "G"}
       # cyclecounter should be the latest value, sent along
-      assert data["values"]["cyclecounter"] == 44
+      assert entry["values"]["cyclecounter"] == 44
       # stage didn't change so it should NOT be in the delta
-      refute Map.has_key?(data["values"], "stage")
+      refute Map.has_key?(entry["values"], "stage")
     end
   end
 
@@ -644,9 +646,10 @@ defmodule RSMP.ChannelTest do
 
       assert_receive {:published, topic, data, _opts}
       assert to_string(topic) =~ "traffic.volume/5s"
-      assert data["values"]["cars"] == 7
-      assert data["values"]["busses"] == 3
-      assert data["values"]["bicycles"] == 0
+      entry = hd(data["entries"])
+      assert entry["values"]["cars"] == 7
+      assert entry["values"]["busses"] == 3
+      assert entry["values"]["bicycles"] == 0
 
       # get_last_full now returns the published aggregated values
       last_full = RSMP.Channel.get_last_full(channel_pid)
@@ -657,7 +660,7 @@ defmodule RSMP.ChannelTest do
       # Accumulator resets after publish; next window starts empty
       RSMP.Channel.force_full(channel_pid)
       assert_receive {:published, _topic, data2, _opts}
-      assert data2["values"] == %{"cars" => 0, "bicycles" => 0, "busses" => 0}
+      assert hd(data2["entries"])["values"] == %{"cars" => 0, "bicycles" => 0, "busses" => 0}
 
       last_full2 = RSMP.Channel.get_last_full(channel_pid)
       assert last_full2["cars"] == 0

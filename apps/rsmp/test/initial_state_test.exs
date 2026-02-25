@@ -386,13 +386,15 @@ defmodule RSMP.InitialStateTest do
       ts = DateTime.utc_now() |> DateTime.to_iso8601()
       payload =
         RSMP.Utility.to_payload(%{
-          "values" => %{
-            "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
-            "cyclecounter" => 0,
-            "stage" => 0
-          },
-          "ts" => ts,
-          "seq" => 10
+          "entries" => [%{
+            "values" => %{
+              "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
+              "cyclecounter" => 0,
+              "stage" => 0
+            },
+            "ts" => ts,
+            "seq" => 10
+          }]
         })
 
       send(pid, {:publish, %{

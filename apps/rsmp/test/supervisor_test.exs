@@ -32,12 +32,13 @@ defmodule RSMP.SupervisorTest do
 
     full_payload =
       RSMP.Utility.to_payload(%{
-        "type" => "full",
-        "data" => %{
-          "signalgroupstatus" => "GrGr",
-          "stage" => 2,
-          "cyclecounter" => 10
-        }
+        "entries" => [%{
+          "values" => %{
+            "signalgroupstatus" => "GrGr",
+            "stage" => 2,
+            "cyclecounter" => 10
+          }
+        }]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/status/tlc.groups/live", payload: full_payload, properties: %{}}})
@@ -45,11 +46,12 @@ defmodule RSMP.SupervisorTest do
 
     delta_payload =
       RSMP.Utility.to_payload(%{
-        "type" => "delta",
-        "data" => %{
-          "signalgroupstatus" => "YrYr",
-          "cyclecounter" => 11
-        }
+        "entries" => [%{
+          "values" => %{
+            "signalgroupstatus" => "YrYr",
+            "cyclecounter" => 11
+          }
+        }]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/status/tlc.groups/live", payload: delta_payload, properties: %{}}})
@@ -68,10 +70,7 @@ defmodule RSMP.SupervisorTest do
 
     full_payload =
       RSMP.Utility.to_payload(%{
-        "type" => "full",
-        "data" => %{
-          "cars" => 4
-        }
+        "entries" => [%{"values" => %{"cars" => 4}}]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: full_payload, properties: %{}}})
@@ -79,10 +78,7 @@ defmodule RSMP.SupervisorTest do
 
     delta_payload =
       RSMP.Utility.to_payload(%{
-        "type" => "delta",
-        "data" => %{
-          "cars" => 6
-        }
+        "entries" => [%{"values" => %{"cars" => 6}}]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: delta_payload, properties: %{}}})
@@ -94,10 +90,7 @@ defmodule RSMP.SupervisorTest do
     # A delta with only bicycles implies cars = 0 (missing key means zero for traffic.volume).
     delta_payload_2 =
       RSMP.Utility.to_payload(%{
-        "type" => "delta",
-        "data" => %{
-          "bicycles" => 2
-        }
+        "entries" => [%{"values" => %{"bicycles" => 2}}]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: delta_payload_2, properties: %{}}})
@@ -114,8 +107,7 @@ defmodule RSMP.SupervisorTest do
 
     live_payload =
       RSMP.Utility.to_payload(%{
-        "type" => "delta",
-        "data" => %{"cars" => 3}
+        "entries" => [%{"values" => %{"cars" => 3}}]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: live_payload, properties: %{}}})
@@ -127,8 +119,7 @@ defmodule RSMP.SupervisorTest do
     # 5s aggregated full should not overwrite the display values
     s5_payload =
       RSMP.Utility.to_payload(%{
-        "values" => %{"cars" => 99, "bicycles" => 99, "busses" => 99},
-        "seq" => 1
+        "entries" => [%{"values" => %{"cars" => 99, "bicycles" => 99, "busses" => 99}, "seq" => 1}]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/5s", retain: true, payload: s5_payload, properties: %{}}})
@@ -252,8 +243,7 @@ defmodule RSMP.SupervisorTest do
 
     payload =
       RSMP.Utility.to_payload(%{
-        "type" => "full",
-        "data" => %{"cars" => 2}
+        "entries" => [%{"values" => %{"cars" => 2}}]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
@@ -269,11 +259,7 @@ defmodule RSMP.SupervisorTest do
 
     live_full_payload =
       RSMP.Utility.to_payload(%{
-        "type" => "full",
-        "seq" => 64,
-        "data" => %{
-          "cars" => 4
-        }
+        "entries" => [%{"values" => %{"cars" => 4}, "seq" => 64}]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: live_full_payload, properties: %{}}})
@@ -284,12 +270,7 @@ defmodule RSMP.SupervisorTest do
 
     s5_full_payload =
       RSMP.Utility.to_payload(%{
-        "type" => "full",
-        "seq" => 12,
-        "data" => %{
-          "cars" => 4,
-          "bicycles" => 1
-        }
+        "entries" => [%{"values" => %{"cars" => 4, "bicycles" => 1}, "seq" => 12}]
       })
 
     send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/5s", payload: s5_full_payload, properties: %{}}})
@@ -309,9 +290,7 @@ defmodule RSMP.SupervisorTest do
     for seq <- 1..5 do
       payload =
         RSMP.Utility.to_payload(%{
-          "type" => "full",
-          "seq" => seq,
-          "data" => %{"cars" => seq}
+          "entries" => [%{"values" => %{"cars" => seq}, "seq" => seq}]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
@@ -375,9 +354,7 @@ defmodule RSMP.SupervisorTest do
     for seq <- 11..13 do
       payload =
         RSMP.Utility.to_payload(%{
-          "type" => "full",
-          "seq" => seq,
-          "data" => %{"cars" => seq}
+          "entries" => [%{"values" => %{"cars" => seq}, "seq" => seq}]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
@@ -419,9 +396,7 @@ defmodule RSMP.SupervisorTest do
       _ts_offset = -i
       payload =
         RSMP.Utility.to_payload(%{
-          "type" => "full",
-          "seq" => 100 - i,
-          "data" => %{"cars" => 1}
+          "entries" => [%{"values" => %{"cars" => 1}, "seq" => 100 - i}]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
@@ -457,9 +432,7 @@ defmodule RSMP.SupervisorTest do
     for seq <- 1..5 do
       payload =
         RSMP.Utility.to_payload(%{
-          "type" => "full",
-          "seq" => seq,
-          "data" => %{"cars" => seq}
+          "entries" => [%{"values" => %{"cars" => seq}, "seq" => seq}]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
@@ -475,9 +448,7 @@ defmodule RSMP.SupervisorTest do
     for seq <- [1, 2, 5, 6] do
       payload =
         RSMP.Utility.to_payload(%{
-          "type" => "full",
-          "seq" => seq,
-          "data" => %{"cars" => seq}
+          "entries" => [%{"values" => %{"cars" => seq}, "seq" => seq}]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
@@ -495,9 +466,7 @@ defmodule RSMP.SupervisorTest do
     for seq <- [1, 2, 5, 6, 9, 10] do
       payload =
         RSMP.Utility.to_payload(%{
-          "type" => "full",
-          "seq" => seq,
-          "data" => %{"cars" => seq}
+          "entries" => [%{"values" => %{"cars" => seq}, "seq" => seq}]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
@@ -552,9 +521,7 @@ defmodule RSMP.SupervisorTest do
     for seq <- [1, 2, 5, 6] do
       payload =
         RSMP.Utility.to_payload(%{
-          "type" => "full",
-          "seq" => seq,
-          "data" => %{"cars" => seq}
+          "entries" => [%{"values" => %{"cars" => seq}, "seq" => seq}]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})
@@ -671,9 +638,7 @@ defmodule RSMP.SupervisorTest do
 
       payload =
         RSMP.Utility.to_payload(%{
-          "type" => "full",
-          "seq" => seq,
-          "data" => %{"cars" => seq}
+          "entries" => [%{"values" => %{"cars" => seq}, "seq" => seq}]
         })
 
       send(pid, {:publish, %{topic: "#{site_id}/status/traffic.volume/live", payload: payload, properties: %{}}})

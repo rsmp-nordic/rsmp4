@@ -805,9 +805,11 @@ defmodule RSMP.Channel do
       schedule_batch_timer(state)
     else
       payload = %{
-        "values" => data,
-        "seq" => seq,
-        "ts" => DateTime.to_iso8601(ts)
+        "entries" => [%{
+          "values" => data,
+          "seq" => seq,
+          "ts" => DateTime.to_iso8601(ts)
+        }]
       }
 
       topic = make_topic(state)
@@ -851,9 +853,11 @@ defmodule RSMP.Channel do
       schedule_batch_timer(state)
     else
       payload = %{
-        "values" => data,
-        "seq" => seq,
-        "ts" => DateTime.to_iso8601(ts)
+        "entries" => [%{
+          "values" => data,
+          "seq" => seq,
+          "ts" => DateTime.to_iso8601(ts)
+        }]
       }
 
       topic = make_topic(state)

@@ -395,22 +395,15 @@ defmodule RSMP.Supervisor do
             supervisor
           else
             retain = publish[:retain] == true or publish[:retain] == 1
+            entries = data["entries"] || []
+            last_idx = length(entries) - 1
 
-            if is_map(data) and Map.has_key?(data, "entries") do
-              # Batched status message: process each entry individually.
-              # Retain applies only to the final entry (per spec).
-              entries = data["entries"] || []
-              last_idx = length(entries) - 1
-
-              entries
-              |> Enum.with_index()
-              |> Enum.reduce(supervisor, fn {entry, idx}, acc ->
-                entry_retain = retain and idx == last_idx
-                receive_status(acc, topic, entry, entry_retain)
-              end)
-            else
-              receive_status(supervisor, topic, data, retain)
-            end
+            entries
+            |> Enum.with_index()
+            |> Enum.reduce(supervisor, fn {entry, idx}, acc ->
+              entry_retain = retain and idx == last_idx
+              receive_status(acc, topic, entry, entry_retain)
+            end)
           end
 
         "result" ->
