@@ -36,15 +36,15 @@ defmodule RSMP.Service.Traffic do
 
 			level ->
 				count = Enum.random(1..8)
-				detection_volume = Map.put(@zero_volume, mode, count)
 				ts = DateTime.utc_now()
 
-				last_detection = Map.merge(service.last_detection, detection_volume)
+				detection_event = %{mode => count}
+				last_detection = Map.put(@zero_volume, mode, count)
 
-				RSMP.Service.report_to_channels(service.id, "traffic", "volume", last_detection, ts)
+				RSMP.Service.report_to_channels(service.id, "traffic", "volume", detection_event, ts)
 				Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{topic: "local_status", changes: ["traffic.volume"]})
 
-				point = %{ts: ts, values: to_atom_keys(detection_volume)}
+				point = %{ts: ts, values: to_atom_keys(detection_event)}
 				data_points = RSMP.DataHistory.push(service.data_points, point, @max_data_points)
 
 				timer = schedule_next_detection(mode, level)
@@ -113,7 +113,7 @@ defmodule RSMP.Service.Traffic do
 	end
 
 	defp to_atom_keys(map) when is_map(map) do
-		Enum.into(map, %{}, fn {k, v} -> {String.to_existing_atom(k), v} end)
+		Enum.into(map, %{}, fn {k, v} -> {String.to_atom(k), v} end)
 	end
 
 end

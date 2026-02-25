@@ -611,11 +611,11 @@ defmodule RSMP.Channel do
         on_change_changed?(new_val, old_val)
       end)
 
-    # When always_publish is set, include all on_change attrs in every delta
+    # When always_publish is set, include all on_change attrs that are present in values
     # (for counter/volume data where each report is an independent event).
     attrs_for_delta =
       if state.always_publish do
-        on_change_attrs
+        Enum.filter(on_change_attrs, fn attr -> Map.has_key?(values, attr) end)
       else
         changed_on_change
       end
