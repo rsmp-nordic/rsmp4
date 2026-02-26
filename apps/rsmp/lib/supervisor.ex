@@ -287,7 +287,7 @@ defmodule RSMP.Supervisor do
         value -> to_string(value)
       end
 
-    topic = Topic.new(site_id, "throttle", code, [channel_segment])
+    topic = Topic.new(site_id, "throttle", code, channel_segment)
 
     Logger.info(
       "RSMP: Sending throttle #{action} for #{code}/#{channel_segment} to #{site_id}"
@@ -612,7 +612,7 @@ defmodule RSMP.Supervisor do
       true ->
         id = topic.id
         {supervisor, site} = get_site(supervisor, id)
-        path = Path.new(topic.path.code, [])
+        path = Path.new(topic.path.code)
         channel_key = channel_state_key(path, channel_name)
         previous_state = get_in(site.channels, [channel_key])
 

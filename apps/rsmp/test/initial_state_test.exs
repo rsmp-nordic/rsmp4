@@ -58,7 +58,7 @@ defmodule RSMP.InitialStateTest do
       Process.sleep(300)
 
       # Find the tlc.groups/live channel
-      case RSMP.Registry.lookup_channel(id, "tlc.groups", "live", []) do
+      case RSMP.Registry.lookup_channel(id, "tlc.groups", "live") do
         [{channel_pid, _}] ->
           state = :sys.get_state(channel_pid)
 
@@ -89,7 +89,7 @@ defmodule RSMP.InitialStateTest do
       {:ok, _} = RSMP.Node.TLC.start_link(id, connection_module: nil)
       Process.sleep(300)
 
-      case RSMP.Registry.lookup_channel(id, "tlc.groups", "live", []) do
+      case RSMP.Registry.lookup_channel(id, "tlc.groups", "live") do
         [{channel_pid, _}] ->
           state = :sys.get_state(channel_pid)
           first_entry = List.last(state.buffer)
@@ -118,7 +118,7 @@ defmodule RSMP.InitialStateTest do
 
       drain_published_messages()
 
-      case RSMP.Registry.lookup_channel(id, "tlc.groups", "live", []) do
+      case RSMP.Registry.lookup_channel(id, "tlc.groups", "live") do
         [{channel_pid, _}] ->
           # Issue a fetch for the full time range
           response_topic = "supervisor1/history/tlc.groups/live"

@@ -26,7 +26,6 @@ defmodule RSMP.Channel do
     :id,              # node id
     :code,            # e.g. "tlc.groups"
     :channel_name,     # e.g. "live", "hourly", nil for single-channel statuses
-    :component,       # e.g. [] or ["dl", "1"]
     :attributes,      # %{"signalgroupstatus" => :on_change, "cyclecounter" => :send_along, ...}
     :update_rate,     # ms | nil (full update interval)
     :align_full_updates, # boolean (align full timer to wall-clock boundaries)
@@ -68,9 +67,7 @@ defmodule RSMP.Channel do
     defstruct [
       :code,
       :channel_name,
-      :component,
-      attributes: %{},
-      update_rate: nil,
+      attributes: %{},      update_rate: nil,
       align_full_updates: false,
       delta_rate: :on_change,
       min_interval: 0,
@@ -93,7 +90,6 @@ defmodule RSMP.Channel do
       id: id,
       code: config.code,
       channel_name: config.channel_name,
-      component: config.component || [],
       attributes: config.attributes,
       update_rate: config.update_rate,
       align_full_updates: config.align_full_updates,
@@ -110,7 +106,7 @@ defmodule RSMP.Channel do
       running: false
     }
 
-    via = RSMP.Registry.via_channel(id, config.code, config.channel_name, config.component || [])
+    via = RSMP.Registry.via_channel(id, config.code, config.channel_name)
     GenServer.start_link(__MODULE__, state, name: via)
   end
 
@@ -176,7 +172,6 @@ defmodule RSMP.Channel do
     info = %{
       code: state.code,
       channel_name: state.channel_name,
-      component: state.component,
       running: state.running,
       seq: state.seq,
       attributes: state.attributes,
@@ -904,7 +899,7 @@ defmodule RSMP.Channel do
   end
 
   defp make_topic(state) do
-    RSMP.Topic.new(state.id, "status", state.code, state.channel_name, state.component)
+    RSMP.Topic.new(state.id, "status", state.code, state.channel_name)
   end
 
   defp make_channel_state_topic(state) do
@@ -915,11 +910,11 @@ defmodule RSMP.Channel do
         name -> to_string(name)
       end
 
-    RSMP.Topic.new(state.id, "channel", state.code, channel_name, [])
+    RSMP.Topic.new(state.id, "channel", state.code, channel_name)
   end
 
   defp make_replay_topic(state) do
-    RSMP.Topic.new(state.id, "replay", state.code, state.channel_name, state.component)
+    RSMP.Topic.new(state.id, "replay", state.code, state.channel_name)
   end
 
   defp start_replay(%{buffer: []} = state, _since) do
@@ -1098,8 +1093,7 @@ defmodule RSMP.Channel do
 
   defp channel_label(state) do
     name = state.channel_name || "default"
-    component = if state.component == [], do: "", else: "/" <> Enum.join(state.component, "/")
-    "#{state.id}/status/#{state.code}/#{name}#{component}"
+    "#{state.id}/status/#{state.code}/#{name}"
   end
 
   defp broadcast_channel_data(state, seq, kind) do

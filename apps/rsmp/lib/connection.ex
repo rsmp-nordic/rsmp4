@@ -314,7 +314,7 @@ defmodule RSMP.Connection do
     response_topic = properties[:"Response-Topic"]
     correlation_data = properties[:"Correlation-Data"]
 
-    case RSMP.Registry.lookup_channel(connection.id, topic.path.code, topic.channel_name, topic.path.component) do
+    case RSMP.Registry.lookup_channel(connection.id, topic.path.code, topic.channel_name) do
       [{pid, _}] ->
         GenServer.cast(pid, {:handle_fetch, from_ts, to_ts, response_topic, correlation_data})
 
@@ -388,7 +388,7 @@ defmodule RSMP.Connection do
 
     case topic.type do
       "throttle" when is_binary(topic.path.code) ->
-        handle_channel_throttle(connection, topic.path.code, topic.path.component, data, properties)
+        handle_channel_throttle(connection, topic.path.code, topic.channel_name, data, properties)
 
       _ ->
         case RSMP.Registry.lookup_service_by_code(topic.id, topic.path.code) do
@@ -404,23 +404,12 @@ defmodule RSMP.Connection do
     end
   end
 
-  defp handle_channel_throttle(connection, code, channel_parts, data, _properties) do
+  defp handle_channel_throttle(connection, code, channel_name, data, _properties) do
     action = if is_map(data), do: data["action"], else: nil
-
-    channel_name =
-      case channel_parts do
-        [] -> nil
-        [name] when name in ["", "default"] -> nil
-        [name] when is_binary(name) -> name
-        _ -> :invalid
-      end
 
     cond do
       action not in ["start", "stop"] ->
         Logger.warning("#{connection.id}: Invalid throttle action: #{inspect(data)}")
-
-      channel_name == :invalid ->
-        Logger.warning("#{connection.id}: Invalid throttle topic path for #{code}: #{inspect(channel_parts)}")
 
       true ->
         channel_action = if action == "start", do: :start, else: :stop
@@ -429,7 +418,7 @@ defmodule RSMP.Connection do
   end
 
   defp execute_channel_action(connection, code, channel_name, action) do
-    case RSMP.Registry.lookup_channel(connection.id, code, channel_name, []) do
+    case RSMP.Registry.lookup_channel(connection.id, code, channel_name) do
       [{pid, _}] ->
         case action do
           :start -> RSMP.Channel.start_channel(pid)

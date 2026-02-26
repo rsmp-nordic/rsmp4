@@ -175,14 +175,14 @@ defmodule RSMP.Node.TLC do
   end
 
   def start_channel(site_id, code, channel_name) do
-    case RSMP.Registry.lookup_channel(site_id, code, channel_name, []) do
+    case RSMP.Registry.lookup_channel(site_id, code, channel_name) do
       [{pid, _}] -> RSMP.Channel.start_channel(pid)
       [] -> {:error, :not_found}
     end
   end
 
   def stop_channel(site_id, code, channel_name) do
-    case RSMP.Registry.lookup_channel(site_id, code, channel_name, []) do
+    case RSMP.Registry.lookup_channel(site_id, code, channel_name) do
       [{pid, _}] -> RSMP.Channel.stop_channel(pid)
       [] -> {:error, :not_found}
     end

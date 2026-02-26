@@ -20,7 +20,7 @@ defmodule RSMP.TopicTest do
 
   describe "to_string/1" do
     test "formats status topic with channel name" do
-      topic = Topic.new(@id, "status", "tlc.plan", "main", [])
+      topic = Topic.new(@id, "status", "tlc.plan", "main")
       assert to_string(topic) == "#{@id}/status/tlc.plan/main"
     end
 
@@ -30,18 +30,13 @@ defmodule RSMP.TopicTest do
     end
 
     test "formats presence topic correctly: id/presence" do
-      topic = Topic.new(@id, "presence", nil, [])
+      topic = Topic.new(@id, "presence", nil)
       assert to_string(topic) == "#{@id}/presence"
     end
 
-    test "formats status topic with channel name and component" do
-      topic = Topic.new(@id, "status", "tlc.traffic", "hourly", ["dl", "1"])
-      assert to_string(topic) == "#{@id}/status/tlc.traffic/hourly/dl/1"
-    end
-
-    test "formats command topic with component (no channel name)" do
-      topic = Topic.new(@id, "command", "tlc.plan.set", ["main"])
-      assert to_string(topic) == "#{@id}/command/tlc.plan.set/main"
+    test "formats command topic" do
+      topic = Topic.new(@id, "command", "tlc.plan.set")
+      assert to_string(topic) == "#{@id}/command/tlc.plan.set"
     end
   end
 
@@ -54,10 +49,9 @@ defmodule RSMP.TopicTest do
       assert topic.path.code == "tlc.plan"
       assert topic.id == @id
       assert topic.channel_name == "main"
-      assert topic.path.component == []
     end
 
-    test "parses status topic without channel name or component" do
+    test "parses status topic without channel name" do
       string = "#{@id}/status/tlc.plan"
       topic = Topic.from_string(string)
 
@@ -65,27 +59,15 @@ defmodule RSMP.TopicTest do
       assert topic.path.code == "tlc.plan"
       assert topic.id == @id
       assert topic.channel_name == nil
-      assert topic.path.component == []
-    end
-
-    test "parses status topic with channel name and component" do
-      string = "#{@id}/status/tlc.traffic/hourly/dl/1"
-      topic = Topic.from_string(string)
-
-      assert topic.type == "status"
-      assert topic.path.code == "tlc.traffic"
-      assert topic.channel_name == "hourly"
-      assert topic.path.component == ["dl", "1"]
     end
 
     test "parses command topic (no channel name concept)" do
-      string = "#{@id}/command/tlc.plan.set/main"
+      string = "#{@id}/command/tlc.plan.set"
       topic = Topic.from_string(string)
 
       assert topic.type == "command"
       assert topic.path.code == "tlc.plan.set"
       assert topic.channel_name == nil
-      assert topic.path.component == ["main"]
     end
 
     test "parses presence topic" do

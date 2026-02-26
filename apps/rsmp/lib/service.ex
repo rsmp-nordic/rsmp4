@@ -92,7 +92,7 @@ defmodule RSMP.Service do
       def handle_call({:receive_command, topic, data, properties}, _from, service) do
         {service,result} = RSMP.Service.Protocol.receive_command(service, topic, data, properties)
         if result do
-          RSMP.Service.publish_result(service, topic.path.code, topic.path.component, result, properties)
+          RSMP.Service.publish_result(service, topic.path.code, result, properties)
         end
         {:reply, result, service}
       end
@@ -108,22 +108,18 @@ defmodule RSMP.Service do
     GenServer.cast(pid, {:set_alarm, code, flags})
   end
 
-  def publish_status(service, code) do
-    publish_status(service, code, [])
-  end
-
   def get_statuses(pid) do
     GenServer.call(pid, {:get_statuses})
   end
 
-  def publish_status(service, code, component, properties \\ %{}) do
-    topic = make_topic(service, "status", code, component)
+  def publish_status(service, code, properties \\ %{}) do
+    topic = make_topic(service, "status", code)
     data = RSMP.Service.Protocol.format_status(service, code)
     RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 1}, properties)
   end
 
-  def publish_alarm(service, code, component \\ [], properties \\ %{}) do
-    topic = make_topic(service, "alarm", code, component)
+  def publish_alarm(service, code, properties \\ %{}) do
+    topic = make_topic(service, "alarm", code)
     alarm = service.alarms[code]
 
     data = %{
@@ -134,8 +130,8 @@ defmodule RSMP.Service do
     RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 1}, properties)
   end
 
-  def publish_result(service, code, component, data, properties \\ %{}) do
-    topic = make_topic(service, "result", code, component)
+  def publish_result(service, code, data, properties \\ %{}) do
+    topic = make_topic(service, "result", code)
     RSMP.Connection.publish_message(topic.id, topic, data, %{retain: true, qos: 2}, properties)
   end
 
@@ -150,8 +146,8 @@ defmodule RSMP.Service do
   end
 
   def report_to_channels(id, code, values, ts \\ nil) do
-    # Find all channels for this code (any channel_name, any component)
-    match_pattern = {{{id, :channel, code, :_, :_}, :"$1", :_}, [], [:"$1"]}
+    # Find all channels for this code (any channel_name)
+    match_pattern = {{{id, :channel, code, :_}, :"$1", :_}, [], [:"$1"]}
     pids = Registry.select(RSMP.Registry, [match_pattern])
 
     Enum.each(pids, fn pid ->
@@ -159,9 +155,9 @@ defmodule RSMP.Service do
     end)
   end
 
-  defp make_topic(service, type, code, component) do
+  defp make_topic(service, type, code) do
     id = RSMP.Service.Protocol.id(service)
-    RSMP.Topic.new(id, type, code, component)
+    RSMP.Topic.new(id, type, code)
   end
 
   #  def alarm_flag_string(service, path) do

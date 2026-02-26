@@ -251,7 +251,7 @@ defmodule RSMP.ChannelTest do
 
   describe "Channel topic formatting" do
     test "topic includes channel name when present" do
-      topic = RSMP.Topic.new("site1", "status", "tlc.groups", "live", [])
+      topic = RSMP.Topic.new("site1", "status", "tlc.groups", "live")
       assert to_string(topic) == "site1/status/tlc.groups/live"
     end
 
@@ -260,9 +260,9 @@ defmodule RSMP.ChannelTest do
       assert to_string(topic) == "site1/status/tlc.plan"
     end
 
-    test "topic includes channel name and component" do
-      topic = RSMP.Topic.new("site1", "status", "tlc.traffic", "hourly", ["dl", "1"])
-      assert to_string(topic) == "site1/status/tlc.traffic/hourly/dl/1"
+    test "topic includes channel name" do
+      topic = RSMP.Topic.new("site1", "status", "tlc.traffic", "hourly")
+      assert to_string(topic) == "site1/status/tlc.traffic/hourly"
     end
   end
 

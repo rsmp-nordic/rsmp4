@@ -1,9 +1,8 @@
 # A topic path of the form:
-# id/type/code[/channel][/component] or id/type
+# id/type/code[/channel] or id/type
 #
-# For status topics, the first segment after code is always the channel name.
-# The channel name can only be omitted when there are no component segments
-# (i.e. single-channel statuses with no components).
+# For status-like topics, the segment after code is the channel name.
+# The channel name may be omitted for single-channel statuses.
 
 defmodule RSMP.Topic do
   alias RSMP.Path
@@ -19,15 +18,13 @@ defmodule RSMP.Topic do
     %__MODULE__{id: id, type: type, path: path}
   end
 
-  def new(id, type, code, component \\ []) do
-    %__MODULE__{id: id, type: type, path: Path.new(code, component)}
+  def new(id, type, code) do
+    %__MODULE__{id: id, type: type, path: Path.new(code)}
   end
 
-  def new(id, type, code, channel_name, component) do
-    %__MODULE__{id: id, type: type, channel_name: channel_name, path: Path.new(code, component)}
+  def new(id, type, code, channel_name) do
+    %__MODULE__{id: id, type: type, channel_name: channel_name, path: Path.new(code)}
   end
-
-  def component(topic), do: topic.path.component
 
   def from_string(string) do
     parts = String.split(string, "/")
@@ -41,23 +38,23 @@ defmodule RSMP.Topic do
         ["presence"] ->
           new(id, "presence", nil, [])
 
-        # Status-like topics: status, replay, fetch, history, channel.
+        # Status-like topics: status, replay, fetch, history, channel, throttle.
         # First segment after code is always channel_name.
         # If there's only id/type/code (no extra segments), channel_name is nil.
-        [type, code | tail] when type in ["status", "replay", "fetch", "history", "channel"] ->
+        [type, code | tail] when type in ["status", "replay", "fetch", "history", "channel", "throttle"] ->
           case tail do
             [] ->
-              # No channel name, no component (single-channel status)
-              %__MODULE__{id: id, type: type, channel_name: nil, path: Path.new(code, [])}
+              # No channel name
+              %__MODULE__{id: id, type: type, channel_name: nil, path: Path.new(code)}
 
-            [channel_name | component] ->
-              # First segment = channel name, rest = component
-              %__MODULE__{id: id, type: type, channel_name: channel_name, path: Path.new(code, component)}
+            [channel_name | _] ->
+              # First segment = channel name
+              %__MODULE__{id: id, type: type, channel_name: channel_name, path: Path.new(code)}
           end
 
-        # Non-status topics (command, result, alarm, throttle): no channel concept
-        [type, code | tail] ->
-          %__MODULE__{id: id, type: type, channel_name: nil, path: Path.new(code, tail)}
+        # Non-status topics (command, result, alarm): no channel concept
+        [type, code | _tail] ->
+          %__MODULE__{id: id, type: type, channel_name: nil, path: Path.new(code)}
 
         _ ->
           new(nil, nil, nil, [])
@@ -76,8 +73,6 @@ defmodule RSMP.Topic do
         _ ->
           parts = [topic.id, topic.type, topic.path.code]
           parts = if topic.channel_name, do: parts ++ [topic.channel_name], else: parts
-          parts = parts ++ topic.path.component
-
           Enum.join(parts, "/")
       end
     end

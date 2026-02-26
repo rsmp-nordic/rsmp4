@@ -124,28 +124,18 @@ defmodule RSMP.Site do
     {:ok, _, _} = :emqtt.subscribe(pid, {"#{id}/throttle/#", 1})
   end
 
-  def handle_throttle(site, path, data) do
-    channel_name =
-      case path.component do
-        [] -> nil
-        [name] when name in ["", "default"] -> nil
-        [name] when is_binary(name) -> name
-        _ -> :invalid
-      end
+  def handle_throttle(site, topic, data) do
+    channel_name = topic.channel_name
 
     action = if is_map(data), do: data["action"], else: nil
 
     cond do
       action not in ["start", "stop"] ->
-        Logger.warning("RSMP: Invalid throttle action for #{path}: #{inspect(data)}")
-        site
-
-      channel_name == :invalid ->
-        Logger.warning("RSMP: Invalid throttle channel segment for #{path}: #{inspect(path.component)}")
+        Logger.warning("RSMP: Invalid throttle action for #{topic.path}: #{inspect(data)}")
         site
 
       true ->
-        case RSMP.Registry.lookup_channel(site.id, path.code, channel_name, []) do
+        case RSMP.Registry.lookup_channel(site.id, topic.path.code, channel_name) do
           [{pid, _}] ->
             case action do
               "start" -> RSMP.Channel.start_channel(pid)
@@ -153,12 +143,12 @@ defmodule RSMP.Site do
             end
 
             channel_segment = channel_name || "default"
-            channel_key = "#{to_string(path)}/#{channel_segment}"
+            channel_key = "#{topic.path.code}/#{channel_segment}"
             pub = %{topic: "channel", channel: channel_key, state: if(action == "start", do: "running", else: "stopped")}
             Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
 
           [] ->
-            Logger.warning("RSMP: Channel not found for throttle: #{path}")
+            Logger.warning("RSMP: Channel not found for throttle: #{topic.path}")
         end
 
         site
@@ -170,9 +160,9 @@ defmodule RSMP.Site do
     {:noreply, site}
   end
 
-  def handle_status(topic, component, publish, site) do
+  def handle_status(topic, publish, site) do
     Logger.warning(
-      "Unhandled status, topic: #{inspect(topic)}, component: #{inspect(component)}, publish: #{inspect(publish)}"
+      "Unhandled status, topic: #{inspect(topic)}, publish: #{inspect(publish)}"
     )
 
     {:noreply, site}
@@ -384,7 +374,7 @@ defmodule RSMP.Site do
           case topic.type do
             "status" -> responder.receive_status(site, topic.path, data, properties)
             "command" -> responder.receive_command(site, topic.path, data, properties)
-            "throttle" -> Site.handle_throttle(site, topic.path, data)
+            "throttle" -> Site.handle_throttle(site, topic, data)
           end
 
         {:noreply, site}

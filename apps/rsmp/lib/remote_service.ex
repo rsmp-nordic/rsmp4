@@ -62,18 +62,13 @@ defmodule RSMP.Remote.Service do
 
   # api
   def publish_command(service, code, data) do
-    publish_command(service, code, [], data)
+    topic = make_topic(service, "command", code)
+    RSMP.Connection.publish_message(topic.id, topic, data, %{retain: false, qos: 2}, %{})
   end
 
-  def publish_command(service, code, component, data, properties \\ %{}) do
-    topic = make_topic(service, "command", code, component)
-    #data = RSMP.Remote.Service.Protocol.format_status(service, code)
-    RSMP.Connection.publish_message(topic.id, topic, data, %{retain: false, qos: 2}, properties)
-  end
-
-  defp make_topic(service, type, code, component) do
+  defp make_topic(service, type, code) do
     id = RSMP.Remote.Service.Protocol.id(service)
-    RSMP.Topic.new(id, type, code, component)
+    RSMP.Topic.new(id, type, code)
   end
 
 end

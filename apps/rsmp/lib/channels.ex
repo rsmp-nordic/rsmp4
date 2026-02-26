@@ -21,7 +21,7 @@ defmodule RSMP.Channels do
 
   @doc "List all channel pids for a node."
   def list_channels(id) do
-    match_pattern = {{{id, :channel, :_, :_, :_}, :"$1", :_}, [], [:"$1"]}
+    match_pattern = {{{id, :channel, :_, :_}, :"$1", :_}, [], [:"$1"]}
     Registry.select(RSMP.Registry, [match_pattern])
   end
 
