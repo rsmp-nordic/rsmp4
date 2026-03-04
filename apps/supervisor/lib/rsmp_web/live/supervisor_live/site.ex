@@ -281,6 +281,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def format_status_line_value(value) when is_map(value) or is_list(value), do: Poison.encode!(value)
   def format_status_line_value(value), do: to_string(value)
 
+
+
   # UI events
 
   @impl true

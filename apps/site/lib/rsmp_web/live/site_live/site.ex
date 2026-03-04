@@ -32,7 +32,9 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        traffic_level: :low,
        plan_result: %{"message" => ""},
        command_logs: [],
-       alarm_flags: RSMP.Alarm.get_flag_keys()
+       alarm_flags: RSMP.Alarm.get_flag_keys(),
+     bandwidth_in: 0,
+     bandwidth_out: 0
      )}
   end
 
@@ -53,6 +55,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
 
     schedule_volume_tick()
     schedule_groups_tick()
+    schedule_bandwidth_tick()
 
     {:ok,
      assign(socket,
@@ -67,7 +70,10 @@ defmodule RSMP.Site.Web.SiteLive.Site do
        traffic_level: TLC.get_traffic_level(site_id),
        plan_result: %{"message" => ""},
        command_logs: [],
-       alarm_flags: RSMP.Alarm.get_flag_keys()
+       alarm_flags: RSMP.Alarm.get_flag_keys(),
+       bandwidth_in: 0,
+       bandwidth_out: 0,
+       prev_stats: nil
      )}
   end
 
@@ -237,6 +243,37 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   end
 
   @impl true
+  def handle_info(:tick_bandwidth, socket) do
+    schedule_bandwidth_tick()
+    site_id = socket.assigns.id
+
+    socket =
+      try do
+        case RSMP.Connection.get_socket_stats(site_id) do
+          {:ok, %{recv: recv, send: snd}} ->
+            prev = socket.assigns.prev_stats
+
+            if prev do
+              assign(socket,
+                bandwidth_in: recv - prev.recv,
+                bandwidth_out: snd - prev.send,
+                prev_stats: %{recv: recv, send: snd}
+              )
+            else
+              assign(socket, prev_stats: %{recv: recv, send: snd})
+            end
+
+          _ ->
+            assign(socket, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil)
+        end
+      rescue
+        _ -> assign(socket, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil)
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(%{topic: "local_status"}, socket) do
     site_id = socket.assigns.id
     statuses = TLC.get_statuses(site_id)
@@ -344,6 +381,18 @@ defmodule RSMP.Site.Web.SiteLive.Site do
   def format_status_value(value) when is_map(value) or is_list(value), do: Poison.encode!(value)
   def format_status_value(value), do: to_string(value)
 
+  def format_bandwidth(bytes) when bytes >= 1_000_000 do
+    "#{Float.round(bytes / 1_000_000, 1)} MB/s"
+  end
+
+  def format_bandwidth(bytes) when bytes >= 1_000 do
+    "#{Float.round(bytes / 1000, 1)} kB/s"
+  end
+
+  def format_bandwidth(bytes) do
+    "#{bytes} B/s"
+  end
+
   def channel_button_class(channel, channel_pulses) do
     class = RSMP.ButtonClasses.channel(channel.running)
 
@@ -391,6 +440,10 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     now_ms = System.system_time(:millisecond)
     delay = 1000 - rem(now_ms, 1000)
     Process.send_after(self(), :tick_groups, delay)
+  end
+
+  defp schedule_bandwidth_tick do
+    Process.send_after(self(), :tick_bandwidth, 1000)
   end
 
   defp push_volume_history(socket) do

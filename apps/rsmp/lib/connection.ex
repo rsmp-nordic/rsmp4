@@ -41,6 +41,11 @@ defmodule RSMP.Connection do
     GenServer.cast(pid, :simulate_reconnect)
   end
 
+  def get_socket_stats(id) do
+    [{pid, _value}] = RSMP.Registry.lookup_connection(id)
+    GenServer.call(pid, :get_socket_stats)
+  end
+
   # GenServer
   @impl GenServer
   def init({id, managers, options}) do
@@ -106,6 +111,36 @@ defmodule RSMP.Connection do
   @impl GenServer
   def handle_call(:connected?, _from, connection) do
     {:reply, connection.connected, connection}
+  end
+
+  @impl GenServer
+  def handle_call(:get_socket_stats, _from, %{emqtt: emqtt, connected: true} = connection)
+      when emqtt != nil do
+    try do
+      info = :emqtt.info(emqtt)
+      socket = info[:socket]
+
+      case :emqtt_sock.getstat(socket, [:recv_oct, :send_oct]) do
+        {:ok, stats} ->
+          {:reply, {:ok, %{recv: stats[:recv_oct], send: stats[:send_oct]}}, connection}
+
+        {:error, reason} ->
+          Logger.warning("RSMP: getstat error: #{inspect(reason)}")
+          {:reply, {:error, reason}, connection}
+      end
+    rescue
+      e ->
+        Logger.warning("RSMP: get_socket_stats rescue: #{inspect(e)}")
+        {:reply, {:error, :unavailable}, connection}
+    catch
+      kind, reason ->
+        Logger.warning("RSMP: get_socket_stats catch: #{inspect(kind)} #{inspect(reason)}")
+        {:reply, {:error, :unavailable}, connection}
+    end
+  end
+
+  def handle_call(:get_socket_stats, _from, connection) do
+    {:reply, {:error, :not_connected}, connection}
   end
 
   @impl GenServer

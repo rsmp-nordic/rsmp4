@@ -22,7 +22,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
     {:ok,
      assign(socket,
        sites: %{},
-       connected: false
+       connected: false,
+       bandwidth_in: 0,
+       bandwidth_out: 0
      )}
   end
 
@@ -31,7 +33,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
     RSMP.Supervisors.ensure_supervisor(supervisor_id)
     Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}")
     connected = RSMP.Supervisor.connected?(supervisor_id)
-    {:ok, sort_sites(assign(socket, connected: connected))}
+    schedule_bandwidth_tick()
+    {:ok, sort_sites(assign(socket, connected: connected, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil))}
   end
 
   def sort_sites(socket) do
@@ -91,8 +94,55 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   end
 
   @impl true
+  def handle_info(:tick_bandwidth, socket) do
+    schedule_bandwidth_tick()
+    supervisor_id = socket.assigns.supervisor_id
+
+    socket =
+      try do
+        case RSMP.Connection.get_socket_stats(supervisor_id) do
+          {:ok, %{recv: recv, send: snd}} ->
+            prev = socket.assigns.prev_stats
+
+            if prev do
+              assign(socket,
+                bandwidth_in: recv - prev.recv,
+                bandwidth_out: snd - prev.send,
+                prev_stats: %{recv: recv, send: snd}
+              )
+            else
+              assign(socket, prev_stats: %{recv: recv, send: snd})
+            end
+
+          _ ->
+            assign(socket, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil)
+        end
+      rescue
+        _ -> assign(socket, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil)
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(%{topic: topic} = data, socket) do
     Logger.info("unhandled info x: #{inspect([topic, data])}")
     {:noreply, socket}
+  end
+
+  defp schedule_bandwidth_tick do
+    Process.send_after(self(), :tick_bandwidth, 1000)
+  end
+
+  def format_bandwidth(bytes) when bytes >= 1_000_000 do
+    "#{Float.round(bytes / 1_000_000, 1)} MB/s"
+  end
+
+  def format_bandwidth(bytes) when bytes >= 1_000 do
+    "#{Float.round(bytes / 1000, 1)} kB/s"
+  end
+
+  def format_bandwidth(bytes) do
+    "#{bytes} B/s"
   end
 end

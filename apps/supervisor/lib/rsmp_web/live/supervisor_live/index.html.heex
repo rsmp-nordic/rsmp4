@@ -1,15 +1,36 @@
 <h1 class="text-2xl font-bold py-4"><.link href={~p"/"}>&larr;</.link> Supervisor <%= @supervisor_id %></h1>
 
-<div class="flex items-center gap-4 mb-4">
-  <span class="font-semibold">Supervisor connection:</span>
-  <button
-    type="button"
-    phx-click="toggle_connection"
-    class={RSMP.ButtonClasses.selectable(@connected)}
-  >
-    <%= if @connected, do: "Online", else: "Offline" %>
-  </button>
-  <span class={"inline-block w-3 h-3 rounded-full " <> if @connected, do: "bg-green-500", else: "bg-red-500"}></span>
+<div class="overflow-x-auto rounded-md my-4">
+  <table id="operate" class="w-full text-left">
+    <caption class="px-1 py-1 bg-purple-900 text-white text-xl text-left">
+      Operate
+    </caption>
+
+    <tbody>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">Supervisor</td>
+        <td class="px-1 py-1 align-top">
+          <button
+            class={RSMP.ButtonClasses.selectable(@connected)}
+            phx-click="toggle_connection"
+          >
+            <%= if @connected, do: "Online", else: "Offline" %>
+          </button>
+        </td>
+        <td class="px-1 py-1 align-top"></td>
+      </tr>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">In</td>
+        <td class="px-1 py-1 align-top"><%= format_bandwidth(@bandwidth_in) %></td>
+        <td class="px-1 py-1 align-top"></td>
+      </tr>
+      <tr class="text-base odd:bg-stone-200 even:bg-stone-100">
+        <td class="px-1 py-1 align-top w-40">Out</td>
+        <td class="px-1 py-1 align-top"><%= format_bandwidth(@bandwidth_out) %></td>
+        <td class="px-1 py-1 align-top"></td>
+      </tr>
+    </tbody>
+  </table>
 </div>
 
 <div class="overflow-x-auto rounded-md my-4">
