@@ -35,7 +35,8 @@ defmodule RSMP.Supervisor.Web.SupervisorsLive.Index do
   end
 
   @impl true
-  def handle_info(_msg, socket) do
+  def handle_info(msg, socket) do
+    Logger.warning("SupervisorsLive.Index: unhandled info: #{inspect(msg)}")
     {:noreply, socket}
   end
 end

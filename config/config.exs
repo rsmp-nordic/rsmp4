@@ -67,8 +67,7 @@ config :rsmp, :emqtt,
   host: ~c"127.0.0.1",
   port: 1883,
   proto_ver: :v5,
-  clean_start: false,
-  reconnect: :infinity
+  clean_start: true
 
 config :logger, level: :debug
 

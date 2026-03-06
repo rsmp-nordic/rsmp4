@@ -287,7 +287,14 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_event("toggle_connection", _params, socket) do
-    RSMP.Connection.toggle_connection(socket.assigns.supervisor_id)
+    supervisor_id = socket.assigns.supervisor_id
+
+    if socket.assigns.connected do
+      RSMP.Connection.simulate_disconnect(supervisor_id)
+    else
+      RSMP.Connection.simulate_reconnect(supervisor_id)
+    end
+
     {:noreply, socket}
   end
 

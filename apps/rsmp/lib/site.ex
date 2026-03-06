@@ -63,6 +63,11 @@ defmodule RSMP.Site do
     Logger.debug("Site: Sending status: #{path} #{Kernel.inspect(value)}")
     status = to_rsmp_status(site, path, value)
     topic = %Topic{id: site.id, type: "status", path: path}
+    topic_string = to_string(topic)
+
+    if topic_string == "" do
+      Logger.warning("Site: Attempted to publish status to empty topic, path: #{path_string}")
+    end
 
     :emqtt.publish_async(
       site.pid,
@@ -91,10 +96,15 @@ defmodule RSMP.Site do
     Logger.debug("Site: Sending alarm: #{path_string} #{flags}")
 
     topic = %Topic{id: site.id, type: "alarm", path: path}
+    topic_string = to_string(topic)
+
+    if topic_string == "" do
+      Logger.warning("Site: Attempted to publish alarm to empty topic, path: #{path_string}")
+    end
 
     :emqtt.publish_async(
       site.pid,
-      to_string(topic),
+      topic_string,
       Utility.to_payload(Map.from_struct(site.alarms[path_string])),
       [retain: true, qos: 1],
       &publish_done/1
@@ -107,9 +117,15 @@ defmodule RSMP.Site do
   end
 
   def publish_state(site, state) do
+    topic_string = "#{site.id}/presence"
+
+    if topic_string == "" do
+      Logger.warning("Site: Attempted to publish presence to empty topic")
+    end
+
     :emqtt.publish_async(
       site.pid,
-      "#{site.id}/presence",
+      topic_string,
       Utility.to_payload(state),
       [retain: true, qos: 1],
       &publish_done/1

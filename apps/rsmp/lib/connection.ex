@@ -10,7 +10,8 @@ defmodule RSMP.Connection do
     connected: false,
     init_options: %{},
     offline_at: nil,
-    connected_at: nil
+    connected_at: nil,
+    auto_reconnect: true
   )
 
   def new(options), do: __struct__(options)
@@ -193,7 +194,30 @@ defmodule RSMP.Connection do
   @impl GenServer
   def handle_cast(:simulate_disconnect, connection) do
     if connection.emqtt do
-      Process.exit(connection.emqtt, :kill)
+      Process.unlink(connection.emqtt)
+
+      if connection.connected do
+        try do
+          :emqtt.publish(
+            connection.emqtt,
+            "#{connection.id}/presence",
+            RSMP.Utility.to_payload("offline"),
+            retain: true,
+            qos: 1
+          )
+
+          :emqtt.disconnect(connection.emqtt)
+        catch
+          _, _ -> :ok
+        end
+      end
+
+      # Always kill the process to prevent emqtt auto-reconnect
+      try do
+        Process.exit(connection.emqtt, :kill)
+      catch
+        _, _ -> :ok
+      end
     end
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
@@ -202,14 +226,20 @@ defmodule RSMP.Connection do
       Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
     end
 
-    {:noreply, %{connection | emqtt: nil, connected: false, offline_at: DateTime.utc_now()}}
+    {:noreply, %{connection | emqtt: nil, connected: false, offline_at: DateTime.utc_now(), auto_reconnect: false}}
   end
 
   @impl GenServer
   def handle_cast(:simulate_reconnect, connection) do
     if !connection.connected do
-      {:ok, emqtt} = :emqtt.start_link(connection.init_options)
-      connection = %{connection | emqtt: emqtt}
+      if connection.emqtt do
+        Process.unlink(connection.emqtt)
+        Process.exit(connection.emqtt, :kill)
+      end
+
+      opts = Map.delete(connection.init_options, :name)
+      {:ok, emqtt} = :emqtt.start_link(opts)
+      connection = %{connection | emqtt: emqtt, auto_reconnect: true}
       send(self(), :connect)
       {:noreply, connection}
     else
@@ -224,6 +254,10 @@ defmodule RSMP.Connection do
 
   def handle_cast({:publish_message, topic, data, %{retain: retain, qos: qos}=_options, %{}=properties}, connection) do
     topic_string = to_string(topic)
+
+    if topic_string == "" do
+      Logger.warning("RSMP: #{connection.id}: Attempted to publish to empty topic, data: #{inspect(data)}")
+    end
 
     topic_without_id =
       case String.split(topic_string, "/", parts: 2) do
@@ -261,6 +295,10 @@ defmodule RSMP.Connection do
     {:noreply, state}
   end
 
+  def handle_info(:connect, %{connected: true} = state) do
+    {:noreply, state}
+  end
+
   def handle_info(:connect, state) do
     case :emqtt.connect(state.emqtt) do
       {:ok, _} ->
@@ -275,41 +313,47 @@ defmodule RSMP.Connection do
   end
 
   @impl true
+  def handle_info({:connected, _publish}, %{emqtt: nil} = connection) do
+    Logger.debug("RSMP: Connection #{connection.id} received stale :connected, ignoring")
+    {:noreply, connection}
+  end
+
   def handle_info({:connected, _publish}, connection) do
     {:noreply, on_connected(connection)}
   end
 
   @impl true
   def handle_info({:disconnected, _rc}, connection) do
-    Logger.warning("RSMP: Disconnected")
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
-    if connection.type == :supervisor do
-      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
-    end
-    {:noreply, %{connection | connected: false, offline_at: DateTime.utc_now()}}
+    {:noreply, handle_connection_lost(connection)}
   end
 
   @impl true
   def handle_info({:disconnected, _rc, _props}, connection) do
-    Logger.warning("RSMP: Disconnected")
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
-    if connection.type == :supervisor do
-      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
-    end
-    {:noreply, %{connection | connected: false, offline_at: DateTime.utc_now()}}
+    {:noreply, handle_connection_lost(connection)}
   end
 
   @impl true
   def handle_info({:EXIT, pid, _reason}, %{emqtt: pid} = connection) do
     Logger.warning("RSMP: Connection #{connection.id} emqtt process exited")
-    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
-    if connection.type == :supervisor do
-      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
-    end
-    {:noreply, %{connection | emqtt: nil, connected: false, offline_at: DateTime.utc_now()}}
+    connection = %{connection | emqtt: nil}
+    {:noreply, handle_connection_lost(connection)}
   end
 
-  def handle_info({:EXIT, _pid, _reason}, connection) do
+  def handle_info({:EXIT, pid, reason}, connection) do
+    Logger.warning("RSMP: Connection #{connection.id} unexpected EXIT from #{inspect(pid)}: #{inspect(reason)}")
+    {:noreply, connection}
+  end
+
+  def handle_info(:schedule_reconnect, %{auto_reconnect: true, emqtt: nil, connected: false} = connection) do
+    Logger.debug("RSMP: Connection #{connection.id} auto-reconnecting")
+    opts = connection.init_options |> Map.delete(:name)
+    {:ok, emqtt} = :emqtt.start_link(opts)
+    connection = %{connection | emqtt: emqtt}
+    send(self(), :connect)
+    {:noreply, connection}
+  end
+
+  def handle_info(:schedule_reconnect, connection) do
     {:noreply, connection}
   end
 
@@ -340,6 +384,30 @@ defmodule RSMP.Connection do
         Logger.warning("Ignoring unknown command type topic: '#{publish.topic}' => #{topic}")
     end
 
+  end
+
+  defp handle_connection_lost(connection) do
+    Logger.warning("RSMP: Connection #{connection.id} lost")
+
+    if connection.emqtt do
+      Process.unlink(connection.emqtt)
+      Process.exit(connection.emqtt, :kill)
+    end
+
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
+
+    if connection.type == :supervisor do
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
+    end
+
+    connection = %{connection | emqtt: nil, connected: false, offline_at: DateTime.utc_now()}
+
+    if connection.auto_reconnect do
+      Logger.debug("RSMP: Connection #{connection.id} scheduling reconnect in 5s")
+      Process.send_after(self(), :schedule_reconnect, 5_000)
+    end
+
+    connection
   end
 
   defp on_connected(connection) do

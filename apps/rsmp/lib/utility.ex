@@ -1,4 +1,5 @@
 defmodule RSMP.Utility do
+  require Logger
   # helpers
 
   def client_options do
@@ -28,7 +29,7 @@ defmodule RSMP.Utility do
       # Poison.decode!(binary) # JSON
     rescue
       _e ->
-        # Logger.warning "Could not decode: #{inspect(data)}"
+        Logger.warning("RSMP: Could not decode payload: #{inspect(data)}")
         nil
     end
   end

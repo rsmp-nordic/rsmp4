@@ -20,9 +20,8 @@ config :rsmp, :emqtt,
   host: ~c"127.0.0.1",
   port: 1883,
   proto_ver: :v5,
-  clean_start: false,
-  name: :emqtt,
-  reconnect: :infinity
+  clean_start: true,
+  name: :emqtt
 
 config :rsmp, :sensor_id, "tlc_582a"
 
