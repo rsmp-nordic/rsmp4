@@ -16,7 +16,7 @@ defmodule RSMP.Supervisors do
   end
 
   def start_supervisor_with_id(id) do
-    spec = {RSMP.Supervisor, id}
+    spec = {RSMP.Node.Monitor, id}
 
     case DynamicSupervisor.start_child(RSMP.Registry.via_supervisors(), spec) do
       {:ok, _pid} ->
@@ -29,7 +29,7 @@ defmodule RSMP.Supervisors do
   end
 
   def ensure_supervisor(id) do
-    case RSMP.Registry.lookup_supervisor(id) do
+    case RSMP.Registry.lookup_node(id) do
       [{_pid, _}] -> {:ok, id}
       [] -> start_supervisor_with_id(id)
     end
@@ -37,8 +37,10 @@ defmodule RSMP.Supervisors do
 
   def stop_supervisor(id) do
     result =
-      case RSMP.Registry.lookup_supervisor(id) do
-        [{pid, _}] -> DynamicSupervisor.terminate_child(RSMP.Registry.via_supervisors(), pid)
+      case RSMP.Registry.lookup_node(id) do
+        [{pid, _}] ->
+          RSMP.Channels.clear_all_retained(id)
+          DynamicSupervisor.terminate_child(RSMP.Registry.via_supervisors(), pid)
         [] -> {:error, :not_found}
       end
 
@@ -54,7 +56,7 @@ defmodule RSMP.Supervisors do
     |> DynamicSupervisor.which_children()
     |> Enum.flat_map(fn {_, pid, _, _} ->
       case Registry.keys(RSMP.Registry, pid) do
-        [{:supervisor, id}] -> [id]
+        [{id, :node}] -> [id]
         _ -> []
       end
     end)

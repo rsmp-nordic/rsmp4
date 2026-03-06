@@ -5,6 +5,8 @@ defmodule RSMP.Utility do
     Application.get_env(:rsmp, :emqtt) |> Enum.into(%{})
   end
 
+  def to_payload(nil), do: <<>>
+
   def to_payload(data) do
     # CBOR
     cbor = CBOR.encode(data)

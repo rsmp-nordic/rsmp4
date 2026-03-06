@@ -18,11 +18,7 @@ defmodule RSMP.Site.Web.SitesLive.Index do
 
   defp sites_with_status do
     for id <- RSMP.Sites.list_sites() do
-      connected = try do
-        RSMP.Connection.connected?(id)
-      rescue
-        _ -> false
-      end
+      connected = RSMP.Connection.connected?(id)
       {id, connected}
     end
   end

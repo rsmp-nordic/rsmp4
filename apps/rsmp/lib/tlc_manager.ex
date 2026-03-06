@@ -1,5 +1,5 @@
-defmodule RSMP.Remote.Service.TLC do
-  use RSMP.Remote.Service, name: "tlc"
+defmodule RSMP.Manager.TLC do
+  use RSMP.Manager, name: "tlc"
   require Logger
 
   defstruct(
@@ -14,11 +14,11 @@ defmodule RSMP.Remote.Service.TLC do
     source: ""
   )
 
-  @impl RSMP.Remote.Service.Behaviour
+  @impl RSMP.Manager.Behaviour
   def new(id, data \\ %{}), do: __struct__(Map.merge(data, %{id: id}))
 end
 
-defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
+defimpl RSMP.Manager.Protocol, for: RSMP.Manager.TLC do
   require Logger
 
   def name(_service), do: "tlc"
@@ -30,8 +30,27 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
         %{plan: plan, source: source},
         _properties
       ) do
-    Logger.info("Remote TLC #{service.id} was switched to plan '#{plan}' by '#{source}'")
+    Logger.debug("Manager: Remote TLC #{service.id} was switched to plan '#{plan}' by '#{source}'")
     %{service | plan: plan, source: source}
+  end
+
+  def receive_status(
+        service,
+        %RSMP.Topic{path: %RSMP.Path{code: "tlc.groups"}},
+        data,
+        _properties
+      ) do
+    groups = data["signalgroupstatus"] || data[:signalgroupstatus] || %{}
+    %{service | groups: groups}
+  end
+
+  def receive_status(
+        service,
+        %RSMP.Topic{path: %RSMP.Path{code: "tlc.plans"}},
+        _data,
+        _properties
+      ) do
+    service
   end
 
   def receive_status(
@@ -40,7 +59,7 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.TLC do
         data,
         _properties
       ) do
-    Logger.warning("Remote TLC #{service.id} send unknown status #{path}: #{inspect(data)}" )
+    Logger.warning("Supervisor: Remote TLC #{service.id} send unknown status #{path}: #{inspect(data)}" )
     service
   end
 

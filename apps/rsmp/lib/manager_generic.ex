@@ -1,5 +1,5 @@
-defmodule RSMP.Remote.Service.Generic do
-  use RSMP.Remote.Service, name: "generic"
+defmodule RSMP.Manager.Generic do
+  use RSMP.Manager, name: "generic"
   require Logger
 
   defstruct(
@@ -7,11 +7,11 @@ defmodule RSMP.Remote.Service.Generic do
     data: %{}
   )
 
-  @impl RSMP.Remote.Service.Behaviour
+  @impl RSMP.Manager.Behaviour
   def new(id, data \\ []), do: __struct__(Map.merge(data, %{id: id}))
 end
 
-defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.Generic do
+defimpl RSMP.Manager.Protocol, for: RSMP.Manager.Generic do
   require Logger
 
   def name(_service), do: "generic"
@@ -23,7 +23,7 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.Generic do
         data,
         _properties
       ) do
-    Logger.info("RSMP: Received status #{path}: #{inspect(data)}")
+    Logger.debug("RSMP: Received status #{path}: #{inspect(data)}")
     %{service | data: Map.merge(service.data, data)}
   end
 
@@ -38,7 +38,7 @@ defimpl RSMP.Remote.Service.Protocol, for: RSMP.Remote.Service.Generic do
         data,
         _properties
       ) do
-    Logger.info("RSMP: Received alarm #{path}: #{inspect(data)}")
+    Logger.debug("RSMP: Received alarm #{path}: #{inspect(data)}")
     service
   end
 

@@ -32,7 +32,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
     supervisor_id = socket.assigns.supervisor_id
     RSMP.Supervisors.ensure_supervisor(supervisor_id)
     Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}")
-    connected = RSMP.Supervisor.connected?(supervisor_id)
+    connected = RSMP.Connection.connected?(supervisor_id)
     schedule_bandwidth_tick()
     {:ok, sort_sites(assign(socket, connected: connected, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil))}
   end
@@ -40,9 +40,11 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
   def sort_sites(socket) do
     supervisor_id = socket.assigns.supervisor_id
 
+    sites = list_remote_sites(supervisor_id)
+
     assign(socket,
       sites:
-        RSMP.Supervisor.sites(supervisor_id)
+        sites
         |> Map.to_list()
         |> Enum.sort_by(fn {id, state} ->
           priority = case state.presence do
@@ -56,31 +58,30 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
     )
   end
 
+  defp list_remote_sites(supervisor_id) do
+    match_pattern = {{{supervisor_id, :site_data, :"$1"}, :"$2", :_}, [], [{{:"$1", :"$2"}}]}
+    Registry.select(RSMP.Registry, [match_pattern])
+    |> Enum.into(%{}, fn {remote_id, pid} ->
+      site = GenServer.call(pid, :get_state)
+      {remote_id, site}
+    end)
+  end
+
   @impl true
   def handle_event("toggle_connection", _params, socket) do
-    RSMP.Supervisor.toggle_connection(socket.assigns.supervisor_id)
+    RSMP.Connection.toggle_connection(socket.assigns.supervisor_id)
     {:noreply, socket}
   end
 
   @impl true
   def handle_event(name, data, socket) do
-    Logger.info("unhandled event: #{inspect([name, data])}")
+    Logger.warning("Index: unhandled event: #{inspect([name, data])}")
     {:noreply, socket}
   end
 
   @impl true
   def handle_info(%{topic: "connected", connected: connected}, socket) do
     {:noreply, assign(socket, connected: connected)}
-  end
-
-  @impl true
-  def handle_info(%{topic: "state"}, socket) do
-    {:noreply, sort_sites(socket)}
-  end
-
-  @impl true
-  def handle_info(%{topic: "status"}, socket) do
-    {:noreply, sort_sites(socket)}
   end
 
   @impl true
@@ -117,8 +118,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
           _ ->
             assign(socket, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil)
         end
-      rescue
-        _ -> assign(socket, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil)
+      catch
+        :exit, _ -> assign(socket, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil)
       end
 
     {:noreply, socket}
@@ -126,7 +127,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Index do
 
   @impl true
   def handle_info(%{topic: topic} = data, socket) do
-    Logger.info("unhandled info x: #{inspect([topic, data])}")
+    Logger.info("Index: unhandled info x: #{inspect([topic, data])}")
     {:noreply, socket}
   end
 

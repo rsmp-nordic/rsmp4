@@ -252,15 +252,16 @@ defmodule RSMP.Remote.Node.Site do
   end
 
   def module(site, code), do: site.modules |> Map.fetch!(code)
-  def responder(site, code), do: module(site, code).responder
-  def converter(site, code), do: module(site, code).converter
+  def converter(site, code), do: module(site, code).converter()
 
   def from_rsmp_status(site, path, data) do
-    converter(site, path.code).from_rsmp_status(path.code, data)
+    mod = converter(site, path.code)
+    mod.from_rsmp_status(path.code, data)
   end
 
   def to_rsmp_status(site, path, data) do
-    converter(site, path.code).to_rsmp_status(path.code, data)
+    mod = converter(site, path.code)
+    mod.to_rsmp_status(path.code, data)
   end
 
   def module_mapping(module_list) do

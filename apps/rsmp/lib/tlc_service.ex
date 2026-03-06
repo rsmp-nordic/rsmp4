@@ -128,7 +128,7 @@ defmodule RSMP.Service.TLC do
     cond do
       plan == service.plan ->
         msg = "Plan #{plan} already used"
-        Logger.info("RSMP: #{msg}")
+        Logger.debug("Service: #{msg}")
 
         Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{
           topic: "command_log",
@@ -147,7 +147,7 @@ defmodule RSMP.Service.TLC do
 
       service.plans[plan] != nil ->
         msg = "Switching to plan #{plan}"
-        Logger.info("RSMP: #{msg}")
+        Logger.info("Service: #{msg}")
 
         Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{
           topic: "command_log",
@@ -174,7 +174,7 @@ defmodule RSMP.Service.TLC do
 
       true ->
         msg = "Switching to plan #{plan} failed: Unknown plan"
-        Logger.info("RSMP: #{msg}")
+        Logger.debug("Service: #{msg}")
 
         Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{
           topic: "command_log",

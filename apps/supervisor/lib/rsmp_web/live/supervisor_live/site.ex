@@ -19,14 +19,14 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
     connected =
       if connected?(socket) do
-        RSMP.Supervisor.connected?(supervisor_id)
+        RSMP.Connection.connected?(supervisor_id)
       else
         false
       end
 
     site =
       if connected?(socket) do
-        RSMP.Supervisor.site(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, channels: %{}, alarms: %{}}
+        RSMP.Remote.SiteData.get_state(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, channels: %{}, alarms: %{}}
       else
         %{presence: "offline", statuses: %{}, channels: %{}, alarms: %{}}
       end
@@ -66,7 +66,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   def assign_site(socket) do
     supervisor_id = socket.assigns.supervisor_id
     site_id = socket.assigns.site_id
-    site = RSMP.Supervisor.site(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, channels: %{}, alarms: %{}}
+    site = RSMP.Remote.SiteData.get_state(supervisor_id, site_id) || %{presence: "offline", statuses: %{}, channels: %{}, alarms: %{}}
 
     plan =
       get_in(site, [
@@ -287,7 +287,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_event("toggle_connection", _params, socket) do
-    RSMP.Supervisor.toggle_connection(socket.assigns.supervisor_id)
+    RSMP.Connection.toggle_connection(socket.assigns.supervisor_id)
     {:noreply, socket}
   end
 
@@ -304,7 +304,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
     supervisor_id = socket.assigns.supervisor_id
     site_id = socket.assigns[:site_id]
-    RSMP.Supervisor.set_plan(supervisor_id, site_id, plan)
+    RSMP.Remote.SiteData.set_plan(supervisor_id, site_id, plan)
     Process.send_after(self(), {:command_waiting, path}, 1000)
 
     responses =
@@ -330,9 +330,9 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
           end
 
         if state == "running" do
-          RSMP.Supervisor.stop_channel(supervisor_id, site_id, code, channel)
+          RSMP.Remote.SiteData.stop_channel(supervisor_id, site_id, code, channel)
         else
-          RSMP.Supervisor.start_channel(supervisor_id, site_id, code, channel)
+          RSMP.Remote.SiteData.start_channel(supervisor_id, site_id, code, channel)
         end
 
       _ ->
@@ -355,10 +355,10 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     site_id = socket.assigns.site_id
 
     # Get gap time ranges and send a fetch for each
-    time_ranges = RSMP.Supervisor.gap_time_ranges(supervisor_id, site_id, "traffic.volume/live")
+    time_ranges = RSMP.Remote.SiteData.gap_time_ranges(supervisor_id, site_id, "traffic.volume/live")
 
     for {from_ts, to_ts} <- time_ranges do
-      RSMP.Supervisor.send_fetch(supervisor_id, site_id, "traffic.volume", "live", from_ts, to_ts)
+      RSMP.Remote.SiteData.send_fetch(supervisor_id, site_id, "traffic.volume", "live", from_ts, to_ts)
     end
 
     {:noreply, socket}
@@ -366,7 +366,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_event(name, data, socket) do
-    Logger.info("unhandled event: #{inspect([name, data])}")
+    Logger.warning("Supervisor Site LiveView: unhandled event: #{inspect([name, data])}")
     {:noreply, socket}
   end
 
@@ -444,8 +444,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
   end
 
   @impl true
-  def handle_info(%{topic: "alarm", alarm: alarm}, socket) do
-    Logger.info("Supervisor LiveView received alarm update: #{inspect(alarm)}")
+  def handle_info(%{topic: "alarm", alarm: _alarm}, socket) do
     {:noreply, socket |> assign_site()}
   end
 
@@ -497,7 +496,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
 
   @impl true
   def handle_info(data, socket) do
-    Logger.warning("unhandled info: #{inspect(data)}")
+    Logger.warning("Suppervisor Site LiveView: unhandled info: #{inspect(data)}")
     {:noreply, socket}
   end
 
@@ -531,8 +530,8 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     if connected?(socket) do
       supervisor_id = socket.assigns.supervisor_id
       site_id = socket.assigns.site_id
-      points = RSMP.Supervisor.data_points(supervisor_id, site_id, "traffic.volume/live")
-      seq_gaps = RSMP.Supervisor.gap_time_ranges(supervisor_id, site_id, "traffic.volume/live")
+      points = RSMP.Remote.SiteData.data_points(supervisor_id, site_id, "traffic.volume/live")
+      seq_gaps = RSMP.Remote.SiteData.gap_time_ranges(supervisor_id, site_id, "traffic.volume/live")
       next_ts_gaps = RSMP.Remote.Node.Site.next_ts_gap_ranges(points)
       all_gaps = seq_gaps ++ next_ts_gaps
       bins = RSMP.Remote.Node.Site.aggregate_into_bins_with_gaps(points, 60, all_gaps)
@@ -557,7 +556,7 @@ defmodule RSMP.Supervisor.Web.SupervisorLive.Site do
     if connected?(socket) do
       supervisor_id = socket.assigns.supervisor_id
       site_id = socket.assigns.site_id
-      keyed_points = RSMP.Supervisor.data_points_with_keys(supervisor_id, site_id, "tlc.groups/live")
+      keyed_points = RSMP.Remote.SiteData.data_points_with_keys(supervisor_id, site_id, "tlc.groups/live")
 
       # Replay deltas to build full snapshots
       {history, _state} =

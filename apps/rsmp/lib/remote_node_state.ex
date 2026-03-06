@@ -40,16 +40,16 @@ defmodule RSMP.Remote.Node.State do
   @impl GenServer
   def handle_cast({:update_online_status, status}, remote) when is_binary(status) do
     remote = %{remote | online: status == "online"}
-    Logger.info("Remote #{remote.remote_id} presence: #{status}")
+    Logger.debug("RSMP: Remote #{remote.remote_id} presence: #{status}")
     {:noreply, remote}
   end
 
   def handle_cast({:update_online_status, online_status}, remote) when is_map(online_status) do
     remote = %{remote | type: online_status["type"], online: online_status["online"], modules: online_status["modules"]}
     if remote.online do
-      Logger.info("Remote #{remote.remote_id} is online with type '#{remote.type}' and modules #{inspect(remote.modules)}")
+      Logger.debug("RSMP: Remote #{remote.remote_id} is online with type '#{remote.type}' and modules #{inspect(remote.modules)}")
     else
-      Logger.info("Remote #{remote.remote_id} is offline")
+      Logger.debug("RSMP: Remote #{remote.remote_id} is offline")
     end
     {:noreply, remote}
   end

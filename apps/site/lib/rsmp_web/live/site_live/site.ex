@@ -47,11 +47,7 @@ defmodule RSMP.Site.Web.SiteLive.Site do
     statuses = TLC.get_statuses(site_id)
     alarms = TLC.get_alarms(site_id)
     channel_list = TLC.get_channels(site_id)
-    mqtt_connected = try do
-      RSMP.Connection.connected?(site_id)
-    rescue
-      _ -> false
-    end
+    mqtt_connected = RSMP.Connection.connected?(site_id)
 
     schedule_volume_tick()
     schedule_groups_tick()
@@ -266,8 +262,8 @@ defmodule RSMP.Site.Web.SiteLive.Site do
           _ ->
             assign(socket, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil)
         end
-      rescue
-        _ -> assign(socket, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil)
+      catch
+        :exit, _ -> assign(socket, bandwidth_in: 0, bandwidth_out: 0, prev_stats: nil)
       end
 
     {:noreply, socket}

@@ -27,7 +27,7 @@ defmodule RSMP.Node do
 
     # Start channels after supervisor init by scheduling a message
     if channel_configs != [] do
-      spawn(fn ->
+      spawn_link(fn ->
         # Wait for registry entries to be available
         Process.sleep(100)
         Enum.each(channel_configs, fn config ->

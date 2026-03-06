@@ -30,4 +30,10 @@ defmodule RSMP.Channels do
     list_channels(id)
     |> Enum.map(fn pid -> RSMP.Channel.info(pid) end)
   end
+
+  @doc "Clear retained MQTT messages for all channels of a node."
+  def clear_all_retained(id) do
+    list_channels(id)
+    |> Enum.each(fn pid -> RSMP.Channel.clear_retained(pid) end)
+  end
 end

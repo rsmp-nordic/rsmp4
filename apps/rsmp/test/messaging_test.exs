@@ -36,12 +36,12 @@ defmodule RSMP.MessagingTest do
     id = "site_status_test"
     remote_id = "tlc_remote_1"
 
-    # Start the remote service (TLC)
+    # Start the manager (TLC)
     # The arguments map to start_link({id, remote_id, service, component, data})
-    {:ok, pid} = RSMP.Remote.Service.TLC.start_link({id, remote_id, "tlc", %{}})
+    {:ok, pid} = RSMP.Manager.TLC.start_link({id, remote_id, "tlc", %{}})
 
     # Create the status message
-    # Expecting path 'plan' (Status) as defined in RSMP.Remote.Service.TLC.receive_status/4
+    # Expecting path 'plan' (Status) as defined in RSMP.Manager.TLC.receive_status/4
     topic = RSMP.Topic.new(remote_id, "status", "tlc.plan")
     data = %{"status" => 2, "source" => "local"}
 
@@ -66,10 +66,10 @@ defmodule RSMP.MessagingTest do
 
     # Create a service struct instance (we don't need the GenServer running for this helper)
     # Pass empty map to avoid BadMapError due to default arg [] in new/2
-    service = RSMP.Remote.Service.TLC.new(remote_id, %{})
+    service = RSMP.Manager.TLC.new(remote_id, %{})
 
     # Send command
-    RSMP.Remote.Service.publish_command(service, "M0001", %{"arg" => "test"})
+    RSMP.Manager.publish_command(service, "M0001", %{"arg" => "test"})
 
     # Assert the message was published
     assert_receive {:published, topic, data}
@@ -83,7 +83,7 @@ defmodule RSMP.MessagingTest do
     id = "site_alarm_test"
     remote_id = "tlc_remote_3"
 
-    {:ok, pid} = RSMP.Remote.Service.TLC.start_link({id, remote_id, "tlc", %{}})
+    {:ok, pid} = RSMP.Manager.TLC.start_link({id, remote_id, "tlc", %{}})
 
     topic = RSMP.Topic.new(remote_id, "alarm", "tlc.A0001", ["C1"])
     data = %{"cId" => "C1", "active" => true}

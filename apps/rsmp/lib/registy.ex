@@ -14,8 +14,9 @@ defmodule RSMP.Registry do
   def via_remotes(id), do: via({id, :remotes})
   def via_remote(id, remote_id), do: via({id, :remote, remote_id})
   def via_remote_state(id, remote_id), do: via({id, :remote_state, remote_id})
-  def via_remote_services(id, remote_id), do: via({id, :remote_services, remote_id})
-  def via_remote_service(id, remote_id, name), do: via({id, :remote_service, remote_id, name})
+  def via_managers(id, remote_id), do: via({id, :managers, remote_id})
+  def via_manager(id, remote_id, name), do: via({id, :manager, remote_id, name})
+  def via_site_data(id, remote_id), do: via({id, :site_data, remote_id})
 
   def lookup(key), do: Registry.lookup(__MODULE__, key)
   def lookup_connection(id), do: lookup({id, :connection})
@@ -30,6 +31,7 @@ defmodule RSMP.Registry do
   def lookup_remotes(id), do: lookup({id, :remotes})
   def lookup_remote(id, remote_id), do: lookup({id, :remote, remote_id})
   def lookup_remote_state(id, remote_id), do: lookup({id, :remote_state, remote_id})
-  def lookup_remote_services(id, remote_id), do: lookup({id, :remote_services, remote_id})
-  def lookup_remote_service(id, remote_id, name), do: lookup({id, :remote_service, remote_id, name})
+  def lookup_managers(id, remote_id), do: lookup({id, :managers, remote_id})
+  def lookup_manager(id, remote_id, name), do: lookup({id, :manager, remote_id, name})
+  def lookup_site_data(id, remote_id), do: lookup({id, :site_data, remote_id})
 end

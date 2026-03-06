@@ -60,7 +60,7 @@ defmodule RSMP.Site do
   def publish_status(site, path) do
     path_string = to_string(path)
     value = site.statuses[path_string]
-    Logger.info("RSMP: Sending status: #{path} #{Kernel.inspect(value)}")
+    Logger.debug("Site: Sending status: #{path} #{Kernel.inspect(value)}")
     status = to_rsmp_status(site, path, value)
     topic = %Topic{id: site.id, type: "status", path: path}
 
@@ -74,7 +74,7 @@ defmodule RSMP.Site do
   end
 
   def publish_done(data) do
-    Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")
+    Logger.debug("Site: Publish result: #{Kernel.inspect(data)}")
   end
 
   def alarm_flag_string(site, path) do
@@ -88,7 +88,7 @@ defmodule RSMP.Site do
   def publish_alarm(site, path) do
     flags = alarm_flag_string(site, path)
     path_string = to_string(path)
-    Logger.info("RSMP: Sending alarm: #{path_string} #{flags}")
+    Logger.debug("Site: Sending alarm: #{path_string} #{flags}")
 
     topic = %Topic{id: site.id, type: "alarm", path: path}
 
@@ -131,7 +131,7 @@ defmodule RSMP.Site do
 
     cond do
       action not in ["start", "stop"] ->
-        Logger.warning("RSMP: Invalid throttle action for #{topic.path}: #{inspect(data)}")
+        Logger.warning("Site: Invalid throttle action for #{topic.path}: #{inspect(data)}")
         site
 
       true ->
@@ -148,7 +148,7 @@ defmodule RSMP.Site do
             Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
 
           [] ->
-            Logger.warning("RSMP: Channel not found for throttle: #{topic.path}")
+            Logger.warning("Site: Channel not found for throttle: #{topic.path}")
         end
 
         site
@@ -156,20 +156,19 @@ defmodule RSMP.Site do
   end
 
   def handle_publish(topic, _module, data, site) do
-    Logger.warning("Unhandled publish, topic: #{inspect(topic)}, data: #{inspect(data)}")
+    Logger.warning("Site: Unhandled publish, topic: #{inspect(topic)}, data: #{inspect(data)}")
     {:noreply, site}
   end
 
   def handle_status(topic, publish, site) do
     Logger.warning(
-      "Unhandled status, topic: #{inspect(topic)}, publish: #{inspect(publish)}"
+      "Site: Unhandled status, topic: #{inspect(topic)}, publish: #{inspect(publish)}"
     )
 
     {:noreply, site}
   end
 
   def module(site, code), do: site.modules |> Map.fetch!(code)
-  def responder(site, code), do: module(site, code).responder
   def converter(site, code), do: module(site, code).converter
 
   def from_rsmp_status(site, path, data) do
@@ -178,225 +177,5 @@ defmodule RSMP.Site do
 
   def to_rsmp_status(site, path, data) do
     converter(site, path.code).to_rsmp_status(path.code, data)
-  end
-
-  # Enable "use RSMP.Site" in your RSMP Site modules
-  defmacro __using__(_options) do
-    quote do
-      use GenServer
-      require Logger
-      alias RSMP.{Utility, Site, Alarm, Time, Topic, Path}
-
-      # api
-      def start_link(options \\ []) do
-        {:ok, pid} = GenServer.start_link(__MODULE__, options)
-        Logger.info("RSMP: Starting site with pid #{inspect(pid)}")
-        {:ok, pid}
-      end
-
-      # genserver
-      @impl true
-      def init(site_id: id) do
-        Logger.info("RSMP: starting emqtt")
-        Process.flag(:trap_exit, true)
-
-        site =
-          %RSMP.Site{
-            id: id,
-            modules: module_mapping()
-          }
-          |> setup()
-
-        send(self(), :start_mqtt)
-        {:ok, site}
-      end
-
-      def handle_info(:start_mqtt, site) do
-         options =
-          Utility.client_options()
-          |> Map.merge(%{
-            name: String.to_atom(site.id),
-            clientid: site.id,
-            will_topic: "#{site.id}/presence",
-            will_payload: Utility.to_payload("offline"),
-            will_retain: true
-          })
-
-        {:ok, pid} = :emqtt.start_link(options)
-        site = Map.put(site, :pid, pid)
-        send(self(), :connect)
-        {:noreply, site}
-      end
-
-      def handle_info(:restart_mqtt, site) do
-         send(self(), :start_mqtt)
-         {:noreply, site}
-      end
-
-      def handle_info(:connect, %{pid: nil} = site) do
-        {:noreply, site}
-      end
-
-      def handle_info(:connect, %{pid: pid} = site) do
-        case :emqtt.connect(pid) do
-           {:ok, _} ->
-              Logger.info("RSMP: Connected to MQTT broker")
-              Site.subscribe_to_topics(site)
-              Site.publish_state(site, "online")
-              Site.publish_all(site)
-              if function_exported?(__MODULE__, :continue_client, 0) do
-                continue_client()
-              end
-              {:noreply, site}
-           {:error, reason} ->
-              Logger.warning("RSMP: Failed to connect: #{inspect(reason)}. Retrying in 5s...")
-              Process.send_after(self(), :connect, 5_000)
-              {:noreply, site}
-        end
-      end
-
-      @impl true
-      def handle_info({:EXIT, pid, reason}, %{pid: pid} = site) do
-        Logger.warning("RSMP: Site MQTT connection process exited: #{inspect(reason)}. Restarting in 5s...")
-        Process.send_after(self(), :restart_mqtt, 5_000)
-        {:noreply, %{site | pid: nil}}
-      end
-
-      def handle_info({:EXIT, _pid, _reason}, site) do
-        {:noreply, site}
-      end
-
-      # genserver api imlementation
-      @impl true
-      def handle_call(:get_id, _from, site) do
-        {:reply, site.id, site}
-      end
-
-      @impl true
-      def handle_call(:get_statuses, _from, site) do
-        {:reply, site.statuses, site}
-      end
-
-      @impl true
-      def handle_call({:get_status, path}, _from, site) do
-        {:reply, site.statuses[path], site}
-      end
-
-      @impl true
-      def handle_call(:get_alarms, _from, site) do
-        {:reply, site.alarms, site}
-      end
-
-      @impl true
-      def handle_call({:get_alarm_flag, path, flag}, _from, site) do
-        alarm = site.alarms[path] || Alarm.new()
-        flag = Alarm.get_flag(alarm, flag)
-        {:reply, flag, site}
-      end
-
-      @impl true
-      def handle_cast({:set_status, path, value}, site) do
-        site = %{site | statuses: Map.put(site.statuses, path, value)}
-        Site.publish_status(site, path)
-
-        pub = %{topic: "status", changes: [path]}
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
-        {:noreply, site}
-      end
-
-      @impl true
-      def handle_cast({:raise_alarm, path}, site) do
-        if Alarm.active?(site.alarms[path]) == false do
-          site = Alarm.flag_on(site.alarms[path], :active)
-          Site.publish_alarm(site, Path.from_string(path))
-
-          pub = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
-          {:noreply, site}
-        else
-          {:noreply, site}
-        end
-      end
-
-      @impl true
-      def handle_cast({:clear_alarm, path}, site) do
-        if Alarm.active?(site.alarms[path]) do
-          site = Alarm.flag_off(site.alarms[path], :active)
-          Site.publish_alarm(site, Path.from_string(path))
-
-          pub = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
-          {:noreply, site}
-        else
-          {:noreply, site}
-        end
-      end
-
-      @impl true
-      def handle_cast({:set_alarm_flag, path, flag, value}, site) do
-        if Alarm.get_flag(site.alarms[path], flag) != value do
-          site = Alarm.set_flag(site.alarms[path], flag, value)
-          Site.publish_alarm(site, Path.from_string(path))
-
-          pub = %{topic: "alarm", changes: [path]}
-          Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
-          {:noreply, site}
-        else
-          {:noreply, site}
-        end
-      end
-
-      @impl true
-      def handle_cast({:toggle_alarm_flag, path, flag}, site) do
-        alarm = site.alarms[path] |> Alarm.toggle_flag(flag)
-        site = put_in(site.alarms[path], alarm)
-        Site.publish_alarm(site, Path.from_string(path))
-
-        pub = %{topic: "alarm", changes: [path]}
-        Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{site.id}", pub)
-
-        {:noreply, site}
-      end
-
-      # mqtt
-      @impl true
-      def handle_info({:publish, publish}, site) do
-        topic = Topic.from_string(publish.topic)
-        responder = Site.responder(site, topic.path.code)
-        data = Utility.from_payload(publish[:payload])
-
-        properties = %{
-          response_topic: publish[:properties][:"Response-Topic"],
-          command_id: publish[:properties][:"Correlation-Data"]
-        }
-
-        site =
-          case topic.type do
-            "status" -> responder.receive_status(site, topic.path, data, properties)
-            "command" -> responder.receive_command(site, topic.path, data, properties)
-            "throttle" -> Site.handle_throttle(site, topic, data)
-          end
-
-        {:noreply, site}
-      end
-
-      @impl true
-      def handle_info({:connected, _publish}, site) do
-        Logger.info("RSMP: Connected")
-        Site.subscribe_to_topics(site)
-        {:noreply, site}
-      end
-
-      @impl true
-      def handle_info({:disconnected, _publish}, site) do
-        Logger.warning("RSMP: Disconnected")
-        {:noreply, site}
-      end
-
-      # helpers
-      def module_mapping() do
-        for module <- modules(), code <- module.codes(), into: %{}, do: {code, module}
-      end
-    end
   end
 end

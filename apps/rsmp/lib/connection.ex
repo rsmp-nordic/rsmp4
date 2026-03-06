@@ -27,8 +27,15 @@ defmodule RSMP.Connection do
   end
 
   def connected?(id) do
-    [{pid, _value}] = RSMP.Registry.lookup_connection(id)
-    GenServer.call(pid, :connected?)
+    case RSMP.Registry.lookup_connection(id) do
+      [{pid, _value}] ->
+        try do
+          GenServer.call(pid, :connected?, 2000)
+        catch
+          :exit, _ -> false
+        end
+      [] -> false
+    end
   end
 
   def simulate_disconnect(id) do
@@ -41,15 +48,29 @@ defmodule RSMP.Connection do
     GenServer.cast(pid, :simulate_reconnect)
   end
 
+  def toggle_connection(id) do
+    case connected?(id) do
+      true -> simulate_disconnect(id)
+      false -> simulate_reconnect(id)
+    end
+  end
+
   def get_socket_stats(id) do
-    [{pid, _value}] = RSMP.Registry.lookup_connection(id)
-    GenServer.call(pid, :get_socket_stats)
+    case RSMP.Registry.lookup_connection(id) do
+      [{pid, _value}] ->
+        try do
+          GenServer.call(pid, :get_socket_stats, 2000)
+        catch
+          :exit, _ -> {:error, :unavailable}
+        end
+      [] -> {:error, :not_connected}
+    end
   end
 
   # GenServer
   @impl GenServer
   def init({id, managers, options}) do
-    Logger.info("RSMP: starting emqtt")
+    Logger.debug("RSMP: starting emqtt")
 
     type = Keyword.get(options, :type, :site)
 
@@ -80,20 +101,40 @@ defmodule RSMP.Connection do
     :ok
   end
 
-  defp publish_shutdown(%{emqtt: emqtt} = connection) when emqtt != nil do
-    :emqtt.publish(
-      emqtt,
-      "#{connection.id}/presence",
-      RSMP.Utility.to_payload("shutdown"),
-      retain: true,
-      qos: 1
-    )
+  defp publish_shutdown(%{emqtt: emqtt, connected: true} = connection) when emqtt != nil do
+    Process.unlink(emqtt)
 
-    :emqtt.disconnect(emqtt)
+    try do
+      :emqtt.publish(
+        emqtt,
+        "#{connection.id}/presence",
+        RSMP.Utility.to_payload("shutdown"),
+        retain: true,
+        qos: 1
+      )
+
+      :emqtt.disconnect(emqtt)
+    catch
+      _, _ -> :ok
+    end
+  end
+
+  defp publish_shutdown(%{emqtt: emqtt} = connection) when emqtt != nil do
+    Process.unlink(emqtt)
+    Process.exit(emqtt, :shutdown)
+    publish_shutdown_via_temp_connection(connection)
   end
 
   defp publish_shutdown(connection) do
-    opts = connection.init_options |> Map.put(:clientid, "#{connection.id}_shutdown")
+    publish_shutdown_via_temp_connection(connection)
+  end
+
+  defp publish_shutdown_via_temp_connection(connection) do
+    opts =
+      connection.init_options
+      |> Map.put(:clientid, "#{connection.id}_shutdown")
+      |> Map.delete(:name)
+
     with {:ok, pid} <- :emqtt.start_link(opts),
          {:ok, _} <- :emqtt.connect(pid) do
       :emqtt.publish(
@@ -105,8 +146,14 @@ defmodule RSMP.Connection do
       )
 
       :emqtt.disconnect(pid)
+    else
+      _ -> :ok
     end
+  catch
+    _, _ -> :ok
   end
+
+
 
   @impl GenServer
   def handle_call(:connected?, _from, connection) do
@@ -145,9 +192,14 @@ defmodule RSMP.Connection do
 
   @impl GenServer
   def handle_cast(:simulate_disconnect, connection) do
-    if connection.emqtt && connection.connected do
+    if connection.emqtt do
       Process.exit(connection.emqtt, :kill)
-      Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
+    end
+
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
+
+    if connection.type == :supervisor do
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
     end
 
     {:noreply, %{connection | emqtt: nil, connected: false, offline_at: DateTime.utc_now()}}
@@ -170,7 +222,7 @@ defmodule RSMP.Connection do
     {:noreply, connection}
   end
 
-  def handle_cast({:publish_message, topic, data, %{retain: retain, qos: qos}=options, %{}=properties}, connection) do
+  def handle_cast({:publish_message, topic, data, %{retain: retain, qos: qos}=_options, %{}=properties}, connection) do
     topic_string = to_string(topic)
 
     topic_without_id =
@@ -179,8 +231,8 @@ defmodule RSMP.Connection do
         _ -> topic_string
       end
 
-    Logger.info(
-      "RSMP: #{connection.id}: Publishing #{topic_without_id} with flags #{inspect(options)}: #{inspect(data)}"
+    Logger.debug(
+      "RSMP: #{connection.id}: Publishing #{topic_without_id}: #{inspect(data)}"
     )
 
     properties =
@@ -230,18 +282,30 @@ defmodule RSMP.Connection do
   @impl true
   def handle_info({:disconnected, _rc}, connection) do
     Logger.warning("RSMP: Disconnected")
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
+    if connection.type == :supervisor do
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
+    end
     {:noreply, %{connection | connected: false, offline_at: DateTime.utc_now()}}
   end
 
   @impl true
   def handle_info({:disconnected, _rc, _props}, connection) do
     Logger.warning("RSMP: Disconnected")
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
+    if connection.type == :supervisor do
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
+    end
     {:noreply, %{connection | connected: false, offline_at: DateTime.utc_now()}}
   end
 
   @impl true
   def handle_info({:EXIT, pid, _reason}, %{emqtt: pid} = connection) do
     Logger.warning("RSMP: Connection #{connection.id} emqtt process exited")
+    Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: false})
+    if connection.type == :supervisor do
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
+    end
     {:noreply, %{connection | emqtt: nil, connected: false, offline_at: DateTime.utc_now()}}
   end
 
@@ -269,8 +333,8 @@ defmodule RSMP.Connection do
       "fetch" ->
         dispatch_fetch(connection, topic, data, properties)
 
-      type when type in ["status", "alarm", "result"] ->
-        dispatch_to_remote_service(connection, topic, data, properties)
+      type when type in ["status", "alarm", "result", "channel", "replay", "history"] ->
+        dispatch_to_manager(connection, topic, data, properties)
 
       _ ->
         Logger.warning("Ignoring unknown command type topic: '#{publish.topic}' => #{topic}")
@@ -279,7 +343,7 @@ defmodule RSMP.Connection do
   end
 
   defp on_connected(connection) do
-    Logger.info("RSMP: Connection #{connection.id} connected")
+    Logger.debug("RSMP: Connection #{connection.id} connected")
     subscribe_to_topics(connection)
 
     :emqtt.publish_async(
@@ -302,6 +366,10 @@ defmodule RSMP.Connection do
     end
 
     Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{connection.id}", %{topic: "connected", connected: true})
+
+    if connection.type == :supervisor do
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: true})
+    end
 
     %{connection | connected: true, offline_at: nil, connected_at: DateTime.utc_now()}
   end
@@ -394,6 +462,9 @@ defmodule RSMP.Connection do
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/status/#", qos})
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/alarm/#", qos})
       {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/result/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/channel/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{wildcard_id}/replay/#", qos})
+      {:ok, _, _} = :emqtt.subscribe(emqtt, {"#{id}/history/#", qos})
     end
   end
 
@@ -403,12 +474,24 @@ defmodule RSMP.Connection do
 
   def dispatch_presence(connection, topic, status) when is_binary(status) do
     if RSMP.Registry.lookup_remote(connection.id, topic.id) == [] do
-      Logger.warning("#{connection.id}: Adding remote for #{topic.id}")
+      Logger.debug("#{connection.id}: Adding remote for #{topic.id}")
       via = RSMP.Registry.via_remotes(connection.id)
-      remote_services = []
-      {:ok, _pid} = DynamicSupervisor.start_child(via, {RSMP.Remote.Node, {connection.id, topic.id, remote_services}})
+      managers = []
+      options = [type: connection.type, initial_presence: status]
+      {:ok, _pid} = DynamicSupervisor.start_child(via, {RSMP.Remote.Node, {connection.id, topic.id, managers, options}})
     end
     RSMP.Remote.Node.State.update_online_status(connection.id, topic.id, status)
+
+    if connection.type == :supervisor do
+      case RSMP.Registry.lookup_site_data(connection.id, topic.id) do
+        [{pid, _}] -> GenServer.cast(pid, {:presence_update, status})
+        [] -> :ok
+      end
+
+      pub = %{topic: "presence", site: topic.id, presence: status}
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", pub)
+      Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}:#{topic.id}", pub)
+    end
   end
 
   def dispatch_presence(connection, topic, online_status) do
@@ -472,48 +555,48 @@ defmodule RSMP.Connection do
     end
   end
 
-  def dispatch_to_remote_service(connection, topic, _data, _properties) when topic.id == connection.id do
+  def dispatch_to_manager(connection, topic, _data, _properties) when topic.id == connection.id do
     #ignore message send by us
   end
 
-  def dispatch_to_remote_service(connection, topic, data, properties) do
+  def dispatch_to_manager(connection, topic, data, properties) do
     if RSMP.Registry.lookup_remote(connection.id, topic.id) == [] do
       Logger.warning("#{connection.id}: Ignoring message for unknown remote: #{topic}")
     else
       pid = case connection.managers[topic.path.code] do
         %{service_name: service_name, manager: manager_module} ->
-          case RSMP.Registry.lookup_remote_service(connection.id, topic.id, service_name) do
+          case RSMP.Registry.lookup_manager(connection.id, topic.id, service_name) do
             [{pid, _}] ->
               pid
 
             [] ->
-              via = RSMP.Registry.via_remote_services(connection.id, topic.id)
+              via = RSMP.Registry.via_managers(connection.id, topic.id)
 
               {:ok, pid} = DynamicSupervisor.start_child(
                 via,
                 {manager_module, {connection.id, topic.id, service_name, %{}}}
               )
 
-              Logger.info("#{connection.id}: Added remote service #{manager_module} for remote node #{topic.id}, code #{topic.path.code}")
+              Logger.debug("RSMP: #{connection.id}: Added manager #{manager_module} for remote node #{topic.id}, code #{topic.path.code}")
               pid
           end
 
         nil ->
-          # Unknown code — use Generic remote service
+          # Unknown code — use Generic manager
           service_name = "generic"
-          case RSMP.Registry.lookup_remote_service(connection.id, topic.id, service_name) do
+          case RSMP.Registry.lookup_manager(connection.id, topic.id, service_name) do
             [{pid, _}] ->
               pid
 
             [] ->
-              via = RSMP.Registry.via_remote_services(connection.id, topic.id)
+              via = RSMP.Registry.via_managers(connection.id, topic.id)
 
               {:ok, pid} = DynamicSupervisor.start_child(
                 via,
-                {RSMP.Remote.Service.Generic, {connection.id, topic.id, service_name, %{}}}
+                {RSMP.Manager.Generic, {connection.id, topic.id, service_name, %{}}}
               )
 
-              Logger.info("#{connection.id}: Added generic remote service for remote node #{topic.id}, code #{topic.path.code}")
+              Logger.debug("RSMP: #{connection.id}: Added generic manager for remote node #{topic.id}, code #{topic.path.code}")
               pid
           end
       end
@@ -521,12 +604,18 @@ defmodule RSMP.Connection do
       case topic.type do
         "status" ->
           GenServer.cast(pid, {:receive_status, topic, data, properties})
+          dispatch_to_site_data(connection, topic, data, properties)
 
         "alarm" ->
           GenServer.cast(pid, {:receive_alarm, topic, data, properties})
+          dispatch_to_site_data(connection, topic, data, properties)
 
         "result" ->
           GenServer.cast(pid, {:receive_result, topic, data, properties})
+          dispatch_to_site_data(connection, topic, data, properties)
+
+        type when type in ["channel", "replay", "history"] ->
+          dispatch_to_site_data(connection, topic, data, properties)
 
         _ ->
           Logger.warning("#{connection.id}: Ignoring unknown command type topic: '#{topic}'")
@@ -534,32 +623,16 @@ defmodule RSMP.Connection do
     end
   end
 
-  # def publish_alarm(node, path) do
-  #   flags = RSMP.Service.alarm_flag_string(node, path)
-  #   Logger.info("RSMP: Sending alarm: #{path} #{flags}")
+  defp dispatch_to_site_data(connection, topic, data, properties) do
+    case RSMP.Registry.lookup_site_data(connection.id, topic.id) do
+      [{pid, _}] ->
+        GenServer.cast(pid, {:receive, topic.type, topic, data, properties})
 
-  #   :emqtt.publish_async(
-  #     node.pid,
-  #     "#{node.id}/alarm/#{path_string}",
-  #     Utility.to_payload(Map.from_struct(node.alarms[path])),
-  #     [retain: true, qos: 1],
-  #     &publish_done/1
-  #   )
-  # end
+      [] ->
+        Logger.warning("#{connection.id}: No site_data process for #{topic.id}, ignoring #{topic.type}")
+    end
+  end
 
-  # def publish_response(node, path, response: response, properties: properties) do
-  #   Logger.info("RSMP: Sending result: #{path}, #{inspect(response)}")
-  #   # service, Topic, Properties, Payload, Opts, Timeout, Callback
-  #   :emqtt.publish_async(
-  #     node.mqtt,
-  #     properties[:response_topic],
-  #     %{ "Correlation-Data": properties[:command_id] },
-  #     Utility.to_payload(response),
-  #     [retain: true, qos: 1],
-  #     :infinity,
-  #     &Node.publish_done/1
-  #   )
-  # end
 
   def publish_done(_data) do
     #Logger.debug("RSMP: Publish result: #{Kernel.inspect(data)}")

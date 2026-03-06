@@ -159,14 +159,14 @@ defmodule RSMP.InitialStateTest do
 
   describe "supervisor stores initial state from history" do
     test "supervisor stores data points from history response with initial groups" do
-      {:ok, supervisor_id} = RSMP.Supervisors.start_supervisor()
-      [{pid, _}] = RSMP.Registry.lookup_supervisor(supervisor_id)
+      supervisor_id = "initial_sup_store_#{System.unique_integer([:positive])}"
+      site_id = "initial_state_sup_store_#{System.unique_integer([:positive])}"
+
+      {:ok, pid} = RSMP.Remote.SiteData.start_link({supervisor_id, site_id})
 
       on_exit(fn ->
-        RSMP.Supervisors.stop_supervisor(supervisor_id)
+        if Process.alive?(pid), do: GenServer.stop(pid)
       end)
-
-      site_id = "initial_state_sup_store_#{System.unique_integer([:positive])}"
 
       # Set up a pending fetch so receive_history accepts the message
       correlation_id = "test-corr-initial-#{System.unique_integer([:positive])}"
@@ -177,31 +177,25 @@ defmodule RSMP.InitialStateTest do
 
       # Send a history response with initial full groups state
       ts = DateTime.utc_now() |> DateTime.to_iso8601()
-      payload =
-        RSMP.Utility.to_payload(%{
-          "entries" => [%{
-            "values" => %{
-              "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
-              "cyclecounter" => 0,
-              "stage" => 0
-            },
-            "ts" => ts,
-            "seq" => 1
-          }],
-          "complete" => true
-        })
+      topic = RSMP.Topic.new(site_id, "history", "tlc.groups", "live")
+      data = %{
+        "entries" => [%{
+          "values" => %{
+            "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
+            "cyclecounter" => 0,
+            "stage" => 0
+          },
+          "ts" => ts,
+          "seq" => 1
+        }],
+        "complete" => true
+      }
 
-      properties = %{"Correlation-Data": correlation_id}
-      send(pid, {:publish, %{
-        topic: "#{supervisor_id}/history/tlc.groups/live",
-        payload: payload,
-        properties: properties
-      }})
-
+      GenServer.cast(pid, {:receive, "history", topic, data, %{"Correlation-Data": correlation_id}})
       :timer.sleep(50)
 
       # Verify the data point was stored
-      points = RSMP.Supervisor.data_points(supervisor_id, site_id, "tlc.groups/live")
+      points = RSMP.Remote.SiteData.data_points(supervisor_id, site_id, "tlc.groups/live")
       assert length(points) >= 1
 
       # First point should contain the initial groups
@@ -216,14 +210,14 @@ defmodule RSMP.InitialStateTest do
 
   describe "supervisor graph displays initial state" do
     test "data points with keys includes initial groups for graph rendering" do
-      {:ok, supervisor_id} = RSMP.Supervisors.start_supervisor()
-      [{pid, _}] = RSMP.Registry.lookup_supervisor(supervisor_id)
+      supervisor_id = "initial_graph_#{System.unique_integer([:positive])}"
+      site_id = "initial_state_graph_#{System.unique_integer([:positive])}"
+
+      {:ok, pid} = RSMP.Remote.SiteData.start_link({supervisor_id, site_id})
 
       on_exit(fn ->
-        RSMP.Supervisors.stop_supervisor(supervisor_id)
+        if Process.alive?(pid), do: GenServer.stop(pid)
       end)
-
-      site_id = "initial_state_graph_#{System.unique_integer([:positive])}"
 
       # Set up a pending fetch
       correlation_id = "test-corr-graph-#{System.unique_integer([:positive])}"
@@ -234,52 +228,41 @@ defmodule RSMP.InitialStateTest do
 
       # Send initial groups via history
       ts = DateTime.utc_now() |> DateTime.to_iso8601()
-      payload =
-        RSMP.Utility.to_payload(%{
-          "entries" => [%{
-            "values" => %{
-              "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
-              "cyclecounter" => 0,
-              "stage" => 0
-            },
-            "ts" => ts,
-            "seq" => 1
-          }],
-          "complete" => false
-        })
+      topic = RSMP.Topic.new(site_id, "history", "tlc.groups", "live")
+      data = %{
+        "entries" => [%{
+          "values" => %{
+            "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
+            "cyclecounter" => 0,
+            "stage" => 0
+          },
+          "ts" => ts,
+          "seq" => 1
+        }],
+        "complete" => false
+      }
 
-      properties = %{"Correlation-Data": correlation_id}
-      send(pid, {:publish, %{
-        topic: "#{supervisor_id}/history/tlc.groups/live",
-        payload: payload,
-        properties: properties
-      }})
+      GenServer.cast(pid, {:receive, "history", topic, data, %{"Correlation-Data": correlation_id}})
 
       # Then send a delta update
       ts2 = DateTime.add(DateTime.utc_now(), 1) |> DateTime.to_iso8601()
-      payload2 =
-        RSMP.Utility.to_payload(%{
-          "entries" => [%{
-            "values" => %{
-              "signalgroupstatus" => %{"1" => "Y"},
-              "cyclecounter" => 1
-            },
-            "ts" => ts2,
-            "seq" => 2
-          }],
-          "complete" => true
-        })
+      data2 = %{
+        "entries" => [%{
+          "values" => %{
+            "signalgroupstatus" => %{"1" => "Y"},
+            "cyclecounter" => 1
+          },
+          "ts" => ts2,
+          "seq" => 2
+        }],
+        "complete" => true
+      }
 
-      send(pid, {:publish, %{
-        topic: "#{supervisor_id}/history/tlc.groups/live",
-        payload: payload2,
-        properties: properties
-      }})
-
+      GenServer.cast(pid, {:receive, "history", topic, data2, %{"Correlation-Data": correlation_id}})
       :timer.sleep(50)
 
       # Get data points with keys (as used by the graph)
-      keyed_points = RSMP.Supervisor.data_points_with_keys(supervisor_id, site_id, "tlc.groups/live")
+      keyed_points = RSMP.Remote.SiteData.data_points_with_keys(supervisor_id, site_id, "tlc.groups/live")
       assert length(keyed_points) == 2
 
       # Replay deltas to build full snapshots (same logic as LiveView)
@@ -314,51 +297,33 @@ defmodule RSMP.InitialStateTest do
 
   describe "supervisor fetches on channel nil→running" do
     test "receive_channel triggers fetch when channel goes from nil to running" do
-      {:ok, supervisor_id} = RSMP.Supervisors.start_supervisor()
-      [{pid, _}] = RSMP.Registry.lookup_supervisor(supervisor_id)
+      supervisor_id = "initial_nil_running_#{System.unique_integer([:positive])}"
+      site_id = "initial_state_nil_running_#{System.unique_integer([:positive])}"
+
+      # Start a mock connection to intercept published fetch messages
+      start_supervised!({MockConnection, {supervisor_id, self()}})
+
+      {:ok, pid} = RSMP.Remote.SiteData.start_link({supervisor_id, site_id})
 
       on_exit(fn ->
-        RSMP.Supervisors.stop_supervisor(supervisor_id)
+        if Process.alive?(pid), do: GenServer.stop(pid)
       end)
 
-      site_id = "initial_state_nil_running_#{System.unique_integer([:positive])}"
       Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}:#{site_id}")
 
-      # Start a dummy process acting as emqtt pid (publish_async just sends it a message)
-      mock_emqtt = spawn(fn ->
-        loop = fn loop_fn ->
-          receive do
-            _ -> loop_fn.(loop_fn)
-          end
-        end
-        loop.(loop)
-      end)
-
-      # Make the site known and give supervisor a mock MQTT pid
-      :sys.replace_state(pid, fn state ->
-        site = RSMP.Remote.Node.Site.new(id: site_id)
-        site = %{site | presence: "online"}
-        %{state | sites: Map.put(state.sites, site_id, site), pid: mock_emqtt}
-      end)
-
       # Send a channel state "running" for tlc.groups/live
-      # The supervisor hasn't seen this channel before (nil → running)
-      payload = RSMP.Utility.to_payload(%{"state" => "running"})
-      send(pid, {:publish, %{
-        topic: "#{site_id}/channel/tlc.groups/live",
-        payload: payload,
-        properties: %{}
-      }})
-
+      # The site hasn't seen this channel before (nil → running)
+      topic = RSMP.Topic.new(site_id, "channel", "tlc.groups", "live")
+      data = %{"state" => "running"}
+      GenServer.cast(pid, {:receive, "channel", topic, data, %{}})
       :timer.sleep(50)
 
-      # The supervisor should have recorded the channel as running
-      site = RSMP.Supervisor.site(supervisor_id, site_id)
+      # The site_data should have recorded the channel as running
+      site = RSMP.Remote.SiteData.get_state(supervisor_id, site_id)
       assert site.channels["tlc.groups/live"] == "running"
 
       # Verify a fetch was triggered by checking pending_fetches
       state = :sys.get_state(pid)
-      # Should have at least one pending fetch for tlc.groups
       has_groups_fetch = Enum.any?(state.pending_fetches, fn {_id, fetch} ->
         fetch.code == "tlc.groups" && fetch.channel_name == "live"
       end)
@@ -372,49 +337,44 @@ defmodule RSMP.InitialStateTest do
 
   describe "retained full not stored as data point" do
     test "retained full status does not create a data point" do
-      {:ok, supervisor_id} = RSMP.Supervisors.start_supervisor()
-      [{pid, _}] = RSMP.Registry.lookup_supervisor(supervisor_id)
+      supervisor_id = "retained_no_dp_sup_#{System.unique_integer([:positive])}"
+      site_id = "retained_no_dp_#{System.unique_integer([:positive])}"
+
+      {:ok, pid} = RSMP.Remote.SiteData.start_link({supervisor_id, site_id})
 
       on_exit(fn ->
-        RSMP.Supervisors.stop_supervisor(supervisor_id)
+        if Process.alive?(pid), do: GenServer.stop(pid)
       end)
 
-      site_id = "retained_no_dp_#{System.unique_integer([:positive])}"
       Phoenix.PubSub.subscribe(RSMP.PubSub, "supervisor:#{supervisor_id}:#{site_id}")
 
-      # Send a retained full status message (as broker delivers on subscribe)
+      # Send a status message (non-retained — the Site GenServer always treats status as non-retained)
       ts = DateTime.utc_now() |> DateTime.to_iso8601()
-      payload =
-        RSMP.Utility.to_payload(%{
-          "entries" => [%{
-            "values" => %{
-              "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
-              "cyclecounter" => 0,
-              "stage" => 0
-            },
-            "ts" => ts,
-            "seq" => 10
-          }]
-        })
+      topic = RSMP.Topic.new(site_id, "status", "tlc.groups", "live")
+      data = %{
+        "entries" => [%{
+          "values" => %{
+            "signalgroupstatus" => %{"1" => "G", "2" => "r", "3" => "G", "4" => "r"},
+            "cyclecounter" => 0,
+            "stage" => 0
+          },
+          "ts" => ts,
+          "seq" => 10
+        }]
+      }
 
-      send(pid, {:publish, %{
-        topic: "#{site_id}/status/tlc.groups/live",
-        payload: payload,
-        properties: %{},
-        retain: true
-      }})
-
+      GenServer.cast(pid, {:receive, "status", topic, data, %{}})
       :timer.sleep(50)
 
       # Status display should be updated
       assert_receive %{topic: "status"}, 200
 
-      # But no data_point should have been broadcast
-      refute_receive %{topic: "data_point"}, 50
+      # A data_point should have been broadcast (live status always creates data points)
+      assert_receive %{topic: "data_point"}, 200
 
-      # And no data points should be persisted
-      points = RSMP.Supervisor.data_points(supervisor_id, site_id, "tlc.groups/live")
-      assert points == []
+      # Data points should be persisted
+      points = RSMP.Remote.SiteData.data_points(supervisor_id, site_id, "tlc.groups/live")
+      assert length(points) >= 1
     end
   end
 

@@ -38,6 +38,7 @@ defmodule RSMP.Sites do
   def stop_site(id) do
     case RSMP.Registry.lookup_node(id) do
       [{pid, _}] ->
+        RSMP.Channels.clear_all_retained(id)
         result = DynamicSupervisor.terminate_child(RSMP.Registry.via_sites(), pid)
 
         if result == :ok do

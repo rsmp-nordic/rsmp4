@@ -128,6 +128,9 @@ defmodule RSMP.Channel do
   @doc "Get current channel info."
   def info(pid), do: GenServer.call(pid, :info)
 
+  @doc "Clear retained channel-state MQTT message for this channel."
+  def clear_retained(pid), do: GenServer.call(pid, :clear_retained)
+
   @doc "Publish a full update immediately if the channel is running."
   def force_full(pid), do: GenServer.call(pid, :force_full)
 
@@ -185,6 +188,20 @@ defmodule RSMP.Channel do
     }
 
     {:reply, info, state}
+  end
+
+  def handle_call(:clear_retained, _from, state) do
+    topic = make_channel_state_topic(state)
+
+    RSMP.Connection.publish_message(
+      state.id,
+      topic,
+      nil,
+      %{retain: true, qos: 1},
+      %{}
+    )
+
+    {:reply, :ok, state}
   end
 
   def handle_call(:force_full, _from, %{running: false} = state) do
@@ -512,7 +529,7 @@ defmodule RSMP.Channel do
   # ---- Internal ----
 
   defp do_start(state) do
-    Logger.info("RSMP Channel: Starting #{channel_label(state)}")
+    Logger.debug("Channel: Starting #{channel_label(state)}")
     state = %{state | running: true, last_full: nil, pending_changes: %{}, aggregation_acc: nil}
 
     # Publish initial full update, unless:
@@ -537,7 +554,7 @@ defmodule RSMP.Channel do
   end
 
   defp do_stop(state) do
-    Logger.info("RSMP Channel: Stopping #{channel_label(state)}")
+    Logger.debug("Channel: Stopping #{channel_label(state)}")
 
     # Cancel timers
     state = cancel_timers(state)
