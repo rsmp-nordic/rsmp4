@@ -269,17 +269,24 @@ defmodule RSMP.Connection do
       "RSMP: #{connection.id}: Publishing #{topic_without_id}: #{inspect(data)}"
     )
 
-    properties =
+    mqtt_properties =
       if properties[:command_id] do
         %{"Correlation-Data": properties[:command_id]}
       else
         %{}
       end
 
+    mqtt_properties =
+      if properties[:response_topic] do
+        Map.put(mqtt_properties, :"Response-Topic", properties[:response_topic])
+      else
+        mqtt_properties
+      end
+
     :emqtt.publish_async(
       connection.emqtt,
       to_string(topic),
-      properties,
+      mqtt_properties,
       RSMP.Utility.to_payload(data),
       [retain: retain, qos: qos],
       :infinity,
@@ -485,16 +492,18 @@ defmodule RSMP.Connection do
     response_topic = properties[:"Response-Topic"]
     correlation_data = properties[:"Correlation-Data"]
 
-    case RSMP.Registry.lookup_channel(connection.id, topic.path.code, topic.channel_name) do
-      [{pid, _}] ->
-        GenServer.cast(pid, {:handle_fetch, from_ts, to_ts, response_topic, correlation_data})
+    if response_topic == nil do
+      Logger.warning("#{connection.id}: Fetch missing Response-Topic, ignoring: #{topic}")
+    else
+      case RSMP.Registry.lookup_channel(connection.id, topic.path.code, topic.channel_name) do
+        [{pid, _}] ->
+          GenServer.cast(pid, {:handle_fetch, from_ts, to_ts, response_topic, correlation_data})
 
-      [] ->
-        Logger.warning("#{connection.id}: Fetch for unknown channel: #{topic}")
-        if response_topic do
+        [] ->
+          Logger.warning("#{connection.id}: Fetch for unknown channel: #{topic}")
           payload = %{"complete" => true}
           RSMP.Connection.publish_message(connection.id, response_topic, payload, %{retain: false, qos: 1}, %{command_id: correlation_data})
-        end
+      end
     end
   end
 

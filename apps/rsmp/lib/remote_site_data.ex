@@ -553,6 +553,7 @@ defmodule RSMP.Remote.SiteData do
         correlation_id = SecureRandom.hex(8)
         channel_segment = if channel_name && channel_name != "", do: channel_name, else: "default"
         fetch_topic = "#{state.remote_id}/fetch/#{code}/#{channel_segment}"
+        response_topic = "#{state.supervisor_id}/history/#{code}/#{channel_segment}"
 
         payload = %{}
         payload = if from_ts, do: Map.put(payload, "from", DateTime.to_iso8601(from_ts)), else: payload
@@ -565,7 +566,7 @@ defmodule RSMP.Remote.SiteData do
           fetch_topic,
           payload,
           %{retain: false, qos: 1},
-          %{command_id: correlation_id}
+          %{command_id: correlation_id, response_topic: response_topic}
         )
 
         pending_fetch = %{site_id: state.remote_id, code: code, channel_name: channel_name}
