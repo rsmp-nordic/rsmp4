@@ -224,6 +224,7 @@ defmodule RSMP.Connection do
 
     if connection.type == :supervisor do
       Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
+      notify_site_data_processes(connection.id, {:connection_state, false})
     end
 
     {:noreply, %{connection | emqtt: nil, connected: false, offline_at: DateTime.utc_now(), auto_reconnect: false}}
@@ -325,6 +326,11 @@ defmodule RSMP.Connection do
     {:noreply, connection}
   end
 
+  def handle_info({:connected, _publish}, %{connected: true} = connection) do
+    Logger.debug("RSMP: Connection #{connection.id} received :connected but already connected, ignoring")
+    {:noreply, connection}
+  end
+
   def handle_info({:connected, _publish}, connection) do
     {:noreply, on_connected(connection)}
   end
@@ -405,6 +411,7 @@ defmodule RSMP.Connection do
 
     if connection.type == :supervisor do
       Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: false})
+      notify_site_data_processes(connection.id, {:connection_state, false})
     end
 
     connection = %{connection | emqtt: nil, connected: false, offline_at: DateTime.utc_now()}
@@ -444,9 +451,16 @@ defmodule RSMP.Connection do
 
     if connection.type == :supervisor do
       Phoenix.PubSub.broadcast(RSMP.PubSub, "supervisor:#{connection.id}", %{topic: "connected", connected: true})
+      notify_site_data_processes(connection.id, {:connection_state, true})
     end
 
     %{connection | connected: true, offline_at: nil, connected_at: DateTime.utc_now()}
+  end
+
+  defp notify_site_data_processes(id, message) do
+    match_pattern = {{{id, :site_data, :_}, :"$1", :_}, [], [:"$1"]}
+    Registry.select(RSMP.Registry, [match_pattern])
+    |> Enum.each(fn pid -> GenServer.cast(pid, message) end)
   end
 
   defp trigger_services(id) do
@@ -632,6 +646,12 @@ defmodule RSMP.Connection do
     end
   end
 
+  def dispatch_to_manager(connection, %{type: "history"} = topic, data, properties) do
+    # History responses arrive on the supervisor's own topic, so topic.id == connection.id.
+    # Fan out to all SiteData processes — each checks its own pending_fetches by correlation-id.
+    notify_all_site_data(connection.id, topic, data, properties)
+  end
+
   def dispatch_to_manager(connection, topic, _data, _properties) when topic.id == connection.id do
     #ignore message send by us
   end
@@ -708,6 +728,14 @@ defmodule RSMP.Connection do
       [] ->
         Logger.warning("#{connection.id}: No site_data process for #{topic.id}, ignoring #{topic.type}")
     end
+  end
+
+  defp notify_all_site_data(id, topic, data, properties) do
+    match_pattern = {{{id, :site_data, :_}, :"$1", :_}, [], [:"$1"]}
+    Registry.select(RSMP.Registry, [match_pattern])
+    |> Enum.each(fn pid ->
+      GenServer.cast(pid, {:receive, topic.type, topic, data, properties})
+    end)
   end
 
 

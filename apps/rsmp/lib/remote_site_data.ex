@@ -152,14 +152,14 @@ defmodule RSMP.Remote.SiteData do
   def handle_cast({:throttle_channel, code, channel_name, action}, state) do
     channel_segment =
       case channel_name do
-        nil -> "default"
-        "" -> "default"
+        nil -> nil
+        "" -> nil
         value -> to_string(value)
       end
 
     topic = RSMP.Topic.new(state.remote_id, "throttle", code, channel_segment)
 
-    Logger.debug("RSMP: Sending throttle #{action} for #{code}/#{channel_segment} to #{state.remote_id}")
+    Logger.debug("RSMP: Sending throttle #{action} for #{code}#{if channel_segment, do: "/#{channel_segment}", else: ""} to #{state.remote_id}")
 
     RSMP.Connection.publish_message(
       state.supervisor_id,
@@ -187,7 +187,10 @@ defmodule RSMP.Remote.SiteData do
         now = DateTime.utc_now()
         update_site(state, fn site ->
           Enum.reduce(@gap_fetch_channels, site, fn {code, channel_name}, acc ->
-            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{code}/#{channel_name}", now)
+            channel_key = "#{code}/#{channel_name}"
+            acc
+            |> RSMP.Remote.Node.Site.stamp_next_ts_on_last(channel_key, now)
+            |> Map.update!(:channels, &Map.delete(&1, channel_key))
           end)
         end)
       else
@@ -200,12 +203,16 @@ defmodule RSMP.Remote.SiteData do
   def handle_cast({:connection_state, connected}, state) do
     state =
       if connected do
-        fetch_all_channels(state)
+        # Retained channel state messages will arrive and trigger fetch via receive_channel.
+        state
       else
         now = DateTime.utc_now()
         update_site(state, fn site ->
           Enum.reduce(@gap_fetch_channels, site, fn {code, channel_name}, acc ->
-            RSMP.Remote.Node.Site.stamp_next_ts_on_last(acc, "#{code}/#{channel_name}", now)
+            channel_key = "#{code}/#{channel_name}"
+            acc
+            |> RSMP.Remote.Node.Site.stamp_next_ts_on_last(channel_key, now)
+            |> Map.update!(:channels, &Map.delete(&1, channel_key))
           end)
         end)
       end
@@ -574,43 +581,78 @@ defmodule RSMP.Remote.SiteData do
     end
   end
 
-  defp fetch_all_channels(state) do
-    fallback_ts = DateTime.add(DateTime.utc_now(), -@graph_window_seconds, :second)
-
-    Enum.reduce(@gap_fetch_channels, state, fn {code, channel_name}, acc ->
-      fetch_channel_gaps(acc, code, channel_name, fallback_ts)
-    end)
-  end
-
   defp fetch_channel_gaps(state, code, channel_name, fallback_from_ts) do
     channel_key = "#{code}/#{channel_name}"
-    now = DateTime.utc_now()
-    site = state.site
+    channel_running = get_in(state.site.channels, [channel_key]) == "running"
 
-    time_ranges =
-      if site do
-        seq_ranges = RSMP.Remote.Node.Site.gap_time_ranges(site, channel_key)
-        sorted_points = RSMP.Remote.Node.Site.get_data_points(site, channel_key)
-        next_ts_ranges = RSMP.Remote.Node.Site.next_ts_gap_ranges(sorted_points)
+    if not channel_running do
+      state
+    else
+      now = DateTime.utc_now()
+      site = state.site
+      window_start = fallback_from_ts
 
-        (seq_ranges ++ next_ts_ranges)
-        |> Enum.map(fn {from, to} -> {from, to || now} end)
-        |> Enum.reject(fn {from, _to} -> is_nil(from) end)
-        |> Enum.filter(fn {from, to} -> DateTime.compare(from, to) == :lt end)
-      else
-        []
+      {time_ranges, sorted_points} =
+        if site do
+          seq_ranges = RSMP.Remote.Node.Site.gap_time_ranges(site, channel_key)
+          sorted_points = RSMP.Remote.Node.Site.get_data_points(site, channel_key)
+          next_ts_ranges = RSMP.Remote.Node.Site.next_ts_gap_ranges(sorted_points)
+
+          ranges =
+            (seq_ranges ++ next_ts_ranges)
+            |> Enum.map(fn {from, to} -> {from, to || now} end)
+            |> Enum.reject(fn {from, _to} -> is_nil(from) end)
+            |> Enum.filter(fn {from, to} -> DateTime.compare(from, to) == :lt end)
+            |> Enum.map(fn {from, to} ->
+              clamped_from = if DateTime.compare(from, window_start) == :lt, do: window_start, else: from
+              {clamped_from, to}
+            end)
+            |> Enum.filter(fn {from, to} -> DateTime.compare(from, to) == :lt end)
+            |> merge_time_ranges()
+
+          {ranges, sorted_points}
+        else
+          {[], []}
+        end
+
+      time_ranges =
+        if time_ranges == [] do
+          has_recent_data = Enum.any?(sorted_points, fn p ->
+            DateTime.compare(p.ts, window_start) != :lt
+          end)
+          if has_recent_data, do: [], else: [{window_start, now}]
+        else
+          time_ranges
+        end
+
+      Enum.reduce(time_ranges, state, fn {from_ts, to_ts}, acc ->
+        do_send_fetch(acc, code, channel_name, from_ts, to_ts)
+      end)
+    end
+  end
+
+  # Merge a list of {from, to} DateTime tuples: sort by from, then fold overlapping
+  # or adjacent ranges into a single covering range.
+  defp merge_time_ranges([]), do: []
+
+  defp merge_time_ranges(ranges) do
+    ranges
+    |> Enum.sort_by(fn {from, _to} -> from end, DateTime)
+    |> Enum.reduce([], fn {from, to}, acc ->
+      case acc do
+        [] ->
+          [{from, to}]
+
+        [{prev_from, prev_to} | rest] ->
+          if DateTime.compare(from, prev_to) != :gt do
+            latest_to = if DateTime.compare(to, prev_to) == :gt, do: to, else: prev_to
+            [{prev_from, latest_to} | rest]
+          else
+            [{from, to}, {prev_from, prev_to} | rest]
+          end
       end
-
-    time_ranges =
-      if time_ranges == [] do
-        [{fallback_from_ts, now}]
-      else
-        time_ranges
-      end
-
-    Enum.reduce(time_ranges, state, fn {from_ts, to_ts}, acc ->
-      do_send_fetch(acc, code, channel_name, from_ts, to_ts)
     end)
+    |> Enum.reverse()
   end
 
   # Helpers

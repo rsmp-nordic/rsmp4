@@ -559,9 +559,6 @@ defmodule RSMP.Channel do
     # Cancel timers
     state = cancel_timers(state)
 
-    # Clear retained message
-    publish_clear(state)
-
     state = %{state | running: false, last_full: nil, pending_changes: %{}, pending_ts: nil}
     publish_channel_state(state)
     state
@@ -885,18 +882,6 @@ defmodule RSMP.Channel do
       broadcast_channel_data(state, seq, "delta")
       state
     end
-  end
-
-  defp publish_clear(state) do
-    topic = make_topic(state)
-
-    RSMP.Connection.publish_message(
-      state.id,
-      topic,
-      nil,
-      %{retain: true, qos: state.qos},
-      %{}
-    )
   end
 
   defp publish_channel_state(state) do

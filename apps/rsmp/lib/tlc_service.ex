@@ -147,7 +147,7 @@ defmodule RSMP.Service.TLC do
 
       service.plans[plan] != nil ->
         msg = "Switching to plan #{plan}"
-        Logger.info("Service: #{msg}")
+        Logger.debug("Service: #{msg}")
 
         Phoenix.PubSub.broadcast(RSMP.PubSub, "site:#{service.id}", %{
           topic: "command_log",
